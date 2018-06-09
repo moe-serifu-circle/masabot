@@ -5,6 +5,7 @@ import logging
 
 
 _log = logging.getLogger(__name__)
+_log.setLevel(logging.DEBUG)
 
 
 def load_config(json_path):
@@ -19,5 +20,9 @@ def load_config(json_path):
 		raise ValueError("Required key 'discord-api-key' not in configuration file '" + json_path + "'")
 	if config['discord-api-key'] == '':
 		raise ValueError("Required key 'discord-api-key' is empty in configuration file '" + json_path + "'")
+
+	if 'announce-channels' not in config:
+		_log.warning("No announce-channels in config; defaulting to none.")
+		config['announce-channels'] = []
 
 	return config

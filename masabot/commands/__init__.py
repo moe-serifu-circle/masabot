@@ -47,13 +47,14 @@ class RegexTrigger(object):
 
 
 class BotBehaviorModule(object):
-	def __init__(self, bot_api, name, desc, help_text, triggers, has_state=False):
+	def __init__(self, bot_api, name, desc, help_text, triggers, has_state=False, requires_op=False):
 		self.help_text = help_text
 		self.description = desc
 		self.name = name
 		self.has_state = has_state
 		self.triggers = triggers
 		self.bot_api = bot_api
+		self.requires_op = requires_op
 
 	def get_state(self):
 		pass

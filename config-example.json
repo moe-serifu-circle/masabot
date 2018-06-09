@@ -1,4 +1,10 @@
 {
   "discord-api-key": "",
-  "prefix": "!"
+  "prefix": "!",
+  "announce-channels": [
+    "#general"
+  ],
+  "masters": [
+
+  ]
 }
