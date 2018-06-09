@@ -18,7 +18,7 @@ class BotContext(object):
 		self.is_pm = self.source.is_private and len(self.source.recipients) == 1
 
 
-class BotApi(object):
+class MasaBot(object):
 
 	def __init__(self, config_file):
 		"""
@@ -34,6 +34,8 @@ class BotApi(object):
 		self._regex_handlers = {}
 
 		conf = configfile.load_config(config_file)
+
+		self._api_key = conf['discord-api-key']
 		self._prefix = conf['prefix']
 
 		self.client = discord.Client()
@@ -92,18 +94,16 @@ class BotApi(object):
 			self._bot_modules.append(bot_module)
 			names.append(bot_module.name)
 
-		self._api_key = conf['discord-api-key']
-
 	def run(self):
 		self.client.run(self._api_key)
 
-	def reply(self, context, message):
+	async def reply(self, context, message):
 		if context.is_pm:
-			self.client.send_message(context.author, message)
+			await self.client.send_message(context.author, message)
 		else:
-			self.client.send_message(context.source, message)
+			await self.client.send_message(context.source, message)
 
-	def show_help(self, context):
+	async def show_help(self, context):
 		pre = self._prefix
 		msg = "Sure! I'll tell you how to use my interface!\n\n"
 		msg += "Here are my special commands:\n"
@@ -114,7 +114,7 @@ class BotApi(object):
 			invokes = ','.join('`' + pre + t.invocation + '`' for t in m.triggers if t.trigger_type == "INVOCATION")
 			invokes = ' (' + invokes + ')' if invokes is not '' else ''
 			msg += '`' + m.name + "`" + invokes + " - " + m.description + "\n"
-		self.client.send_message(context.source, msg)
+		await self.client.send_message(context.source, msg)
 
 	def _handle_invocation(self, message):
 		tokens = shlex.split(message.content[len(self._prefix):])
@@ -165,5 +165,5 @@ class BotApi(object):
 
 
 def start():
-	bot = BotApi("config.json")
+	bot = MasaBot("config.json")
 	bot.run()
