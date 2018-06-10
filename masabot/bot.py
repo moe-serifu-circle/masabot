@@ -2,6 +2,8 @@ import importlib
 import logging
 import pickle
 import discord
+import traceback
+import sys
 import asyncio
 import re
 import shlex
@@ -79,10 +81,20 @@ class MasaBot(object):
 				return  # don't answer own messages
 			if message.content.startswith(self._prefix):
 				self._handle_invocation(message)
-			elif len(message.raw_mentions) > 0:
-				self._handle_mention(message)
 			else:
+				if len(message.raw_mentions) > 0:
+					self._handle_mention(message)
+
 				self._handle_regex_scan(message)
+
+		@self.client.event
+		async def on_error(event, *args, **kwargs):
+			message = args[0]
+			exc_info = sys.exc_info()
+			e = str(exc_info[1])
+			logging.exception("Exception in main loop")
+			msg = "Oh my goodness! I just had an exception :c\n\n```\n" + e + "\n```"
+			await self.client.send_message(message.channel, msg)
 
 		names = []
 		_log.debug("loading modules")
@@ -144,7 +156,8 @@ class MasaBot(object):
 			msg += " use it!\n"
 			msg += "`" + pre + "quit` - Immediately stops me from running.\n"
 			msg += "\nHere are the modules that I'm running:\n"
-			for m_name, m in self._bot_modules:
+			for m_name in self._bot_modules:
+				m = self._bot_modules[m_name]
 				invokes = ','.join('`' + pre + t.invocation + '`' for t in m.triggers if t.trigger_type == "INVOCATION")
 				invokes = ' (' + invokes + ')' if invokes is not '' else ''
 				msg += '`' + m.name + "`" + invokes + " - " + m.description + "\n"
@@ -154,7 +167,7 @@ class MasaBot(object):
 				help_module = help_module[len(pre):]
 			if help_module == "help":
 				msg = "Oh, that's the command that you use to get me to give you info about other modules! You can"
-				msg += " run it by itself, `" + pre + "help` to just show the list of all commands and modules, or you"
+				msg += " run it by itself, `" + pre + "help`, to just show the list of all commands and modules, or you"
 				msg += " can you put a module name after it to find out about that module! But I guess you already know"
 				msg += " that, eheheh ^_^"
 				await self.reply(context, msg)
@@ -183,6 +196,17 @@ class MasaBot(object):
 		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
 		await self.client.logout()
 
+	async def show_syntax_error(self, context, message=None):
+		msg = "Um, oh no, I'm sorry <@!" + context.author.id + ">, but I really have no idea what you mean..."
+		if message is not None:
+			msg += " " + message
+		msg += "But, oh! I know!"
+		msg += " If you're having trouble, maybe the command `" + self._prefix + "help` can help you!"
+		await self.reply(context, msg)
+
+	async def make_op(self, context, user):
+		pass
+
 	def _handle_invocation(self, message):
 		tokens = shlex.split(message.content[len(self._prefix):])
 		cmd = tokens[0]
@@ -191,12 +215,17 @@ class MasaBot(object):
 		if cmd == 'help':
 			context = BotContext(message)
 			help_cmd = None
-			if args > 0:
+			if len(args) > 0:
 				help_cmd = args[0]
 			asyncio.ensure_future(self.show_help(context, help_cmd))
 		if cmd == 'quit':
 			context = BotContext(message)
 			asyncio.ensure_future(self.quit(context))
+		if cmd == 'op':
+			context = BotContext(message)
+			if len(args) < 1:
+				asyncio.ensure_future(self.show_syntax_error(context, "I need to know who you want to turn into an op."))
+			asyncio.ensure_future(self.make_op(context, args[0]))
 		elif cmd in self._invocations:
 			context = BotContext(message)
 			for handler in self._invocations[cmd]:
@@ -228,34 +257,37 @@ class MasaBot(object):
 
 	def _handle_regex_scan(self, message):
 		context = BotContext(message)
-		for regex, h in self._regex_handlers:
+		for regex in self._regex_handlers:
+			h = self._regex_handlers[regex]
+
 			m = regex.search(message.content)
 			if m is not None:
 				match_groups = []
-				for i in range(regex.groups):
+				for i in range(regex.groups+1):
 					match_groups.append(m.group(i))
 				self._execute_action(context, h, lambda h: h.on_regex_match(context, *match_groups))
 
-	async def _execute_action(self, context, mod, action):
+	def _execute_action(self, context, mod, action):
 		if mod.requires_op and context.author.id not in self._operators:
 			msg = "Unprivileged user " + context.author.id + " attempted a privileged action in '" + mod.name + "'"
 			_log.warning(msg)
 			msg = "Sorry, <@!" + context.author.id + ">, but only my masters and operators can do that."
-			await self.reply(context, msg)
+			asyncio.ensure_future(self.reply(context, msg))
 			return
-		action(mod)
+		asyncio.ensure_future(action(mod))
 		if mod.has_state:
 			self._save_all()
 
 	def _save_all(self):
 		state_dict = {'__BOT__': {
-			'operators': self._operators.keys()
+			'operators': list(self._operators.keys())
 		}}
-		for m_name, mod in self._bot_modules:
+		for m_name in self._bot_modules:
+			mod = self._bot_modules[m_name]
 			if mod.has_state:
 				state_dict[mod.name] = mod.get_state()
 
-		with open("state.p") as fp:
+		with open("state.p", "wb") as fp:
 			pickle.dump(state_dict, fp)
 
 

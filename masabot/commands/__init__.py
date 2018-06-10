@@ -62,11 +62,11 @@ class BotBehaviorModule(object):
 	def set_state(self, state):
 		pass
 
-	def on_invocation(self, context, command, *args):
+	async def on_invocation(self, context, command, *args):
 		pass
 
-	def on_mention(self, context, message, mention_names):
+	async def on_mention(self, context, message, mention_names):
 		pass
 
-	def on_regex_match(self, context, *match_groups):
+	async def on_regex_match(self, context, *match_groups):
 		pass
