@@ -14,6 +14,11 @@ _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
 
+class BotPermissionError(Exception):
+	def __init__(self, message):
+		super().__init__(message)
+
+
 class BotContext(object):
 
 	def __init__(self, message):
@@ -80,12 +85,12 @@ class MasaBot(object):
 			if message.author.id == self.client.user.id:
 				return  # don't answer own messages
 			if message.content.startswith(self._prefix):
-				self._handle_invocation(message)
+				await self._handle_invocation(message)
 			else:
 				if len(message.raw_mentions) > 0:
-					self._handle_mention(message)
+					await self._handle_mention(message)
 
-				self._handle_regex_scan(message)
+				await self._handle_regex_scan(message)
 
 		@self.client.event
 		async def on_error(event, *args, **kwargs):
@@ -147,12 +152,7 @@ class MasaBot(object):
 					await self.reply(context, msg)
 
 	async def quit(self, context):
-		if context.author.id not in self._operators:
-			msg = "Unprivileged user " + context.author.id + " attempted a privileged quit"
-			_log.warning(msg)
-			msg = "Sorry, <@!" + context.author.id + ">, but only my masters and operators can do that."
-			await self.reply(context, msg)
-			return
+		self.require_op(context, "Attempted to execute `quit`")
 		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
 		await self.client.logout()
 
@@ -166,6 +166,10 @@ class MasaBot(object):
 
 	async def make_op(self, context, user):
 		pass
+
+	def require_op(self, context, message="Operation requires operator status"):
+		if context.author.id not in self._operators:
+			raise BotPermissionError(message)
 
 	def _load_modules(self, state_dict):
 		names = []
@@ -267,33 +271,38 @@ class MasaBot(object):
 		"""
 		reg = trig.regex
 		regex = re.compile(reg, re.DOTALL)
-		current_handlers[regex] = bot_module
+		if regex in current_handlers:
+			err_msg = "Duplicate regex handler for '" + regex.pattern + "' in module '" + bot_module.name
+			err_msg += "'; already defined in '" + current_handlers[regex][-1].name + "'"
+			err_msg += " module"
+			_log.warning(err_msg)
+		else:
+			current_handlers[regex] = []
+		current_handlers[regex].append(bot_module)
 
-	def _handle_invocation(self, message):
+	async def _handle_invocation(self, message):
 		tokens = shlex.split(message.content[len(self._prefix):])
 		cmd = tokens[0]
 		args = tokens[1:]
+		context = BotContext(message)
 
 		if cmd == 'help':
-			context = BotContext(message)
 			help_cmd = None
 			if len(args) > 0:
 				help_cmd = args[0]
-			asyncio.ensure_future(self.show_help(context, help_cmd))
+			await self._execute_action(context, self.show_help(context, help_cmd))
 		if cmd == 'quit':
-			context = BotContext(message)
-			asyncio.ensure_future(self.quit(context))
+			await self._execute_action(context, self.quit(context))
 		if cmd == 'op':
-			context = BotContext(message)
 			if len(args) < 1:
-				asyncio.ensure_future(self.show_syntax_error(context, "I need to know who you want to turn into an op."))
-			asyncio.ensure_future(self.make_op(context, args[0]))
+				await self.show_syntax_error(context, "I need to know who you want to turn into an op.")
+				return
+			await self.make_op(context, args[0])
 		elif cmd in self._invocations:
-			context = BotContext(message)
 			for handler in self._invocations[cmd]:
-				self._execute_action(context, handler, lambda h: h.on_invocation(context, cmd, *args))
+				await self._execute_action(context, handler.on_invocation(context, cmd, *args), handler)
 
-	def _handle_mention(self, message):
+	async def _handle_mention(self, message):
 		handled_already = []
 		mentions = message.raw_mentions
 		context = BotContext(message)
@@ -301,43 +310,49 @@ class MasaBot(object):
 		if len(self._any_mention_handlers) > 0:
 			for h in self._any_mention_handlers:
 				if h.name not in handled_already:
-					self._execute_action(context, h, lambda h: h.on_mention(context, message.content, mentions))
+					await self._execute_action(context, h.on_mention(context, message.content, mentions), h)
 					handled_already.append(h.name)
 
 		if '<@' + self.client.user.id + '>' in mentions or '<@!' + self.client.user.id + '>' in mentions:
 			for h in self._self_mention_handlers:
 				if h.name not in handled_already:
-					self._execute_action(context, h, lambda h: h.on_mention(context, message.content, mentions))
+					await self._execute_action(context, h.on_mention(context, message.content, mentions), h)
 					handled_already.append(h.name)
 
 		for m in mentions:
 			if m in self._mention_handlers:
 				for h in self._mention_handlers[m]:
 					if h.name not in handled_already:
-						self._execute_action(context, h, lambda h: h.on_mention(context, message.content, mentions))
+						await self._execute_action(context, h.on_mention(context, message.content, mentions), h)
 						handled_already.append(h.name)
 
-	def _handle_regex_scan(self, message):
+	async def _handle_regex_scan(self, message):
 		context = BotContext(message)
 		for regex in self._regex_handlers:
-			h = self._regex_handlers[regex]
+			h_list = self._regex_handlers[regex]
 
 			m = regex.search(message.content)
 			if m is not None:
 				match_groups = []
 				for i in range(regex.groups+1):
 					match_groups.append(m.group(i))
-				self._execute_action(context, h, lambda h: h.on_regex_match(context, *match_groups))
+				for h in h_list:
+					await self._execute_action(context, h.on_regex_match(context, *match_groups), h)
 
-	def _execute_action(self, context, mod, action):
-		if mod.requires_op and context.author.id not in self._operators:
-			msg = "Unprivileged user " + context.author.id + " attempted a privileged action in '" + mod.name + "'"
-			_log.warning(msg)
+	async def _execute_action(self, context, action, mod=None):
+		try:
+			if mod is not None and mod.requires_op:
+				msg = "Unprivileged user " + context.author.id + " attempted a privileged action in '" + mod.name + "'"
+				raise BotPermissionError(msg)
+
+			await action
+		except BotPermissionError as e:
+			_log.warning(str(e))
+			_log.exception("Permission error")
 			msg = "Sorry, <@!" + context.author.id + ">, but only my masters and operators can do that."
-			asyncio.ensure_future(self.reply(context, msg))
-			return
-		asyncio.ensure_future(action(mod))
-		if mod.has_state:
+			await self.reply(context, msg)
+
+		if mod is not None and mod.has_state:
 			self._save_all()
 
 	def _save_all(self):
