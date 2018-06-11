@@ -3,11 +3,6 @@ __all__ = [
 ]
 
 
-class BotSyntaxError(RuntimeError):
-	def __init__(self, message):
-		super().__init__(message)
-
-
 class BotModuleError(RuntimeError):
 	def __init__(self, message):
 		super().__init__(message)

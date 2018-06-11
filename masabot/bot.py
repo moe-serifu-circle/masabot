@@ -7,11 +7,16 @@ import sys
 import asyncio
 import re
 import shlex
-from . import configfile, commands
+from . import configfile, commands, util
 
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
+
+
+class BotSyntaxError(Exception):
+	def __init__(self, message):
+		super().__init__(message)
 
 
 class BotPermissionError(Exception):
@@ -97,7 +102,7 @@ class MasaBot(object):
 			message = args[0]
 			e = traceback.format_exc()
 			logging.exception("Exception in main loop")
-			msg = "Oh my goodness! I just had an exception :c\n\n```\n" + e + "\n```"
+			msg = "I...I'm really sorry, but... um... I just had an exception :c\n\n```\n" + e + "\n```"
 			await self.client.send_message(message.channel, msg)
 
 		self._load_modules(state_dict)
@@ -116,15 +121,20 @@ class MasaBot(object):
 		if help_module is None:
 			msg = "Sure! I'll tell you how to use my interface!\n\n"
 			msg += "Here are my special commands:\n"
-			msg += "`" + pre + "help` - Shows this help. You can give me a module after 'help' and I'll tell you how to"
-			msg += " use it!\n"
-			msg += "`" + pre + "quit` - Immediately stops me from running.\n"
+			msg += "* `" + pre + "help` - Shows this help.\n"
+			msg += "* `" + pre + "quit` - Immediately stops me from running.\n"
+			msg += "* `" + pre + "op` - Gives a user operator permissions.\n"
+			msg += "* `" + pre + "deop` - Takes away operator permissions from a user.\n"
+			msg += "* `" + pre + "showops` - Shows all of my operators and masters.\n"
 			msg += "\nHere are the modules that I'm running:\n"
 			for m_name in self._bot_modules:
 				m = self._bot_modules[m_name]
 				invokes = ','.join('`' + pre + t.invocation + '`' for t in m.triggers if t.trigger_type == "INVOCATION")
 				invokes = ' (' + invokes + ')' if invokes is not '' else ''
-				msg += '`' + m.name + "`" + invokes + " - " + m.description + "\n"
+				msg += '* `' + m.name + "`" + invokes + " - " + m.description + "\n"
+
+			msg += "\nFor more info, you can type `" + pre + "help` followed by the name of a module or built-in"
+			msg += " command!"
 			await self.reply(context, msg)
 		else:
 			if help_module.startswith(pre):
@@ -139,6 +149,19 @@ class MasaBot(object):
 				msg = "Mmm, `quit` is the command that will make me leave the server right away. It shuts me down"
 				msg += " instantly, which is really really sad! It's a really powerful command, so only my masters and"
 				msg += " operators are allowed to use it, okay?"
+				await self.reply(context, msg)
+			elif help_module == "op":
+				msg = "The `op` command turns any user into an operator. But, oh, of course, you have to already be an"
+				msg += " op in order to run it! Otherwise anybody could control me!"
+				await self.reply(context, msg)
+			elif help_module == "deop":
+				msg = "The `deop` command takes away operator powers from any of my existing operators. B-but I won't"
+				msg += " do that to any of my masters, so you can only do it to normal operators! Also, you have to"
+				msg += " already be an operator in order to run this, just so you know!"
+				await self.reply(context, msg)
+			elif help_module == "showops":
+				msg = "Ah, that's the `showops` command! When you type this in, I'll tell you who my operators and"
+				msg += " masters are, and also a little bit of info on each of them."
 				await self.reply(context, msg)
 			else:
 				if help_module not in self._bot_modules:
@@ -163,12 +186,61 @@ class MasaBot(object):
 		msg += " If you're having trouble, maybe the command `" + self._prefix + "help` can help you!"
 		await self.reply(context, msg)
 
-	async def make_op(self, context, user):
-		pass
 
 	def require_op(self, context, message="Operation requires operator status"):
 		if context.author.id not in self._operators:
 			raise BotPermissionError(message)
+
+	async def show_ops(self, context):
+		msg = "Okay, sure! Here's a list of all of my operators:\n\n"
+		for u in self._operators:
+			all_info = await self.client.get_user_info(u)
+			op_info = self._operators[u]
+			msg += "* " + all_info.name + ": " + op_info['role'] + "\n"
+		await self.reply(context, msg)
+
+	async def _make_op(self, context, args):
+		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `op`")
+
+		if len(args) < 1:
+			raise BotSyntaxError("I need to know who you want to turn into an op")
+
+		try:
+			user = util.get_uid_from_mention(args[0])
+		except ValueError:
+			raise BotSyntaxError("'" + args[0] + "' is not a valid user")
+
+		if user in self._operators:
+			await self.reply(context, "Oh! <@!" + user + "> is already an op! So yay!")
+			return
+		else:
+			self._operators[user] = {'role': 'operator'}
+			self._save_all()
+			await self.reply(context, "<@!" + user + "> is now an op! Hooray!")
+
+	async def _make_nonop(self, context, args):
+		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `unop`")
+
+		if len(args) < 1:
+			raise BotSyntaxError("I need to know who you don't want to be an op")
+
+		try:
+			user = util.get_uid_from_mention(args[0])
+		except ValueError:
+			raise BotSyntaxError("'" + args[0] + "' is not a valid user")
+
+		if user not in self._operators:
+			await self.reply(context, "It looks like <@!" + user + "> is already not an op.")
+			return
+		else:
+			if self._operators[user]['role'] == 'master':
+				msg = "Sorry, but <@!" + user + "> is one of my masters, and I could never remove their operator"
+				msg += " status!"
+				await self.reply(context, msg)
+			else:
+				del self._operators[user]
+				self._save_all()
+				await self.reply(context, "Okay. <@!" + user + "> is no longer an op.")
 
 	def _load_modules(self, state_dict):
 		names = []
@@ -290,13 +362,14 @@ class MasaBot(object):
 			if len(args) > 0:
 				help_cmd = args[0]
 			await self._execute_action(context, self.show_help(context, help_cmd))
-		if cmd == 'quit':
+		elif cmd == 'quit':
 			await self._execute_action(context, self.quit(context))
-		if cmd == 'op':
-			if len(args) < 1:
-				await self.show_syntax_error(context, "I need to know who you want to turn into an op.")
-				return
-			await self.make_op(context, args[0])
+		elif cmd == 'op':
+			await self._execute_action(context, self._make_op(context, args))
+		elif cmd == 'deop':
+			await self._execute_action(context, self._make_nonop(context, args))
+		elif cmd == 'showops':
+			await self._execute_action(context, self.show_ops(context))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				await self._execute_action(context, handler.on_invocation(context, cmd, *args), handler)
@@ -350,6 +423,8 @@ class MasaBot(object):
 			_log.exception("Permission error")
 			msg = "Sorry, <@!" + context.author.id + ">, but only my masters and operators can do that."
 			await self.reply(context, msg)
+		except BotSyntaxError as e:
+			await self.show_syntax_error(context, str(e))
 
 		if mod is not None and mod.has_state:
 			self._save_all()

@@ -1,4 +1,5 @@
-from . import BotBehaviorModule, BotSyntaxError, RegexTrigger, InvocationTrigger
+from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
+from ..bot import BotSyntaxError
 
 import re
 
@@ -6,7 +7,7 @@ import re
 class KarmaModule(BotBehaviorModule):
 
 	def __init__(self, bot_api):
-		help_text="The karma system assigns arbitrary points to users (and generic things) and allows other uses to"
+		help_text = "The karma system assigns arbitrary points to users (and generic things) and allows other uses to"
 		help_text += " increase or decrease the number of karma points.\n\nTo change the number of points, mention a"
 		help_text += " user or any item followed by a '++' or '--' to increase or decrease their karma. Add more"
 		help_text += " '+'/'-' characters to change the amount by even more.\n\nTo view the amount of karma, use the"
