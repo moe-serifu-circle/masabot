@@ -3,7 +3,7 @@ import logging
 import pickle
 import discord
 import traceback
-import sys
+import os
 import asyncio
 import re
 import shlex
@@ -122,6 +122,7 @@ class MasaBot(object):
 			msg = "Sure! I'll tell you how to use my interface!\n\n"
 			msg += "Here are my special commands:\n"
 			msg += "* `" + pre + "help` - Shows this help.\n"
+			msg += "* `" + pre + "redeploy` - Pulls in the latest changes.\n"
 			msg += "* `" + pre + "quit` - Immediately stops me from running.\n"
 			msg += "* `" + pre + "op` - Gives a user operator permissions.\n"
 			msg += "* `" + pre + "deop` - Takes away operator permissions from a user.\n"
@@ -163,6 +164,13 @@ class MasaBot(object):
 				msg = "Ah, that's the `showops` command! When you type this in, I'll tell you who my operators and"
 				msg += " masters are, and also a little bit of info on each of them."
 				await self.reply(context, msg)
+			elif help_module == "redeploy":
+				msg = "The `redeploy` command is a really special command that will cause me to shut down, pull in the"
+				msg += " latest updates from source control, and start back up again! This will only work if I was"
+				msg += " started via the supervisor script `run-masabot.sh`; otherwise the command will just make me"
+				msg += " shutdown, so please be careful! Oh, and remember that only my operators and masters can do"
+				msg += " this!"
+				await self.reply(context, msg)
 			else:
 				if help_module not in self._bot_modules:
 					msg = "Oh no! I'm sorry, <@!" + context.author.id + ">, but I don't have any module called '"
@@ -185,7 +193,6 @@ class MasaBot(object):
 		msg += "But, oh! I know!"
 		msg += " If you're having trouble, maybe the command `" + self._prefix + "help` can help you!"
 		await self.reply(context, msg)
-
 
 	def require_op(self, context, message="Operation requires operator status"):
 		if context.author.id not in self._operators:
@@ -241,6 +248,13 @@ class MasaBot(object):
 				del self._operators[user]
 				self._save_all()
 				await self.reply(context, "Okay. <@!" + user + "> is no longer an op.")
+
+	async def _redeploy(self, context):
+		self.require_op(context)
+		with open('.supervisor-redeploy', 'w') as fp:
+			os.utime('.supervisor-redeploy', None)
+		_log.info("Going down for a redeploy")
+		await self.quit(context)
 
 	def _load_modules(self, state_dict):
 		names = []
@@ -370,6 +384,8 @@ class MasaBot(object):
 			await self._execute_action(context, self._make_nonop(context, args))
 		elif cmd == 'showops':
 			await self._execute_action(context, self.show_ops(context))
+		elif cmd == 'redeploy':
+			await self._execute_action(context, self._redeploy(context))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				await self._execute_action(context, handler.on_invocation(context, cmd, *args), handler)
