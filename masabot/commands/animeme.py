@@ -18,6 +18,7 @@ class AnimemeModule(BotBehaviorModule):
 		help_text += " \"is awesome!\"`.\n\nOps are able to add new images to the system from by using the"
 		help_text += " `animeme-add` command, followed by the ImageFlip ID of the image to add. They can also use the"
 		help_text += " `animeme-remove` command followed by the ImageFlip ID to remove an image from the system."
+		help_text += " In addition, the `animeme-info` command will tell how many template IDs there currently are."
 
 		super().__init__(
 			bot_api,
@@ -60,6 +61,8 @@ class AnimemeModule(BotBehaviorModule):
 			await self.add_animeme(context, args)
 		elif command == "animeme-remove":
 			await self.remove_animeme(context, args)
+		elif command == "animeme-info":
+			await self.get_animeme_info(context, args)
 
 	async def add_animeme(self, context, args):
 		self.bot_api.require_op(context)
@@ -74,6 +77,10 @@ class AnimemeModule(BotBehaviorModule):
 		else:
 			self.image_ids.append(img_id)
 			await self.bot_api.reply(context, "Okay! I'll start using that new template to generate animemes ^_^")
+
+	async def get_animeme_info(self, context, args):
+		msg = "Sure! I've currently got " + str(len(self.image_ids)) + " images for use with animemes."
+		await self.bot_api.reply(context, msg)
 
 	async def remove_animeme(self, context, args):
 		self.bot_api.require_op(context)
