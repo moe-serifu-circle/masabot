@@ -28,7 +28,8 @@ class AnimemeModule(BotBehaviorModule):
 			triggers=[
 				InvocationTrigger('animeme'),
 				InvocationTrigger('animeme-add'),
-				InvocationTrigger('animeme-remove')
+				InvocationTrigger('animeme-remove'),
+				InvocationTrigger('animeme-info')
 			],
 			has_state=True
 		)
