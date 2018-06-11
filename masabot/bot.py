@@ -167,7 +167,7 @@ class MasaBot(object):
 	async def make_op(self, context, user):
 		pass
 
-	def _load_modules(self):
+	def _load_modules(self, state_dict):
 		names = []
 		_log.debug("loading modules")
 		for module_str in commands.__all__:
