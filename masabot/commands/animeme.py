@@ -3,6 +3,11 @@ from ..bot import BotSyntaxError, BotModuleError
 
 import requests
 import random
+import logging
+
+
+_log = logging.getLogger(__name__)
+_log.setLevel(logging.DEBUG)
 
 
 class AnimemeModule(BotBehaviorModule):
@@ -99,6 +104,8 @@ class AnimemeModule(BotBehaviorModule):
 			raise BotModuleError(msg)
 
 		img_id = random.choice(self.image_ids)
+
+		_log.debug("Fetching for template ID " + str(img_id))
 
 		response = requests.post("https://api.imgflip.com/caption_image", data={
 			"template_id": img_id,
