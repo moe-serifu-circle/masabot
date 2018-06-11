@@ -203,7 +203,7 @@ class MasaBot(object):
 		for u in self._operators:
 			all_info = await self.client.get_user_info(u)
 			op_info = self._operators[u]
-			msg += "* " + all_info.name + "#" + all_info.discriminator + " (" + op_info['role'] + ")\n"
+			msg += "* " + all_info.name + "#" + all_info.discriminator + " _(" + op_info['role'] + ")_\n"
 		await self.reply(context, msg)
 
 	async def _make_op(self, context, args):
