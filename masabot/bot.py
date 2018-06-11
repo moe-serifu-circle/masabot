@@ -95,8 +95,7 @@ class MasaBot(object):
 		@self.client.event
 		async def on_error(event, *args, **kwargs):
 			message = args[0]
-			exc_info = sys.exc_info()
-			e = str(exc_info[1])
+			e = traceback.format_exc()
 			logging.exception("Exception in main loop")
 			msg = "Oh my goodness! I just had an exception :c\n\n```\n" + e + "\n```"
 			await self.client.send_message(message.channel, msg)
@@ -152,7 +151,7 @@ class MasaBot(object):
 					await self.reply(context, msg)
 
 	async def quit(self, context):
-		self.require_op(context, "Attempted to execute `quit`")
+		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `quit`")
 		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
 		await self.client.logout()
 
