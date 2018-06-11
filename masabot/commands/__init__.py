@@ -1,11 +1,8 @@
 __all__ = [
-	'karma'
+	'karma',
+	'animeme'
 ]
 
-
-class BotModuleError(RuntimeError):
-	def __init__(self, message):
-		super().__init__(message)
 
 
 def mention_target_any():
@@ -43,6 +40,16 @@ class RegexTrigger(object):
 
 class BotBehaviorModule(object):
 	def __init__(self, bot_api, name, desc, help_text, triggers, has_state=False, requires_op=False):
+		"""
+		:type bot_api: masabot.bot.MasaBot
+		:param bot_api:
+		:param name:
+		:param desc:
+		:param help_text:
+		:param triggers:
+		:param has_state:
+		:param requires_op:
+		"""
 		self.help_text = help_text
 		self.description = desc
 		self.name = name
@@ -50,6 +57,9 @@ class BotBehaviorModule(object):
 		self.triggers = triggers
 		self.bot_api = bot_api
 		self.requires_op = requires_op
+
+	def load_config(self, config):
+		pass
 
 	def get_state(self):
 		pass

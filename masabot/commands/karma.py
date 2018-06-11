@@ -11,8 +11,8 @@ class KarmaModule(BotBehaviorModule):
 		help_text += " increase or decrease the number of karma points.\n\nTo change the number of points, mention a"
 		help_text += " user or any item followed by a '++' or '--' to increase or decrease their karma. Add more"
 		help_text += " '+'/'-' characters to change the amount by even more.\n\nTo view the amount of karma, use the"
-		help_text += "` karma` command followed by the mention of the user to check (or the name of the thing to"
-		help_text += "check). As a shortcut, you can view your own karma by invoking `karma` with no arguments."
+		help_text += " `karma` command followed by the mention of the user to check (or the name of the thing to"
+		help_text += " check). As a shortcut, you can view your own karma by invoking `karma` with no arguments."
 
 		super().__init__(
 			bot_api,

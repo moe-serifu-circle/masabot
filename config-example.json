@@ -6,5 +6,11 @@
   ],
   "masters": [
 
-  ]
+  ],
+  "modules": {
+    "animeme": {
+      "username": "",
+      "password": ""
+    }
+  }
 }

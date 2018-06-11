@@ -24,6 +24,11 @@ class BotPermissionError(Exception):
 		super().__init__(message)
 
 
+class BotModuleError(RuntimeError):
+	def __init__(self, message):
+		super().__init__(message)
+
+
 class BotContext(object):
 
 	def __init__(self, message):
@@ -105,7 +110,7 @@ class MasaBot(object):
 			msg = "I...I'm really sorry, but... um... I just had an exception :c\n\n```\n" + e + "\n```"
 			await self.client.send_message(message.channel, msg)
 
-		self._load_modules(state_dict)
+		self._load_modules(state_dict, conf['modules'])
 
 	def run(self):
 		self.client.run(self._api_key)
@@ -190,7 +195,7 @@ class MasaBot(object):
 		msg = "Um, oh no, I'm sorry <@!" + context.author.id + ">, but I really have no idea what you mean..."
 		if message is not None:
 			msg += " " + message
-		msg += "But, oh! I know!"
+		msg += "\n\nBut, oh! I know!"
 		msg += " If you're having trouble, maybe the command `" + self._prefix + "help` can help you!"
 		await self.reply(context, msg)
 
@@ -256,7 +261,7 @@ class MasaBot(object):
 		_log.info("Going down for a redeploy")
 		await self.quit(context)
 
-	def _load_modules(self, state_dict):
+	def _load_modules(self, state_dict, module_configs):
 		names = []
 		_log.debug("Loading modules...")
 		for module_str in commands.__all__:
@@ -270,7 +275,7 @@ class MasaBot(object):
 			mod = importlib.import_module("masabot.commands." + module_str)
 			bot_module = mod.BOT_MODULE_CLASS(self)
 			if bot_module.name in names:
-				raise commands.BotModuleError("cannot load duplicate module '" + bot_module.name + "'")
+				raise BotModuleError("cannot load duplicate module '" + bot_module.name + "'")
 			for t in bot_module.triggers:
 				if t.trigger_type == 'INVOCATION':
 					self._add_new_invocation_handler(bot_module, t, new_invoke_handlers)
@@ -279,7 +284,10 @@ class MasaBot(object):
 				elif t.trigger_type == 'REGEX':
 					self._add_new_regex_handler(bot_module, t, new_regex_handlers)
 			if bot_module.has_state and bot_module.name in state_dict:
-				bot_module.set_state(state_dict[bot_module.name])
+				if state_dict[bot_module.name] is not None:
+					bot_module.set_state(state_dict[bot_module.name])
+
+			bot_module.load_config(module_configs.get(bot_module.name, {}))
 
 			self._bot_modules[bot_module.name] = bot_module
 			self._invocations = new_invoke_handlers
@@ -441,6 +449,10 @@ class MasaBot(object):
 			await self.reply(context, msg)
 		except BotSyntaxError as e:
 			await self.show_syntax_error(context, str(e))
+		except BotModuleError as e:
+			_log.exception("Module error")
+			msg = "Oh no, <@!" + context.author.id + ">-samaaaaa! I can't quite do that! "
+			await self.reply(context, msg + str(e))
 
 		if mod is not None and mod.has_state:
 			self._save_all()

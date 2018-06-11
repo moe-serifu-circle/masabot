@@ -25,4 +25,8 @@ def load_config(json_path):
 		_log.warning("No announce-channels in config; defaulting to none.")
 		config['announce-channels'] = []
 
+	if 'modules' not in config:
+		_log.warning("No module configurations found")
+		config['modules'] = {}
+
 	return config
