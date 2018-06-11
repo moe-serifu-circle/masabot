@@ -96,47 +96,7 @@ class MasaBot(object):
 			msg = "Oh my goodness! I just had an exception :c\n\n```\n" + e + "\n```"
 			await self.client.send_message(message.channel, msg)
 
-		names = []
-		_log.debug("loading modules")
-		for module_str in commands.__all__:
-			mod = importlib.import_module("masabot.commands." + module_str)
-			bot_module = mod.BOT_MODULE_CLASS(self)
-			if bot_module.name in names:
-				raise commands.BotModuleError("cannot load duplicate module '" + bot_module.name + "'")
-			# TODO: don't add module ANYWHERE until all triggers are verified
-			for t in bot_module.triggers:
-				if t.trigger_type == 'INVOCATION':
-					if t.invocation in self._invocations:
-						err_msg = "Duplicate invocation '" + t.invocation + "' in module '" + bot_module.name + "';"
-						err_msg += " already defined in '" + self._invocations[t.invocation][-1].name + "' module"
-						_log.warning(err_msg)
-					else:
-						self._invocations[t.invocation] = []
-					self._invocations[t.invocation].append(bot_module)
-				elif t.trigger_type == 'MENTION':
-					mts = t.mention_targets
-					if mts['target_type'] == 'any':
-						self._any_mention_handlers.append(bot_module)
-					elif mts['target_type'] == 'self':
-						self._self_mention_handlers.append(bot_module)
-					elif mts['target_type'] == 'specific':
-						for name in mts['names']:
-							if name in self._mention_handlers:
-								err_msg = "Duplicate mention handler '" + name + "' in module '" + bot_module.name
-								err_msg += "'; already defined in '" + self._mention_handlers[name][-1].name + "'"
-								err_msg += " module"
-								_log.warning(err_msg)
-							else:
-								self._mention_handlers[name] = []
-							self._mention_handlers[name].append(bot_module)
-				elif t.trigger_type == 'REGEX':
-					reg = t.regex
-					regex = re.compile(reg, re.DOTALL)
-					self._regex_handlers[regex] = bot_module
-			if bot_module.has_state and bot_module.name in state_dict:
-				bot_module.set_state(state_dict[bot_module.name])
-			self._bot_modules[bot_module.name] = bot_module
-			names.append(bot_module.name)
+		self._load_modules(state_dict)
 
 	def run(self):
 		self.client.run(self._api_key)
@@ -206,6 +166,82 @@ class MasaBot(object):
 
 	async def make_op(self, context, user):
 		pass
+
+	def _load_modules(self):
+		names = []
+		_log.debug("loading modules")
+		for module_str in commands.__all__:
+			mod = importlib.import_module("masabot.commands." + module_str)
+			bot_module = mod.BOT_MODULE_CLASS(self)
+			if bot_module.name in names:
+				raise commands.BotModuleError("cannot load duplicate module '" + bot_module.name + "'")
+			# TODO: don't add module ANYWHERE until all triggers are verified
+			for t in bot_module.triggers:
+				if t.trigger_type == 'INVOCATION':
+					self._add_new_invocation_handler(bot_module, t)
+				elif t.trigger_type == 'MENTION':
+					self._add_new_mention_handler(bot_module, t)
+				elif t.trigger_type == 'REGEX':
+					self._add_new_regex_handler(bot_module, t)
+			if bot_module.has_state and bot_module.name in state_dict:
+				bot_module.set_state(state_dict[bot_module.name])
+			self._bot_modules[bot_module.name] = bot_module
+			names.append(bot_module.name)
+
+	def _add_new_invocation_handler(self, bot_module, trig):
+		"""
+		Checks an invocation handler and adds it to the active set of handlers.
+
+		:type bot_module: commands.BotBehaviorModule
+		:param bot_module: The module to be used as an invocation handler.
+		:type trig: commands.InvocationTrigger
+		:param trig: The trigger that specifies the invocation to be handled.
+		"""
+		if trig.invocation in self._invocations:
+			err_msg = "Duplicate invocation '" + trig.invocation + "' in module '" + bot_module.name + "';"
+			err_msg += " already defined in '" + self._invocations[trig.invocation][-1].name + "' module"
+			_log.warning(err_msg)
+		else:
+			self._invocations[trig.invocation] = []
+		self._invocations[trig.invocation].append(bot_module)
+
+	def _add_new_mention_handler(self, bot_module, trig):
+		"""
+		Checks a mention handler and adds it to the active set of handlers.
+
+		:type bot_module: commands.BotBehaviorModule
+		:param bot_module: The module to be used as a mention handler.
+		:type trig: commands.MentionTrigger
+		:param trig: The trigger that specifies the mention type to be handled.
+		"""
+		mts = trig.mention_targets
+		if mts['target_type'] == 'any':
+			self._any_mention_handlers.append(bot_module)
+		elif mts['target_type'] == 'self':
+			self._self_mention_handlers.append(bot_module)
+		elif mts['target_type'] == 'specific':
+			for name in mts['names']:
+				if name in self._mention_handlers:
+					err_msg = "Duplicate mention handler '" + name + "' in module '" + bot_module.name
+					err_msg += "'; already defined in '" + self._mention_handlers[name][-1].name + "'"
+					err_msg += " module"
+					_log.warning(err_msg)
+				else:
+					self._mention_handlers[name] = []
+				self._mention_handlers[name].append(bot_module)
+
+	def _add_new_regex_handler(self, bot_module, trig):
+		"""
+		Checks a regex handler and adds it to the active set of handlers.
+
+		:type bot_module: commands.BotBehaviorModule
+		:param bot_module: The module to be used as a regex handler.
+		:type trig: commands.RegexTrigger
+		:param trig: The trigger that specifies the regex to look for.
+		"""
+		reg = trig.regex
+		regex = re.compile(reg, re.DOTALL)
+		self._regex_handlers[regex] = bot_module
 
 	def _handle_invocation(self, message):
 		tokens = shlex.split(message.content[len(self._prefix):])
