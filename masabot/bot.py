@@ -374,10 +374,15 @@ class MasaBot(object):
 		current_handlers[regex].append(bot_module)
 
 	async def _handle_invocation(self, message):
-		tokens = shlex.split(message.content[len(self._prefix):])
+		context = BotContext(message)
+
+		try:
+			tokens = shlex.split(message.content[len(self._prefix):])
+		except ValueError as e:
+			await self.show_syntax_error(context, str(e))
+			return
 		cmd = tokens[0]
 		args = tokens[1:]
-		context = BotContext(message)
 
 		if cmd == 'help':
 			help_cmd = None
