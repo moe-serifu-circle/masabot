@@ -4,6 +4,8 @@ from ..bot import BotSyntaxError, BotModuleError
 import requests
 import random
 import logging
+import re
+import io
 
 
 _log = logging.getLogger(__name__)
@@ -69,33 +71,75 @@ class AnimemeModule(BotBehaviorModule):
 		self.bot_api.require_op(context)
 
 		if len(args) < 1:
-			raise BotSyntaxError("I need to know the ID of the image you want me to add.")
+			raise BotSyntaxError("I need to know the ID of the template you want me to add.")
 
-		img_id = str(int(args[0]))  # pass it through int first so it will fail if user passes in non-int ID.
+		try:
+			img_id = str(int(args[0]))  # pass it through int first so it will fail if user passes in non-int ID.
+		except ValueError:
+			msg = "Template IDs should be a bunch of numbers, but '" + str(args[0]) + "' has some not-numbers in it!"
+			raise BotSyntaxError(msg)
 
+		await self.bot_api.reply_typing(context)
 		if img_id in self.image_ids:
 			await self.bot_api.reply(context, "Ah, I'm already generating animemes with that image.")
 		else:
-			self.image_ids.append(img_id)
-			await self.bot_api.reply(context, "Okay! I'll start using that new template to generate animemes ^_^")
+			try:
+				prev, prev_name = await self.get_template_preview(img_id)
+			except BotSyntaxError:
+				raise BotSyntaxError("I couldn't find any templates for that ID; are you super super sure it's valid?")
 
-	async def get_animeme_info(self, context, args):
-		msg = "Sure! I've currently got " + str(len(self.image_ids)) + " images for use with animemes."
-		await self.bot_api.reply(context, msg)
+			msg_text = "Here's what I found for " + str(img_id) + ":"
+			await self.bot_api.reply_with_file(context, io.BytesIO(prev), prev_name, msg_text)
+
+			reply = await self.bot_api.prompt_for_option(context, "Is that what you want me to add?")
+			if reply is None:
+				msg = "I never heard back from you on the animemes..."
+				msg += " Did... did you forget about me? T_T\nLet me know if you want to try adding a template again."
+				raise BotModuleError(msg)
+			elif reply == "no":
+				await self.bot_api.reply(context, "Okay, no problem! I'll keep it out of my templates then.")
+			elif reply == "yes":
+				self.image_ids.append(img_id)
+				await self.bot_api.reply(context, "Okay! I'll start using that new template to generate animemes ^_^")
 
 	async def remove_animeme(self, context, args):
 		self.bot_api.require_op(context)
 
 		if len(args) < 1:
-			raise BotSyntaxError("I need to know the ID of the image you want me to remove.")
+			raise BotSyntaxError("I need to know the ID of the template you want me to remove.")
 
 		img_id = args[0]
 
+		await self.bot_api.reply_typing(context)
 		if img_id in self.image_ids:
-			self.image_ids.remove(img_id)
-			await self.bot_api.reply(context, "Okay! I'll stop using that template in animemes.")
+			try:
+				prev, prev_name = await self.get_template_preview(img_id)
+			except BotSyntaxError:
+				_log.exception("Problem fetching known animeme template")
+				msg = "This is really weird, I can't find a preview for that image, but I was totally using it"
+				msg += " before..."
+				await self.bot_api.reply(context, msg)
+			else:
+				msg_text = "Oh, " + str(img_id) + ", huh? Let's see, that would be this template:"
+				await self.bot_api.reply_with_file(context, io.BytesIO(prev), prev_name, msg_text)
+
+			reply = await self.bot_api.prompt_for_option(context, "Want me to stop using it?")
+			if reply is None:
+				msg = "Hey, you never answered me about the animemes..."
+				msg += " You didn't forget about me, did you?\n\nLet me know if you want to try removing a template"
+				msg += " again."
+				raise BotModuleError(msg)
+			elif reply == "no":
+				await self.bot_api.reply(context, "You got it! I'll keep using it.")
+			elif reply == "yes":
+				self.image_ids.remove(img_id)
+				await self.bot_api.reply(context, "Okay! I'll stop using that template in animemes.")
 		else:
 			await self.bot_api.reply(context, "Mmm, all right, but I was already not using that template for animemes.")
+
+	async def get_animeme_info(self, context, args):
+		msg = "Sure! I've currently got " + str(len(self.image_ids)) + " images for use with animemes."
+		await self.bot_api.reply(context, msg)
 
 	async def generate_animeme(self, context, args):
 		if len(args) < 1:
@@ -111,6 +155,7 @@ class AnimemeModule(BotBehaviorModule):
 			msg += " first."
 			raise BotModuleError(msg)
 
+		await self.bot_api.reply_typing(context)
 		img_id = random.choice(self.image_ids)
 
 		_log.debug("Fetching for template ID " + str(img_id))
@@ -123,9 +168,30 @@ class AnimemeModule(BotBehaviorModule):
 			"text1": meme_line_2
 		})
 
+		if not response.json()['success']:
+			msg = ""
+			if 'error_message' in response.json():
+				msg = " " + response.json()['error_message']
+			raise BotModuleError("Imgflip returned an error when I tried to make the meme!" + msg)
+
 		msg = response.json()['data']['url'] + " _(" + str(img_id) + ")_"
 
 		await self.bot_api.reply(context, msg)
+
+	# noinspection PyMethodMayBeStatic
+	async def get_template_preview(self, template_id):
+		#"
+		response = requests.get("https://imgflip.com/memetemplate/" + str(template_id))
+
+		html = response.text
+		m = re.search(r'(i.imgflip.com/[^.]+\.\w+)"', html, re.DOTALL)
+		if not m:
+			raise BotSyntaxError("Not a valid template ID")
+
+		filename = m.group(1)[m.group(1).index('/')+1:]
+		response = requests.get("https://" + m.group(1))
+
+		return response.content, filename
 
 
 BOT_MODULE_CLASS = AnimemeModule

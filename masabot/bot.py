@@ -169,11 +169,68 @@ class MasaBot(object):
 		self._master_timer_task = self.client.loop.create_task(self._run_timer())
 		self.client.run(self._api_key)
 
+	async def reply_typing(self, context):
+		"""
+		Sends to the correct reply context that MasaBot has started typing.
+
+		:param context: The context to reply with.
+		"""
+		if context.is_pm:
+			await self.client.send_typing(context.author)
+		else:
+			await self.client.send_typing(context.source)
+
+	async def prompt_for_option(self, context, message, option_1="yes", option_2="no", *additional_options):
+		"""
+		Prompts the user to select an option. Not case-sensitive; all options are converted to lower-case. Times out
+		after 60 seconds, and returns None then.
+
+		:param context: The context of the bot.
+		:param message: The message to show before the prompt.
+		:param option_1: The first option.
+		:param option_2: The second option.
+		:param additional_options: Any additional options.
+		:return: The option selected by the user, or None if the prompt times out.
+		"""
+		if option_1.lower() == option_2.lower():
+			raise ValueError("option 1 and 2 are equal")
+
+		all_options = {
+			self._prefix + self._prefix + option_1.lower(): option_1.lower(),
+			self._prefix + self._prefix + option_2.lower(): option_2.lower()
+		}
+
+		full_message = message + "\n\nSelect one of the following options: \n"
+		full_message += "* `" + self._prefix + self._prefix + option_1.lower() + "`\n"
+		full_message += "* `" + self._prefix + self._prefix + option_2.lower() + "`\n"
+		for op in additional_options:
+			if op.lower() in all_options:
+				raise ValueError("Multiple equal options for '" + op.lower() + "'")
+			full_message += "* `" + self._prefix + self._prefix + op + "`\n"
+			all_options[self._prefix + self._prefix + op.lower()] = op.lower()
+
+		await self.reply(context, full_message)
+
+		def check_option(msg):
+			return msg.content in all_options
+
+		message = await self.client.wait_for_message(timeout=60, author=context.author, check=check_option)
+		if message is None:
+			return None
+		else:
+			return all_options[message.content]
+
 	async def reply(self, context, message):
 		if context.is_pm:
 			await self.client.send_message(context.author, message)
 		else:
 			await self.client.send_message(context.source, message)
+
+	async def reply_with_file(self, context, fp, filename=None, message=None):
+		if context.is_pm:
+			await self.client.send_file(context.author, fp, filename=filename, content=message)
+		else:
+			await self.client.send_file(context.source, fp, filename=filename, content=message)
 
 	async def show_help(self, context, help_module=None):
 		pre = self._prefix
