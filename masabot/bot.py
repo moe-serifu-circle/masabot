@@ -402,6 +402,7 @@ class MasaBot(object):
 				'self': list(self._self_mention_handlers),
 				'specific': _copy_handler_dict(self._mention_handlers)
 			}
+			new_timer_handlers = list(self._timers)
 			mod = importlib.import_module("masabot.commands." + module_str)
 			bot_module = mod.BOT_MODULE_CLASS(self)
 			if bot_module.name in names:
@@ -413,6 +414,8 @@ class MasaBot(object):
 					self._add_new_mention_handler(bot_module, t, new_mention_handlers)
 				elif t.trigger_type == 'REGEX':
 					self._add_new_regex_handler(bot_module, t, new_regex_handlers)
+				elif t.trigger_type == 'TIMER':
+					self._add_new_timer_handler(bot_module, t, new_timer_handlers)
 			if bot_module.has_state and bot_module.name in state_dict:
 				if state_dict[bot_module.name] is not None:
 					bot_module.set_state(state_dict[bot_module.name])
@@ -428,6 +431,22 @@ class MasaBot(object):
 			names.append(bot_module.name)
 			_log.debug("Added module '" + bot_module.name + "'")
 		_log.debug("Done loading modules")
+
+	# noinspection PyMethodMayBeStatic
+	def _add_new_timer_handler(self, bot_module, trig, current_handlers):
+		"""
+		Checks a timer handler and adds it to the active set of handlers.
+
+		:type bot_module: commands.BotBehaviorModule
+		:param bot_module: The module to be used as an invocation handler.
+		:type trig: commands.TimerTrigger
+		:param trig: The trigger that specifies the amount of time between timer firings.
+		:type current_handlers: list[Timer]
+		:param current_handlers: The timer handlers that already exist. The new handler will be added to the end.
+		"""
+
+		timer = Timer(bot_module, int(trig.timer_duration.total_seconds()))
+		current_handlers.append(timer)
 
 	# noinspection PyMethodMayBeStatic
 	def _add_new_invocation_handler(self, bot_module, trig, current_handlers):

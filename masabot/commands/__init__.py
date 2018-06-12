@@ -2,7 +2,8 @@ import datetime
 
 __all__ = [
 	'karma',
-	'animeme'
+	'animeme',
+	'translate'
 ]
 
 

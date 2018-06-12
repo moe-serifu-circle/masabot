@@ -33,7 +33,7 @@ setup(
 	],
 	keywords='discord',
 	packages=find_packages(),
-	install_requires=['discord.py', 'requests'],
+	install_requires=['discord.py', 'requests', 'pynacl', 'googletrans'],
 	tests_require=[],
 	python_requires='>=3.5.*',
 	entry_points={
