@@ -104,6 +104,7 @@ class MasaBot(object):
 		self._operators = {}
 		self._timers = []
 		""":type : list[Timer]"""
+		self._master_timer_task = None
 
 		state_dict = {}
 		try:
@@ -163,9 +164,9 @@ class MasaBot(object):
 			await self.client.send_message(message.channel, msg)
 
 		self._load_modules(state_dict, conf['modules'])
-		asyncio.get_event_loop().call_soon(self._run_timer())
 
 	def run(self):
+		self._master_timer_task = self.client.loop.create_task(self._run_timer())
 		self.client.run(self._api_key)
 
 	async def reply(self, context, message):
@@ -242,6 +243,7 @@ class MasaBot(object):
 	async def quit(self, context):
 		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `quit`")
 		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
+		self._master_timer_task.cancel()
 		await self.client.logout()
 
 	async def show_syntax_error(self, context, message=None):
@@ -271,9 +273,11 @@ class MasaBot(object):
 			await self.client.send_message(user, message)
 
 	async def _run_timer(self):
+		await self.client.wait_until_ready()
+		_log.debug("Master timer started")
 		tick_span = 60  # seconds
 
-		while True:
+		while not self.client.is_closed:
 			now_time = time.monotonic()
 			for timer in self._timers:
 				timer.tick(now_time, lambda msg: self.pm_master_users(msg))
