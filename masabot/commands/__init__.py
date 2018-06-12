@@ -1,8 +1,9 @@
+import datetime
+
 __all__ = [
 	'karma',
 	'animeme'
 ]
-
 
 
 def mention_target_any():
@@ -36,6 +37,12 @@ class RegexTrigger(object):
 	def __init__(self, regex):
 		self.trigger_type = 'REGEX'
 		self.regex = regex
+
+
+class TimerTrigger(object):
+	def __init__(self, days=0, seconds=0, minutes=0, hours=0, weeks=0):
+		self.trigger_type = 'TIMER'
+		self.timer_duration = datetime.timedelta(days=days, seconds=seconds, minutes=minutes, hours=hours, weeks=weeks)
 
 
 class BotBehaviorModule(object):
@@ -74,4 +81,7 @@ class BotBehaviorModule(object):
 		pass
 
 	async def on_regex_match(self, context, *match_groups):
+		pass
+
+	async def on_timer_fire(self):
 		pass

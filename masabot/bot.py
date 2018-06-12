@@ -5,6 +5,7 @@ import discord
 import traceback
 import os
 import asyncio
+import time
 import re
 import shlex
 from . import configfile, commands, util
@@ -29,6 +30,54 @@ class BotModuleError(RuntimeError):
 		super().__init__(message)
 
 
+class Timer(object):
+	def __init__(self, bot_module, period):
+		"""
+		Creates a new timer for the given module.
+
+		:type bot_module: commands.BotBehaviorModule
+		:param bot_module: The module that the timer is for.
+		:type period: int
+		:param period: The number of seconds between fires of the timer.
+		"""
+		self.has_run = False
+		self.next_run = 0
+		self.future = None
+		self.bot_module = bot_module
+		self.period = period
+
+	def tick(self, now_time, on_fire_error):
+		"""
+		Advances the timer by one tick and fires it asynchronously if it is ready to fire.
+
+		:type now_time: float
+		:param now_time: Monotonic current time.
+		:type on_fire_error: (str) -> {__await__}
+		:param on_fire_error: Accepts a message and properly reports it.
+		"""
+		if not self.has_run or self.next_run <= now_time:
+			# make any last tasks have finished before attempting to run again:
+			if self.future is None or self.future.done():
+				self.future = asyncio.ensure_future(self.fire(on_fire_error))
+				self.has_run = True
+			if not self.has_run:
+				self.next_run = now_time + self.period
+			else:
+				self.next_run = self.next_run + self.period
+
+	async def fire(self, on_error):
+
+		# noinspection PyBroadException
+		try:
+			await self.bot_module.on_timer_fire()
+		except Exception as e:
+			_log.exception("Encountered error in timer-triggered function")
+			msg = "Exception in firing timer of '" + self.bot_module.name + "' module:\n\n```python\n"
+			msg += traceback.format_exc()
+			msg += "\n```"
+			await on_error
+
+
 class BotContext(object):
 
 	def __init__(self, message):
@@ -46,12 +95,15 @@ class MasaBot(object):
 		:param config_file: The path to the configuration file for the bot.
 		"""
 		self._bot_modules = {}
+		""":type : dict[str, commands.BotBehaviorModule]"""
 		self._invocations = {}
 		self._mention_handlers = {}
 		self._self_mention_handlers = []
 		self._any_mention_handlers = []
 		self._regex_handlers = {}
 		self._operators = {}
+		self._timers = []
+		""":type : list[Timer]"""
 
 		state_dict = {}
 		try:
@@ -111,6 +163,7 @@ class MasaBot(object):
 			await self.client.send_message(message.channel, msg)
 
 		self._load_modules(state_dict, conf['modules'])
+		asyncio.get_event_loop().call_soon(self._run_timer())
 
 	def run(self):
 		self.client.run(self._api_key)
@@ -210,6 +263,22 @@ class MasaBot(object):
 			op_info = self._operators[u]
 			msg += "* " + all_info.name + "#" + all_info.discriminator + " _(" + op_info['role'] + ")_\n"
 		await self.reply(context, msg)
+
+	async def pm_master_users(self, message):
+		masters = [x for x in self._operators.keys() if self._operators[x]['role'] == 'master']
+		for m in masters:
+			user = await self.client.get_user_info(m)
+			await self.client.send_message(user, message)
+
+	async def _run_timer(self):
+		tick_span = 60  # seconds
+
+		while True:
+			now_time = time.monotonic()
+			for timer in self._timers:
+				timer.tick(now_time, lambda msg: self.pm_master_users(msg))
+
+			await asyncio.sleep(tick_span)
 
 	async def _make_op(self, context, args):
 		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `op`")
