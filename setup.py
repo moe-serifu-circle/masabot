@@ -2,6 +2,7 @@ from setuptools import setup, find_packages
 from os import path
 import codecs
 import re
+import sys
 
 
 def read(*parts):
@@ -20,6 +21,16 @@ def find_version():
 		raise RuntimeError("Unable to find version string")
 
 
+def get_required_packages():
+	return ['discord.py', 'requests', 'pynacl', 'googletrans']
+
+
+if len(sys.argv) > 1 and sys.argv[1] == 'get_required_packages':
+	for req in get_required_packages():
+		print(req)
+	sys.exit(0)
+
+
 setup(
 	name='masabot',
 	version=find_version(),
@@ -33,7 +44,7 @@ setup(
 	],
 	keywords='discord',
 	packages=find_packages(),
-	install_requires=['discord.py', 'requests', 'pynacl', 'googletrans'],
+	install_requires=get_required_packages(),
 	tests_require=[],
 	python_requires='>=3.5.*',
 	entry_points={

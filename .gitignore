@@ -1,6 +1,6 @@
 config.json
 *.p
-.supervisor*
+.supervisor/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

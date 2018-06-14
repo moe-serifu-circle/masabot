@@ -32,15 +32,26 @@ fi
 
 . "$virtual_dir/activate"
 
-rm -rf .supervisor-redeploy
+if [ -d ".supervisor" ]
+then
+    rm -rf ".supervisor/restart-command"
+    rm -rf ".supervisor/status"
+else
+    mkdir ".supervisor"
+fi
 
 while [ -n "$running" ]
 do
     python masabot.py
-    if [ -f '.supervisor-redeploy' ]
+    if [ -f ".supervisor/restart-command" ]
     then
-        rm -rf .supervisor-redeploy
-        git pull
+        cmd="$(cat ".supervisor/restart-command")"
+        rm -rf ".supervisor/restart-command"
+        if [ "$cmd" = "redeploy" ]
+        then
+            git pull
+            python supervisor/supervisor.py redeploy
+        fi
     else
         running=
     fi

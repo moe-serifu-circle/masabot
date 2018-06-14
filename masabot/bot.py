@@ -2,6 +2,7 @@ import importlib
 import logging
 import pickle
 import discord
+import json
 import traceback
 import os
 import asyncio
@@ -85,6 +86,16 @@ class BotContext(object):
 		self.author = message.author
 		self.is_pm = self.source.is_private and len(self.source.recipients) == 1
 
+	def mention(self):
+		"""
+		Gets a mention of the author that created the message.
+		:return: The author
+		"""
+		return "<!@" + self.author.id + ">"
+
+	def author_name(self):
+		return self.author.name + "#" + self.author.discriminator
+
 
 class MasaBot(object):
 
@@ -142,6 +153,7 @@ class MasaBot(object):
 				for ch in c.channels:
 					if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
 						await self.client.send_message(ch, "Hello! I'm now online ^_^")
+				await self._check_supervisor_files()
 
 		@self.client.event
 		async def on_message(message):
@@ -168,6 +180,12 @@ class MasaBot(object):
 	def run(self):
 		self._master_timer_task = self.client.loop.create_task(self._run_timer())
 		self.client.run(self._api_key)
+
+	async def announce(self, message):
+		for c in self.client.servers:
+			for ch in c.channels:
+				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
+					await self.client.send_message(ch, message)
 
 	async def reply_typing(self, context):
 		"""
@@ -386,10 +404,57 @@ class MasaBot(object):
 
 	async def _redeploy(self, context):
 		self.require_op(context)
-		with open('.supervisor-redeploy', 'w') as fp:
-			os.utime('.supervisor-redeploy', None)
+		with open('.supervisor/restart-command', 'w') as fp:
+			fp.write("redeploy")
 		_log.info("Going down for a redeploy")
+		msg = "Oh! It looks like " + context.author_name() + " has triggered a redeploy. I'll be going down now, but"
+		msg += " don't worry! I'll be right back!"
+		await self.announce(msg)
 		await self.quit(context)
+
+	async def _check_supervisor_files(self):
+		if not os.path.exists('.supervisor/status'):
+			return
+		with open('.supervisor/status', 'r') as fp:
+			status = json.load(fp)
+		os.remove('.supervisor/status')
+		if status['action'] == 'redeploy':
+			if status['success']:
+				msg = "My redeploy completed! Yay, everything went well!\n\n"
+
+				if len(status['packages']) < 1:
+					msg += "There were no changes to my dependencies."
+				else:
+					msg += "Hmm, hmm? Something feels funny! Oh! My dependencies have been updated!"
+					new_packs = []
+					old_packs = []
+					for pkg in status['packages']:
+						change = status['packages'][pkg]
+						if change['action'] == 'install':
+							new_packs.append(pkg)
+						elif change['action'] == 'uninstall':
+							old_packs.append(pkg)
+					if len(new_packs) > 0:
+						msg += " I added these ones: " + ', '.join('`' + x + '`' for x in new_packs) + '.'
+					if len(old_packs) > 0:
+						msg += " I removed these ones: " + ', '.join('`' + x + '`' for x in old_packs) + '.'
+					msg += " Now I feel all fresh and new ^_^"
+			else:
+				msg = "Oh no, it looks like something went wrong during my redeploy :c\n\n"
+				if not status['check_package_success']:
+					msg += "Something went wrong when I was looking for new packages to install!\n\n"
+				msg += "```\n" + status['message'] + "\n"
+				if len(status['packages']) > 0:
+					msg += '\n'
+				for pkg in status['packages']:
+					change = status['packages'][pkg]
+					ch_status = "FAILURE" if not change['success'] else "success"
+					ch_msg = "\n"
+					if not change['success']:
+						ch_msg = " -\n" + change['message'] + "\n"
+					msg += "* " + pkg + ": " + change['action'] + " " + ch_status + ch_msg
+				msg += "```"
+			await self.announce(msg)
 
 	def _load_modules(self, state_dict, module_configs):
 		names = []
