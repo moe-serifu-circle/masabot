@@ -603,7 +603,10 @@ class MasaBot(object):
 		context = BotContext(message)
 
 		try:
-			tokens = shlex.split(message.content[len(self._prefix):])
+			content = message.content[len(self._prefix):]
+			content = content.replace("“", '"')
+			content = content.replace("”", '"')
+			tokens = shlex.split(content)
 		except ValueError as e:
 			await self.show_syntax_error(context, str(e))
 			return
