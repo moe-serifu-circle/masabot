@@ -91,7 +91,7 @@ class BotContext(object):
 		Gets a mention of the author that created the message.
 		:return: The author
 		"""
-		return "<!@" + self.author.id + ">"
+		return "<@!" + self.author.id + ">"
 
 	def author_name(self):
 		return self.author.name + "#" + self.author.discriminator

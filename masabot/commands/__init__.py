@@ -3,7 +3,8 @@ import datetime
 __all__ = [
 	'karma',
 	'animeme',
-	'translate'
+	'translate',
+	'roll'
 ]
 
 
