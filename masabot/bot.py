@@ -402,10 +402,13 @@ class MasaBot(object):
 				self._save_all()
 				await self.reply(context, "Okay. <@!" + user + "> is no longer an op.")
 
-	async def _redeploy(self, context):
+	async def _redeploy(self, context, reason=None):
 		self.require_op(context)
 		with open('.supervisor/restart-command', 'w') as fp:
 			fp.write("redeploy")
+		if reason is not None:
+			with open('.supervisor/reason', 'w') as fp:
+				fp.write(reason)
 		_log.info("Going down for a redeploy")
 		msg = "Oh! It looks like " + context.author_name() + " has triggered a redeploy. I'll be going down now, but"
 		msg += " don't worry! I'll be right back!"
@@ -417,6 +420,12 @@ class MasaBot(object):
 			return
 		with open('.supervisor/status', 'r') as fp:
 			status = json.load(fp)
+		if os.path.exists('.supervisor/reason'):
+			with open('.supervisor/reason', 'r') as fp:
+				reason = fp.read()
+			os.remove('.supervisor/reason')
+		else:
+			reason = None
 		os.remove('.supervisor/status')
 		if status['action'] == 'redeploy':
 			if status['success']:
@@ -439,6 +448,9 @@ class MasaBot(object):
 					if len(old_packs) > 0:
 						msg += " I removed these ones: " + ', '.join('`' + x + '`' for x in old_packs) + '.'
 					msg += " Now I feel all fresh and new ^_^"
+
+				if reason is not None:
+					msg += "\n\nOh! Oh! I gotta tell you! The whole reason I went down is because " + reason
 			else:
 				msg = "Oh no, it looks like something went wrong during my redeploy :c\n\n"
 				if not status['check_package_success']:
@@ -612,7 +624,11 @@ class MasaBot(object):
 		elif cmd == 'showops':
 			await self._execute_action(context, self.show_ops(context))
 		elif cmd == 'redeploy':
-			await self._execute_action(context, self._redeploy(context))
+			if len(args) > 0:
+				reason = args[0]
+			else:
+				reason = None
+			await self._execute_action(context, self._redeploy(context, reason))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				await self._execute_action(context, handler.on_invocation(context, cmd, *args), handler)
