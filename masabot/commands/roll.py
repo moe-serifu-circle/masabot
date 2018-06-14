@@ -121,7 +121,7 @@ class DiceRollerModule(BotBehaviorModule):
 				sides = int(parts[1])
 			except (IndexError, ValueError):
 				msg += "Um, I'm sorry, but, well, that is not in XdY format, so I'll assume you mean 1d6, okay?\n\n"
-		if sides > self._max_sides:
+		if sides > self._max_sides > 1:
 			msg = "Uh oh! That's too many sides on a die! The most you can have right now is " + str(self._max_sides)
 			msg += "."
 			await self.bot_api.reply(context, msg)
@@ -129,7 +129,7 @@ class DiceRollerModule(BotBehaviorModule):
 			msg = "I'm sorry, but that's just not possible! All dice have to have at"
 			msg += " least two sides!"
 			raise BotSyntaxError(msg)
-		elif count > self._max_count:
+		elif count > self._max_count > 0:
 			msg = "Woah! That's way too many dice! Are you running Shadowrun or something? The most you can have right"
 			msg += " now is " + str(self._max_count) + "."
 			await self.bot_api.reply(context, msg)
