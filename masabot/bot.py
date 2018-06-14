@@ -450,7 +450,7 @@ class MasaBot(object):
 					msg += " Now I feel all fresh and new ^_^"
 
 				if reason is not None:
-					msg += "\n\nOh! Oh! I gotta tell you! The whole reason I went down is because " + reason
+					msg += "\n\n--------\n\nOh! Oh! I gotta tell you! The whole reason I went down is because " + reason
 			else:
 				msg = "Oh no, it looks like something went wrong during my redeploy :c\n\n"
 				if not status['check_package_success']:
