@@ -20,7 +20,7 @@ class DiceRollerModule(BotBehaviorModule):
 		help_text += "The maximum number of dice that can be rolled at once can be shown with the `roll-maxdice`"
 		help_text += " command. The maximum number of sides that a die can have can be shown with the `roll-maxsides`"
 		help_text += " command. Operators may change each of these numbers by giving a number after the command. A"
-		help_text += " number less than 1 disables the limits entirely."
+		help_text += " number less than 1 disables the dice limit entirely (less than 2 for the sides limit)."
 
 		super().__init__(
 			bot_api,
@@ -90,15 +90,15 @@ class DiceRollerModule(BotBehaviorModule):
 				new_limit = int(args[0])
 			except ValueError:
 				raise BotSyntaxError("That's not a number at all!")
-			if new_limit < 2:
-				if self._max_count < 2:
+			if new_limit < 1:
+				if self._max_count < 1:
 					msg = "The maximum dice limit is already disabled."
 				else:
 					msg = "Okay, I'll go ahead and disable the limit for number of dice."
 				self._max_count = 0
 			else:
 				msg = ""
-				if self._max_count < 2:
+				if self._max_count < 1:
 					msg = "Oh, right now there isn't any limit for the number of dice. I'll turn it on for you!\n\n"
 				msg += "Okay! The new limit for the number of dice is now " + str(new_limit) + "!"
 				self._max_count = new_limit
