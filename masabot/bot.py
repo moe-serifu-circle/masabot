@@ -22,7 +22,12 @@ class BotSyntaxError(Exception):
 
 
 class BotPermissionError(Exception):
-	def __init__(self, message):
+	def __init__(self, context, command, module=None, message=None):
+		if message is None:
+			message = "Operation required operator permission"
+		self.author = context.author
+		self.command = command
+		self.module = module
 		super().__init__(message)
 
 
@@ -71,7 +76,7 @@ class Timer(object):
 		# noinspection PyBroadException
 		try:
 			await self.bot_module.on_timer_fire()
-		except Exception as e:
+		except Exception:
 			_log.exception("Encountered error in timer-triggered function")
 			msg = "Exception in firing timer of '" + self.bot_module.name + "' module:\n\n```python\n"
 			msg += traceback.format_exc()
@@ -148,8 +153,8 @@ class MasaBot(object):
 			_log.info("ID: " + self.client.user.id)
 
 			if self.client.user.avatar_url == '':
-				with open('avatar.png', 'rb') as fp:
-					avatar_data = fp.read()
+				with open('avatar.png', 'rb') as avatar_fp:
+					avatar_data = avatar_fp.read()
 				await self.client.edit_profile(avatar=avatar_data)
 
 			_log.info("Connected to servers:")
@@ -327,7 +332,7 @@ class MasaBot(object):
 		await self.reply(context, msg)
 
 	async def quit(self, context):
-		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `quit`")
+		self.require_op(context, "quit", None)
 		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
 		self._master_timer_task.cancel()
 		await self.client.logout()
@@ -366,7 +371,7 @@ class MasaBot(object):
 
 			await self.reply(context, msg)
 		elif action == "add":
-			self.require_op(context, "attempted to execute `replchars add`")
+			self.require_op(context, "replchars add", None)
 			if search is None:
 				msg = "I need to know the characters you want me to replace, and what you want to replace them with."
 				raise BotSyntaxError(msg)
@@ -422,7 +427,7 @@ class MasaBot(object):
 			await self.reply(context, msg)
 
 		elif action == "remove":
-			self.require_op(context, "attempted to execute `replchars remove`")
+			self.require_op(context, "replchars remove", None)
 			if search is None:
 				msg = "I need to know the string you want me to stop replacing."
 				raise BotSyntaxError(msg)
@@ -463,9 +468,26 @@ class MasaBot(object):
 		msg += " If you're having trouble, maybe the command `" + self._prefix + "help` can help you!"
 		await self.reply(context, msg)
 
-	def require_op(self, context, message="Operation requires operator status"):
+	def require_op(self, context, command, module, message="Operation requires operator status"):
+		"""
+		Ensure that the user that invoked a command has operator permission. If the user does not have operator
+		permission, a BotPermissionError is raised.
+
+		:type context: BotContext
+		:param context: The context of the command. Must contain the author that invoked it.
+		:type command: str
+		:param command: A string representing the command that is attempting to be executed. This should include enough
+		of the invocation to distinguish it from other potential invocations of the same command.
+		:type module:  str | None
+		:param module: The module that is requiring operator permissions. This can be set to None if it is a built-in
+		command that is requiring op.
+		:type message: str
+		:param message: The message to put in the bot permission error if the check for op fails. This can be left as
+		the default, as a suitable error message will be generated from the other properties if this method is called
+		from within a core command function or from within one of a module's on_X methods().
+		"""
 		if context.author.id not in self._operators:
-			raise BotPermissionError(message)
+			raise BotPermissionError(context, command, module, message=message)
 
 	async def show_ops(self, context):
 		msg = "Okay, sure! Here's a list of all of my operators:\n\n"
@@ -494,7 +516,7 @@ class MasaBot(object):
 			await asyncio.sleep(tick_span)
 
 	async def _make_op(self, context, args):
-		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `op`")
+		self.require_op(context, "op", None)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to turn into an op")
@@ -513,7 +535,7 @@ class MasaBot(object):
 			await self.reply(context, "<@!" + user + "> is now an op! Hooray!")
 
 	async def _make_nonop(self, context, args):
-		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `unop`")
+		self.require_op(context, "deop", None)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you don't want to be an op")
@@ -537,7 +559,7 @@ class MasaBot(object):
 				await self.reply(context, "Okay. <@!" + user + "> is no longer an op.")
 
 	async def _redeploy(self, context, reason=None):
-		self.require_op(context)
+		self.require_op(context, "redeploy", None)
 		with open('.supervisor/restart-command', 'w') as fp:
 			fp.write("redeploy")
 		if reason is not None:
@@ -817,17 +839,18 @@ class MasaBot(object):
 
 	async def _execute_action(self, context, action, mod=None):
 		try:
-			if mod is not None and mod.requires_op:
-				msg = "Unprivileged user " + context.author.id + " attempted a privileged action in '" + mod.name + "'"
-				raise BotPermissionError(msg)
-
 			await action
 		except BotPermissionError as e:
-			_log.warning(str(e))
-			_log.exception("Permission error")
-			msg = "Sorry, <@!" + context.author.id + ">, but only my masters and operators can do that."
+			msg = "User " + e.author.name + "#" + e.author.discriminator + " (ID: " + e.author.id + ") was denied"
+			msg += " permission to execute privileged command " + repr(e.command)
+			if e.module is not None:
+				msg += " in module " + repr(e.module)
+			msg += "."
+			_log.error(msg)
+			msg = "Sorry, <@!" + e.author.id + ">, but only my masters and operators can do that."
 			await self.reply(context, msg)
 		except BotSyntaxError as e:
+			_log.exception("Syntax error")
 			await self.show_syntax_error(context, str(e))
 		except BotModuleError as e:
 			_log.exception("Module error")

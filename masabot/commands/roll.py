@@ -58,7 +58,7 @@ class DiceRollerModule(BotBehaviorModule):
 
 	async def get_max_sides(self, context, args):
 		if len(args) > 0:
-			self.bot_api.require_op(context)
+			self.bot_api.require_op(context, 'roll-maxsides <limit>', self.name)
 			try:
 				new_limit = int(args[0])
 			except ValueError:
@@ -85,7 +85,7 @@ class DiceRollerModule(BotBehaviorModule):
 
 	async def get_max_dice(self, context, args):
 		if len(args) > 0:
-			self.bot_api.require_op(context)
+			self.bot_api.require_op(context, 'roll-maxdice <limit>', self.name)
 			try:
 				new_limit = int(args[0])
 			except ValueError:

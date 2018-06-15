@@ -68,7 +68,7 @@ class AnimemeModule(BotBehaviorModule):
 			await self.get_animeme_info(context, args)
 
 	async def add_animeme(self, context, args):
-		self.bot_api.require_op(context)
+		self.bot_api.require_op(context, "animeme-add", self.name)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know the ID of the template you want me to add.")
@@ -103,7 +103,7 @@ class AnimemeModule(BotBehaviorModule):
 				await self.bot_api.reply(context, "Okay! I'll start using that new template to generate animemes ^_^")
 
 	async def remove_animeme(self, context, args):
-		self.bot_api.require_op(context)
+		self.bot_api.require_op(context, "animeme-remove", self.name)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know the ID of the template you want me to remove.")

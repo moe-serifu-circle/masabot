@@ -48,16 +48,25 @@ class TimerTrigger(object):
 
 
 class BotBehaviorModule(object):
-	def __init__(self, bot_api, name, desc, help_text, triggers, has_state=False, requires_op=False):
+	def __init__(self, bot_api, name, desc, help_text, triggers, has_state=False):
 		"""
+		Create a new BotBehaviorModule instance.
+
 		:type bot_api: masabot.bot.MasaBot
-		:param bot_api:
-		:param name:
-		:param desc:
-		:param help_text:
-		:param triggers:
-		:param has_state:
-		:param requires_op:
+		:param bot_api: The interface back to the bot that is executing the module.
+		:type name: str
+		:param name: The name of the module. Must be unique among all loaded modules.
+		:type desc: str
+		:param desc: A brief description of what the command does. Should fit on a single line. This is displayed next
+		to the command when `help` lists all modules.
+		:type help_text: str
+		:param help_text: A full help text including all information on the command. This is shown when the help for
+		this particular module is displayed.
+		:type triggers: list[InvocationTrigger | RegexTrigger | MentionTrigger | TimerTrigger]
+		:param triggers: All possible triggers that cause this module to be executed.
+		:type has_state: bool
+		:param has_state: Whether this module has state. If this is true, then the module should define get_state()
+		set_state() methods for saving state to a dict and setting state from a dict.
 		"""
 		self.help_text = help_text
 		self.description = desc
@@ -65,7 +74,6 @@ class BotBehaviorModule(object):
 		self.has_state = has_state
 		self.triggers = triggers
 		self.bot_api = bot_api
-		self.requires_op = requires_op
 
 	def load_config(self, config):
 		pass

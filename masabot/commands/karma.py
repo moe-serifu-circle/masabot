@@ -81,7 +81,7 @@ class KarmaModule(BotBehaviorModule):
 
 	async def configure_buzzkill(self, context, args):
 		if len(args) > 0:
-			self.bot_api.require_op(context, "attempted to set buzzkill level")
+			self.bot_api.require_op(context, "karma-buzzkill <limit>", self.name)
 			try:
 				new_limit = int(args[0])
 			except ValueError:
