@@ -391,7 +391,7 @@ class MasaBot(object):
 				prompt_msg += " start replacing it with `" + replacement + "` instead?"
 			else:
 				prompt_msg = "Just to make sure, you want me to start replacing `" + search + "` with `" + replacement
-				prompt_msg += ", right?"
+				prompt_msg += "`, right?"
 
 			reply = await self.prompt_for_option(context, prompt_msg)
 			msg = ""
