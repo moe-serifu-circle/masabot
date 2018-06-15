@@ -362,7 +362,7 @@ class MasaBot(object):
 			else:
 				for search in self._invocation_replacements:
 					replacement = self._invocation_replacements[search]
-					msg += "* `" + search + "` becomes `" + replacement + "`\n"
+					msg += "`" + search + "` becomes `" + replacement + "`\n"
 
 			await self.reply(context, msg)
 		elif action == "add":
