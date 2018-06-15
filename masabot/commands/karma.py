@@ -2,6 +2,11 @@ from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
 from ..bot import BotSyntaxError
 
 import re
+import logging
+
+
+_log = logging.getLogger(__name__)
+_log.setLevel(logging.DEBUG)
 
 
 class KarmaModule(BotBehaviorModule):
@@ -97,6 +102,7 @@ class KarmaModule(BotBehaviorModule):
 				self._buzzkill_limit = 0
 				msg = "Okay! Buzzkill mode has now been disabled. Karma change is now unlimited!"
 				await self.bot_api.reply(context, msg)
+			_log.debug("Set buzzkill limit to " + str(self._buzzkill_limit))
 		else:
 			if self._buzzkill_limit > 0:
 				msg = "Yep! Buzzkill mode is currently enabled; the most that karma can change by is currently"
@@ -114,6 +120,7 @@ class KarmaModule(BotBehaviorModule):
 		if uuid not in self._karma:
 			self._karma[uuid] = 0
 		self._karma[uuid] += amount
+		_log.debug("Modified karma of user " + uuid + " by " + str(amount) + "; new total " + str(self._karma[uuid]))
 
 		msg = "Okay! <@" + uuid + ">'s karma is now " + str(self._karma[uuid])
 		return msg

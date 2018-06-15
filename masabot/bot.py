@@ -16,6 +16,32 @@ _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
 
+def _fmt_channel(ch):
+	"""
+	Print a channel in human-readable format.
+
+	:type ch: discord.Channel | discord.PrivateChannel | discord.User
+	:param ch: The channel.
+	:rtype: str
+	:return: A string with the channel details
+	"""
+
+	try:
+		return "DM " + ch.id + "/" + ch.name + "#" + ch.discriminator
+	except AttributeError:
+		if ch.type == discord.ChannelType.text or ch.type == discord.ChannelType.voice:
+			return ch.server.id + "/" + repr(ch.server.name) + " #" + ch.name
+		elif ch.type == discord.ChannelType.private:
+			other = ch.recipients[0]
+			return "DM " + other.id + "/" + other.name + "#" + other.discriminator
+		else:
+			return "Unknown ChannelType"
+
+
+def _fmt_send(channel, message):
+	return "[" + _fmt_channel(channel) + "]: sent " + repr(message)
+
+
 class BotSyntaxError(Exception):
 	def __init__(self, message):
 		super().__init__(message)
@@ -133,10 +159,12 @@ class MasaBot(object):
 			with open('state.p', 'rb') as fp:
 				state_dict = pickle.load(fp)
 		except FileNotFoundError:
-			pass
+			_log.warning("No state file found; default settings will be used")
 		else:
+			_log.info("Loading state file...")
 			self._load_builtin_state(state_dict)
 
+		_log.info("Loading config file...")
 		conf = configfile.load_config(config_file)
 
 		for m in conf['masters']:
@@ -145,29 +173,28 @@ class MasaBot(object):
 		self._prefix = conf['prefix']
 		self._announce_channels = conf['announce-channels']
 
-		self.client = discord.Client()
+		self._client = discord.Client()
 
-		@self.client.event
+		@self._client.event
 		async def on_ready():
-			_log.info("Logged in as " + self.client.user.name)
-			_log.info("ID: " + self.client.user.id)
+			_log.info("Logged in as " + self._client.user.name)
+			_log.info("ID: " + self._client.user.id)
 
-			if self.client.user.avatar_url == '':
+			if self._client.user.avatar_url == '':
+				_log.info("Avatar not yet set; uploading...")
 				with open('avatar.png', 'rb') as avatar_fp:
 					avatar_data = avatar_fp.read()
-				await self.client.edit_profile(avatar=avatar_data)
+				await self._client.edit_profile(avatar=avatar_data)
 
 			_log.info("Connected to servers:")
-			for c in self.client.servers:
+			for c in self._client.servers:
 				_log.info("* " + str(c))
-				for ch in c.channels:
-					if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
-						await self.client.send_message(ch, "Hello! I'm now online ^_^")
-				await self._check_supervisor_files()
+			await self.announce("Hello! I'm now online ^_^")
+			await self._check_supervisor_files()
 
-		@self.client.event
+		@self._client.event
 		async def on_message(message):
-			if message.author.id == self.client.user.id:
+			if message.author.id == self._client.user.id:
 				return  # don't answer own messages
 			if message.content.startswith(self._prefix):
 				await self._handle_invocation(message)
@@ -177,47 +204,70 @@ class MasaBot(object):
 
 				await self._handle_regex_scan(message)
 
-		@self.client.event
+		@self._client.event
 		async def on_error(event, *args, **kwargs):
 			message = args[0]
 			e = traceback.format_exc()
 			logging.exception("Exception in main loop")
-			msg = "I...I'm really sorry, but... um... I just had an exception :c\n\n```\n" + e + "\n```"
-			await self.client.send_message(message.channel, msg)
+			msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
+			msg = msg_start + "\n\n```\n" + e + "\n```"
+			await self._client.send_message(message.channel, msg)
+			_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		self._load_modules(state_dict, conf['modules'])
 
 	def run(self):
-		self._master_timer_task = self.client.loop.create_task(self._run_timer())
-		self.client.run(self._api_key)
+		"""
+		Begin execution of bot. Blocks until complete.
+		"""
+		self._master_timer_task = self._client.loop.create_task(self._run_timer())
+		self._client.run(self._api_key)
 
 	async def announce(self, message):
-		for c in self.client.servers:
+		"""
+		Send a message to all applicable channels on all servers. The channels are those that are set as the
+		announce channels in the configuration.
+
+		:type message: str
+		:param message: The message to send.
+		"""
+		for c in self._client.servers:
 			for ch in c.channels:
 				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
-					await self.client.send_message(ch, message)
+					await self._client.send_message(ch, message)
+					_log.debug(_fmt_send(ch, message))
 
 	async def reply_typing(self, context):
 		"""
-		Sends to the correct reply context that MasaBot has started typing.
+		Send to the correct reply context that MasaBot has started typing.
 
+		:type context: BotContext
 		:param context: The context to reply with.
 		"""
+
 		if context.is_pm:
-			await self.client.send_typing(context.author)
+			dest = context.author
 		else:
-			await self.client.send_typing(context.source)
+			dest = context.source
+		await self._client.send_typing(dest)
+		_log.debug("[" + _fmt_channel(dest) + "]: sent <TYPING>")
 
 	async def prompt_for_option(self, context, message, option_1="yes", option_2="no", *additional_options):
 		"""
-		Prompts the user to select an option. Not case-sensitive; all options are converted to lower-case. Times out
+		Prompt the user to select an option. Not case-sensitive; all options are converted to lower-case. Times out
 		after 60 seconds, and returns None then.
 
+		:type context: BotContext
 		:param context: The context of the bot.
+		:type message: str
 		:param message: The message to show before the prompt.
+		:type option_1: str
 		:param option_1: The first option.
+		:type option_2: str
 		:param option_2: The second option.
+		:type additional_options: str
 		:param additional_options: Any additional options.
+		:rtype: str | None
 		:return: The option selected by the user, or None if the prompt times out.
 		"""
 		if option_1.lower() == option_2.lower():
@@ -238,29 +288,67 @@ class MasaBot(object):
 			all_options[self._prefix + self._prefix + op.lower()] = op.lower()
 
 		await self.reply(context, full_message)
+		_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " started")
 
 		def check_option(msg):
 			return msg.content in all_options
 
-		message = await self.client.wait_for_message(timeout=60, author=context.author, check=check_option)
+		message = await self._client.wait_for_message(timeout=60, author=context.author, check=check_option)
 		if message is None:
+			_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " timed out")
 			return None
 		else:
+			log_msg = "[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " received "
+			log_msg += repr(message.content)
+			_log.debug(log_msg)
 			return all_options[message.content]
 
 	async def reply(self, context, message):
+		"""
+		Send a message in the same context as the message that caused the action to start.
+
+		:type context: BotContext
+		:param context: The context of the original message.
+		:type message: str
+		:param message: The message to send.
+		"""
 		if context.is_pm:
-			await self.client.send_message(context.author, message)
+			dest = context.author
 		else:
-			await self.client.send_message(context.source, message)
+			dest = context.source
+		await self._client.send_message(dest, message)
+		_log.debug(_fmt_send(dest, message))
 
 	async def reply_with_file(self, context, fp, filename=None, message=None):
+		"""
+		Send a file in the same context as the message that caused the action to start.
+
+		:type context: BotContext
+		:param context: The context of the original message.
+		:type fp: Any
+		:param fp: The file-like object to upload.
+		:type filename: str
+		:param filename: The name that the file will have once uploaded to the server.
+		:type message: str
+		:param message: A message to include before the file. Can be None to send only the file.
+		"""
 		if context.is_pm:
-			await self.client.send_file(context.author, fp, filename=filename, content=message)
+			dest = context.author
 		else:
-			await self.client.send_file(context.source, fp, filename=filename, content=message)
+			dest = context.source
+
+		await self._client.send_file(dest, fp, filename=filename, content=message)
+		_log.debug("[" + _fmt_channel(context.source) + "]: sent <FILE>")
 
 	async def show_help(self, context, help_module=None):
+		"""
+		Display the help command in the current context.
+
+		:type context: BotContext
+		:param context: The context to show the help in.
+		:type help_module: str
+		:param help_module: The module to get additional info on. Can be a module or a command.
+		"""
 		pre = self._prefix
 		if help_module is None:
 			msg = "Sure! I'll tell you how to use my interface!\n\n"
@@ -334,8 +422,9 @@ class MasaBot(object):
 	async def quit(self, context):
 		self.require_op(context, "quit", None)
 		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
+		_log.info("Shutting down...")
 		self._master_timer_task.cancel()
-		await self.client.logout()
+		await self._client.logout()
 
 	async def run_replchars_command(self, context, action=None, search=None, replacement=None):
 		"""
@@ -420,6 +509,7 @@ class MasaBot(object):
 				else:
 					msg += " From now on, I'll replace `" + search + "` with `" + replacement + "` in commands."
 				self._invocation_replacements[search] = replacement
+				_log.debug("Set new invocation replacement " + repr(search) + " -> " + repr(replacement))
 				self._save_all()
 			msg += "\n\nOh! But no matter what, I will never apply replacements to any invocation of the `replchars`"
 			msg += " command."
@@ -454,6 +544,7 @@ class MasaBot(object):
 				msg += " I was doing before!"
 			elif reply == "yes":
 				del self._invocation_replacements[search]
+				_log.debug("Removed invocation replacement " + repr(search) + " -> " + repr(cur_repl))
 				msg = "Sounds good! I'll stop replacing `" + search + "` with `" + cur_repl + "` in commands."
 				self._save_all()
 			await self.reply(context, msg)
@@ -461,6 +552,16 @@ class MasaBot(object):
 			raise BotSyntaxError("The thing is, `" + str(action) + "` is just not a valid subcommand for `replchars`!")
 
 	async def show_syntax_error(self, context, message=None):
+		"""
+		Show the standard syntax error message in the current message context.
+
+		:type context: BotContext
+		:param context: The current message context.
+		:type message: str
+		:param message: The message to include with the syntax error. Make it extremely brief; this function
+		automatically handles setting up a sentence and apologizing to the user.
+		:return:
+		"""
 		msg = "Um, oh no, I'm sorry <@!" + context.author.id + ">, but I really have no idea what you mean..."
 		if message is not None:
 			msg += " " + message
@@ -492,7 +593,7 @@ class MasaBot(object):
 	async def show_ops(self, context):
 		msg = "Okay, sure! Here's a list of all of my operators:\n\n"
 		for u in self._operators:
-			all_info = await self.client.get_user_info(u)
+			all_info = await self._client.get_user_info(u)
 			op_info = self._operators[u]
 			msg += "* " + all_info.name + "#" + all_info.discriminator + " _(" + op_info['role'] + ")_\n"
 		await self.reply(context, msg)
@@ -500,15 +601,15 @@ class MasaBot(object):
 	async def pm_master_users(self, message):
 		masters = [x for x in self._operators.keys() if self._operators[x]['role'] == 'master']
 		for m in masters:
-			user = await self.client.get_user_info(m)
-			await self.client.send_message(user, message)
+			user = await self._client.get_user_info(m)
+			await self._client.send_message(user, message)
 
 	async def _run_timer(self):
-		await self.client.wait_until_ready()
+		await self._client.wait_until_ready()
 		_log.debug("Master timer started")
 		tick_span = 60  # seconds
 
-		while not self.client.is_closed:
+		while not self._client.is_closed:
 			now_time = time.monotonic()
 			for timer in self._timers:
 				timer.tick(now_time, lambda msg: self.pm_master_users(msg))
@@ -531,6 +632,7 @@ class MasaBot(object):
 			return
 		else:
 			self._operators[user] = {'role': 'operator'}
+			_log.debug("Added new operator (UID " + user + ")")
 			self._save_all()
 			await self.reply(context, "<@!" + user + "> is now an op! Hooray!")
 
@@ -555,6 +657,7 @@ class MasaBot(object):
 				await self.reply(context, msg)
 			else:
 				del self._operators[user]
+				_log.debug("Removed operator (UID " + user + ")")
 				self._save_all()
 				await self.reply(context, "Okay. <@!" + user + "> is no longer an op.")
 
@@ -574,6 +677,7 @@ class MasaBot(object):
 	async def _check_supervisor_files(self):
 		if not os.path.exists('.supervisor/status'):
 			return
+		_log.debug("Returning from redeploy...")
 		with open('.supervisor/status', 'r') as fp:
 			status = json.load(fp)
 		if os.path.exists('.supervisor/reason'):
@@ -758,6 +862,10 @@ class MasaBot(object):
 	async def _handle_invocation(self, message):
 		context = BotContext(message)
 
+		log_msg = "[" + _fmt_channel(context.source) + "]: received invocation " + repr(message.content)
+		log_msg += " from " + context.author.id + "/" + context.author_name()
+		_log.debug(log_msg)
+
 		try:
 			tokens = self._message_to_tokens(message)
 		except ValueError as e:
@@ -799,11 +907,17 @@ class MasaBot(object):
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				await self._execute_action(context, handler.on_invocation(context, cmd, *args), handler)
+		else:
+			_log.debug("Ignoring unknown command " + repr(cmd))
 
 	async def _handle_mention(self, message):
 		handled_already = []
 		mentions = message.raw_mentions
 		context = BotContext(message)
+
+		log_msg = "[" + _fmt_channel(context.source) + "]: received mentions (" + ", ".join(repr(x) for x in mentions)
+		log_msg += ") " + repr(message.content) + " from " + context.author.id + "/" + context.author_name()
+		_log.debug(log_msg)
 
 		if len(self._any_mention_handlers) > 0:
 			for h in self._any_mention_handlers:
@@ -811,7 +925,7 @@ class MasaBot(object):
 					await self._execute_action(context, h.on_mention(context, message.content, mentions), h)
 					handled_already.append(h.name)
 
-		if '<@' + self.client.user.id + '>' in mentions or '<@!' + self.client.user.id + '>' in mentions:
+		if '<@' + self._client.user.id + '>' in mentions or '<@!' + self._client.user.id + '>' in mentions:
 			for h in self._self_mention_handlers:
 				if h.name not in handled_already:
 					await self._execute_action(context, h.on_mention(context, message.content, mentions), h)
@@ -831,6 +945,9 @@ class MasaBot(object):
 
 			m = regex.search(message.content)
 			if m is not None:
+				log_msg = "[" + _fmt_channel(context.source) + "]: received regex match (" + repr(regex.pattern) + ") "
+				log_msg += repr(message.content) + " from " + context.author.id + "/" + context.author_name()
+				_log.debug(log_msg)
 				match_groups = []
 				for i in range(regex.groups+1):
 					match_groups.append(m.group(i))
@@ -839,6 +956,8 @@ class MasaBot(object):
 
 	async def _execute_action(self, context, action, mod=None):
 		try:
+			mod_name = repr(mod.name) if mod is not None else "core"
+			_log.debug("Executing registered action in " + mod_name + " module...")
 			await action
 		except BotPermissionError as e:
 			msg = "User " + e.author.name + "#" + e.author.discriminator + " (ID: " + e.author.id + ") was denied"
@@ -911,6 +1030,8 @@ class MasaBot(object):
 
 		with open("state.p", "wb") as fp:
 			pickle.dump(state_dict, fp)
+
+		_log.debug("Saved state to disk")
 
 
 def start():

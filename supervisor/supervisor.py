@@ -166,7 +166,7 @@ if __name__ == "__main__":
 		sys.exit(2)
 
 	if sys.argv[1] == 'redeploy':
-		print("running redeploy...")
+		print("Running redeploy...")
 		output = redeploy()
 	else:
 		print("Unknown subcommand '" + sys.argv[1] + "'", file=sys.stderr)

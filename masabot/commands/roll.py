@@ -75,6 +75,7 @@ class DiceRollerModule(BotBehaviorModule):
 					msg = "Oh, right now there isn't any limit for the number of sides. I'll turn it on for you!\n\n"
 				msg += "Okay! The new limit for the number of sides is now " + str(new_limit) + "!"
 				self._max_sides = new_limit
+			_log.debug("Set dice side limit to " + str(self._max_sides))
 			await self.bot_api.reply(context, msg)
 		else:
 			if self._max_sides > 0:
@@ -102,6 +103,7 @@ class DiceRollerModule(BotBehaviorModule):
 					msg = "Oh, right now there isn't any limit for the number of dice. I'll turn it on for you!\n\n"
 				msg += "Okay! The new limit for the number of dice is now " + str(new_limit) + "!"
 				self._max_count = new_limit
+			_log.debug("Set dice limit to " + str(self._max_count))
 			await self.bot_api.reply(context, msg)
 		else:
 			if self._max_count > 0:

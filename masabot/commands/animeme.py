@@ -65,7 +65,7 @@ class AnimemeModule(BotBehaviorModule):
 		elif command == "animeme-remove":
 			await self.remove_animeme(context, args)
 		elif command == "animeme-info":
-			await self.get_animeme_info(context, args)
+			await self.get_animeme_info(context)
 
 	async def add_animeme(self, context, args):
 		self.bot_api.require_op(context, "animeme-add", self.name)
@@ -100,6 +100,7 @@ class AnimemeModule(BotBehaviorModule):
 				await self.bot_api.reply(context, "Okay, no problem! I'll keep it out of my templates then.")
 			elif reply == "yes":
 				self.image_ids.append(img_id)
+				_log.debug("Added new animeme template " + str(img_id))
 				await self.bot_api.reply(context, "Okay! I'll start using that new template to generate animemes ^_^")
 
 	async def remove_animeme(self, context, args):
@@ -133,11 +134,12 @@ class AnimemeModule(BotBehaviorModule):
 				await self.bot_api.reply(context, "You got it! I'll keep using it.")
 			elif reply == "yes":
 				self.image_ids.remove(img_id)
+				_log.debug("Removed animeme template " + str(img_id))
 				await self.bot_api.reply(context, "Okay! I'll stop using that template in animemes.")
 		else:
 			await self.bot_api.reply(context, "Mmm, all right, but I was already not using that template for animemes.")
 
-	async def get_animeme_info(self, context, args):
+	async def get_animeme_info(self, context):
 		msg = "Sure! I've currently got " + str(len(self.image_ids)) + " images for use with animemes."
 		await self.bot_api.reply(context, msg)
 
@@ -180,7 +182,6 @@ class AnimemeModule(BotBehaviorModule):
 
 	# noinspection PyMethodMayBeStatic
 	async def get_template_preview(self, template_id):
-		#"
 		response = requests.get("https://imgflip.com/memetemplate/" + str(template_id))
 
 		html = response.text
