@@ -50,7 +50,7 @@ class BotSyntaxError(Exception):
 class BotPermissionError(Exception):
 	def __init__(self, context, command, module=None, message=None):
 		if message is None:
-			message = "Operation required operator permission"
+			message = "Operation requires operator permission"
 		self.author = context.author
 		self.command = command
 		self.module = module
@@ -99,6 +99,7 @@ class Timer(object):
 
 	async def fire(self, on_error):
 
+		_log.debug("Firing timer on module " + repr(self.bot_module.name))
 		# noinspection PyBroadException
 		try:
 			await self.bot_module.on_timer_fire()
@@ -221,6 +222,7 @@ class MasaBot(object):
 		Begin execution of bot. Blocks until complete.
 		"""
 		self._master_timer_task = self._client.loop.create_task(self._run_timer())
+		_log.info("Connecting...")
 		self._client.run(self._api_key)
 
 	async def announce(self, message):
@@ -411,12 +413,13 @@ class MasaBot(object):
 				msg += " itself. **Even if you're a master user or an operator.** I'm really sorry to restrict it like"
 				msg += " that, but I have to in order to make sure I can keep running properly!"
 			else:
-				if help_module not in self._bot_modules:
-					msg = "Oh no! I'm sorry, <@!" + context.author.id + ">, but I don't have any module called '"
-					msg += help_module + "'. P-please don't be mad! I'll really do my best at everything else, okay?"
+				if help_module not in self._invocations and help_module not in self._bot_modules:
+					msg = "Oh no! I'm sorry, <@!" + context.author.id + ">, but I don't have any module or command"
+					msg += " called '" + help_module + "'. P-please don't be mad! I'll really do my best at everything"
+					msg += " else, okay?"
 				else:
-					m = self._bot_modules[help_module]
-					msg = "Oh yeah, the `" + help_module + "` module! " + m.description + "\n\n" + m.help_text
+					m = self._bot_modules.get(help_module, self._invocations[help_module][0])
+					msg = "Oh yeah, the `" + m.name + "` module! `" + m.description + "`\n\n" + m.help_text
 		await self.reply(context, msg)
 
 	async def quit(self, context):

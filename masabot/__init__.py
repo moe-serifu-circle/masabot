@@ -88,7 +88,9 @@ def _setup_logger():
 	stdout_handler.addFilter(lev_filter)
 	logging.getLogger().addHandler(stdout_handler)
 
-	file_handler = logging.handlers.RotatingFileHandler(filename='masabot.log', maxBytes=26214400, backupCount=5)
+	file_handler = logging.handlers.RotatingFileHandler(
+		filename='masabot.log', maxBytes=26214400, backupCount=5, encoding='utf8'
+	)
 	file_handler.setFormatter(logging.Formatter(fmt="%(asctime)-22s: [%(levelname)-10s] %(message)s"))
 	file_handler.setLevel(logging.DEBUG)
 	logging.getLogger().addHandler(file_handler)
