@@ -276,7 +276,6 @@ class MasaBot(object):
 
 			msg += "\nFor more info, you can type `" + pre + "help` followed by the name of a module or built-in"
 			msg += " command!"
-			await self.reply(context, msg)
 		else:
 			if help_module.startswith(pre):
 				help_module = help_module[len(pre):]
@@ -285,32 +284,26 @@ class MasaBot(object):
 				msg += " run it by itself, `" + pre + "help`, to just show the list of all commands and modules, or you"
 				msg += " can you put a module name after it to find out about that module! But I guess you already know"
 				msg += " that, eheheh ^_^"
-				await self.reply(context, msg)
 			elif help_module == "quit":
 				msg = "Mmm, `quit` is the command that will make me leave the server right away. It shuts me down"
 				msg += " instantly, which is really really sad! It's a really powerful command, so only my masters and"
 				msg += " operators are allowed to use it, okay?"
-				await self.reply(context, msg)
 			elif help_module == "op":
 				msg = "The `op` command turns any user into an operator. But, oh, of course, you have to already be an"
 				msg += " op in order to run it! Otherwise anybody could control me!"
-				await self.reply(context, msg)
 			elif help_module == "deop":
 				msg = "The `deop` command takes away operator powers from any of my existing operators. B-but I won't"
 				msg += " do that to any of my masters, so you can only do it to normal operators! Also, you have to"
 				msg += " already be an operator in order to run this, just so you know!"
-				await self.reply(context, msg)
 			elif help_module == "showops":
 				msg = "Ah, that's the `showops` command! When you type this in, I'll tell you who my operators and"
 				msg += " masters are, and also a little bit of info on each of them."
-				await self.reply(context, msg)
 			elif help_module == "redeploy":
 				msg = "The `redeploy` command is a really special command that will cause me to shut down, pull in the"
 				msg += " latest updates from source control, and start back up again! This will only work if I was"
 				msg += " started via the supervisor script `run-masabot.sh`; otherwise the command will just make me"
 				msg += " shutdown, so please be careful! Oh, and remember that only my operators and masters can do"
 				msg += " this!"
-				await self.reply(context, msg)
 			elif help_module == "replchars":
 				msg = "The `replchars` command shows all of the replacements that I do on text before trying to parse"
 				msg += " it into a command that I understand! Oh! And also, my operators and masters can use this"
@@ -328,11 +321,10 @@ class MasaBot(object):
 				if help_module not in self._bot_modules:
 					msg = "Oh no! I'm sorry, <@!" + context.author.id + ">, but I don't have any module called '"
 					msg += help_module + "'. P-please don't be mad! I'll really do my best at everything else, okay?"
-					await self.reply(context, msg)
 				else:
 					m = self._bot_modules[help_module]
 					msg = "Oh yeah, the `" + help_module + "` module! " + m.description + "\n\n" + m.help_text
-					await self.reply(context, msg)
+		await self.reply(context, msg)
 
 	async def quit(self, context):
 		self.require_op(context, "Unprivileged user " + context.author.id + " attempted to execute `quit`")
