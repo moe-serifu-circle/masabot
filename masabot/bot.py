@@ -371,7 +371,7 @@ class MasaBot(object):
 				msg = "I need to know the characters you want me to replace, and what you want to replace them with."
 				raise BotSyntaxError(msg)
 			if replacement is None:
-				raise BotSyntaxError("I need to know what you want me to replace the search with.")
+				raise BotSyntaxError("I need to know what you want me to replace that string with.")
 
 			# make sure we aren't borking masabot by setting a replacement for vital functionality
 			if search == ' ':
