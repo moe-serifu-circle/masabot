@@ -117,6 +117,12 @@ class MasaBot(object):
 		""":type : list[Timer]"""
 		self._master_timer_task = None
 
+		# default replacements; will be overridden if present in state file
+		self._invocation_replacements = {
+			'“': '"',
+			'”': '"'
+		}
+
 		state_dict = {}
 		try:
 			with open('state.p', 'rb') as fp:
@@ -124,8 +130,7 @@ class MasaBot(object):
 		except FileNotFoundError:
 			pass
 		else:
-			for op in state_dict['__BOT__']['operators']:
-				self._operators[op] = {'role': 'operator'}
+			self._load_builtin_state(state_dict)
 
 		conf = configfile.load_config(config_file)
 
@@ -261,6 +266,7 @@ class MasaBot(object):
 			msg += "* `" + pre + "op` - Gives a user operator permissions.\n"
 			msg += "* `" + pre + "deop` - Takes away operator permissions from a user.\n"
 			msg += "* `" + pre + "showops` - Shows all of my operators and masters.\n"
+			msg += "* `" + pre + "replchars` - Shows/sets characters that are replaced before parsing.\n"
 			msg += "\nHere are the modules that I'm running:\n"
 			for m_name in self._bot_modules:
 				m = self._bot_modules[m_name]
@@ -305,6 +311,19 @@ class MasaBot(object):
 				msg += " shutdown, so please be careful! Oh, and remember that only my operators and masters can do"
 				msg += " this!"
 				await self.reply(context, msg)
+			elif help_module == "replchars":
+				msg = "The `replchars` command shows all of the replacements that I do on text before trying to parse"
+				msg += " it into a command that I understand! Oh! And also, my operators and masters can use this"
+				msg += " command with an extra sub-command after it `add` or `remove` to change what replacements are"
+				msg += " active:\n\n`replchars` by itself will list out all the replacements.\n\n``replchars add"
+				msg += " <search> <replacement>` adds a new one.\n\n`replchars remove <search>` will remove an existing"
+				msg += " one.\n\nNote that replacements apply to the actual command only, and not to the prefix!\n\n"
+				msg += " **In order to make sure replacements don't mess up my system, replacements are never applied"
+				msg += " to any invocations of this command.** Additionally, the backslash character, the non-curly"
+				msg += " double quote, and the non-curly single quote are never allowed to be replaced, and the space"
+				msg += " character can only be replaced in conjuction with other characters, and never by itself."
+				msg += " **Even if you're a master user or an operator.** I'm really sorry to restrict it like that,"
+				msg += " but I have to in order to make sure I can keep running properly!"
 			else:
 				if help_module not in self._bot_modules:
 					msg = "Oh no! I'm sorry, <@!" + context.author.id + ">, but I don't have any module called '"
@@ -320,6 +339,129 @@ class MasaBot(object):
 		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
 		self._master_timer_task.cancel()
 		await self.client.logout()
+
+	async def run_replchars_command(self, context, action=None, search=None, replacement=None):
+		"""
+		Execute the replchars command. Depending on the action, this will either print out the info on current
+		replacements, add a new replacement, or remove an existing replacement. Adding and removing require operator
+		privileges.
+
+		:type context: BotContext
+		:param context: The context of the command.
+		:type action: str
+		:param action: The action to perform. Leave as None to just list the replacements. Set to "add" to add a new
+		one, in which case both search and replacement must also be set. Set to "remove" to remove an existing
+		replacement, in which case search must also be set
+		:type search: str
+		:param search: The sequence of characters to search for that is to be added/removed from the list of invocation
+		replacements. Not used if action is None.
+		:type replacement: str
+		:param replacement: The sequence of characters to replace the search characters with. Only used when action is
+		set to "add".
+		"""
+		if action is None:
+			# only need to list the replacement chars, don't need privileges
+			msg = "Okay, sure! Here's the list of replacements I do on commands you send me before I try to understand"
+			msg += " what they say:\n\n"
+
+			if len(self._invocation_replacements) < 1:
+				msg += "...actually, now that I think about it, right now I don't do any replacements at all! I look"
+				msg += " directly at anything you tell me without changing it at all.\n"
+			else:
+				for search in self._invocation_replacements:
+					replacement = self._invocation_replacements[search]
+					msg += "* `" + search + "` becomes `" + replacement + "`\n"
+
+			await self.reply(context, msg)
+		elif action == "add":
+			self.require_op(context, "attempted to execute `replchars add`")
+			if search is None:
+				msg = "I need to know the characters you want me to replace, and what you want to replace them with."
+				raise BotSyntaxError(msg)
+			if replacement is None:
+				raise BotSyntaxError("I need to know what you want me to replace the search with.")
+
+			# make sure we aren't borking masabot by setting a replacement for vital functionality
+			if search == ' ':
+				msg = "The single space is a core part of my command processing, so my programmers made it so I can't"
+				msg += " set a replacement for just a single space by itself!"
+				raise BotModuleError(msg)
+			if '\\' in search or "'" in search or '"' in search:
+				msg = "Non-curly single quotes, non-curly double quotes, and backslashes are a fundamental part of my"
+				msg += " command processing, so my programmers made it so I can't set a replacement for any string that"
+				msg += " contains even a single one of those!"
+				raise BotModuleError(msg)
+
+			cur_repl = ''
+			if search in self._invocation_replacements:
+				cur_repl = self._invocation_replacements[search]
+				prompt_msg = "Right now, I'm replacing `" + search + "` with `" + cur_repl + "`. Do you want me to"
+				prompt_msg += " start replacing it with `" + replacement + "` instead?"
+			else:
+				prompt_msg = "Just to make sure, you want me to start replacing `" + search + "` with `" + replacement
+				prompt_msg += ", right?"
+
+			reply = await self.prompt_for_option(context, prompt_msg)
+			msg = ""
+			if reply is None:
+				msg = "Sorry, but I didn't hear back from you on whether you wanted to add that new replacement..."
+				msg += " I hope you're not just ignoring me, that'd make me really sad...\n\nLet me know if you want to"
+				msg += " try adding a replacement again."
+				raise BotModuleError(msg)
+			elif reply == "no":
+				msg = "You got it!"
+				if search in self._invocation_replacements:
+					msg += " I'll continue to replace `" + search + "` with `" + cur_repl + "` in commands, just like I"
+					msg += " was doing before!"
+				else:
+					msg += " I'll keep on not replacing `" + search + "` in commands."
+			elif reply == "yes":
+				msg = "Okay!"
+				if search in self._invocation_replacements:
+					msg += " I'll start replacing `" + search + "` with `" + replacement + "` instead of `" + cur_repl
+					msg += "` in commands!"
+				else:
+					msg += " From now on, I'll replace `" + search + "` with `" + replacement + "` in commands."
+				self._invocation_replacements[search] = replacement
+				self._save_all()
+			msg += "\n\nOh! But no matter what, I will never apply replacements to any invocation of the `replchars`"
+			msg += " command."
+
+			await self.reply(context, msg)
+
+		elif action == "remove":
+			self.require_op(context, "attempted to execute `replchars remove`")
+			if search is None:
+				msg = "I need to know the string you want me to stop replacing."
+				raise BotSyntaxError(msg)
+
+			if search not in self._invocation_replacements:
+				msg = "Oh, okay. Actually, I was already not doing any replacements for `" + search + "`, so that works"
+				msg += " out pretty well! Yay!"
+				await self.reply(context, msg)
+				return
+
+			cur_repl = self._invocation_replacements[search]
+			prompt_msg = "Okay, right now I'm replacing `" + search + "` with `" + cur_repl + "` in commands, and you"
+			prompt_msg += " want me to stop doing that, right?"
+			reply = await self.prompt_for_option(context, prompt_msg)
+
+			msg = ""
+			if reply is None:
+				msg = "Sorry, but I didn't hear back from you on whether you wanted to remove that replacement..."
+				msg += " Did you get busy doing something else? That's okay, it wasn't that important...\n\nLet me know"
+				msg += " if you want to try removing a replacement again."
+				raise BotModuleError(msg)
+			elif reply == "no":
+				msg = "Right! I'll continue to replace `" + search + "` with `" + cur_repl + "` in commands, just like"
+				msg += " I was doing before!"
+			elif reply == "yes":
+				del self._invocation_replacements[search]
+				msg = "Sounds good! I'll stop replacing `" + search + "` with `" + cur_repl + "` in commands."
+				self._save_all()
+			await self.reply(context, msg)
+		else:
+			raise BotSyntaxError("The thing is, `" + str(action) + "` is just not a valid subcommand for `replchars`!")
 
 	async def show_syntax_error(self, context, message=None):
 		msg = "Um, oh no, I'm sorry <@!" + context.author.id + ">, but I really have no idea what you mean..."
@@ -603,10 +745,7 @@ class MasaBot(object):
 		context = BotContext(message)
 
 		try:
-			content = message.content[len(self._prefix):]
-			content = content.replace("“", '"')
-			content = content.replace("”", '"')
-			tokens = shlex.split(content)
+			tokens = self._message_to_tokens(message)
 		except ValueError as e:
 			await self.show_syntax_error(context, str(e))
 			return
@@ -632,6 +771,17 @@ class MasaBot(object):
 			else:
 				reason = None
 			await self._execute_action(context, self._redeploy(context, reason))
+		elif cmd == 'replchars':
+			action = None
+			search = None
+			repl = None
+			if len(args) > 0:
+				action = args[0]
+			if len(args) > 1:
+				search = args[1]
+			if len(args) > 2:
+				repl = args[2]
+			await self._execute_action(context, self.run_replchars_command(context, action, search, repl))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				await self._execute_action(context, handler.on_invocation(context, cmd, *args), handler)
@@ -695,10 +845,50 @@ class MasaBot(object):
 		if mod is not None and mod.has_state:
 			self._save_all()
 
+	def _message_to_tokens(self, message):
+		"""
+		Converts a message to a series of tokens for parsing into an invocation.
+
+		:type message: discord.Message
+		:param message: The message whose contents are to be parsed.
+		:rtype: list[str]
+		:return: The tokens.
+		"""
+		content = message.content[len(self._prefix):]
+		""":type : str"""
+
+		# special case; do NOT apply replacements if the replchars command is being invoked:
+		pre_analyze = shlex.split(content)
+		if pre_analyze[0] == 'replchars':
+			tokens = pre_analyze
+		else:
+			for search in self._invocation_replacements:
+				replacement = self._invocation_replacements[search]
+				content = content.replace(search, replacement)
+
+			tokens = shlex.split(content)
+
+		return tokens
+
+	def _load_builtin_state(self, state_dict):
+		if '__BOT__' not in state_dict:
+			return
+		builtin_state = state_dict['__BOT__']
+
+		if 'operators' in builtin_state:
+			for op in builtin_state['operators']:
+				# master roles will be loaded later during config reading
+				self._operators[op] = {'role': 'operator'}
+
+		if 'invocation_replacements' in builtin_state:
+			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
+
 	def _save_all(self):
 		state_dict = {'__BOT__': {
-			'operators': list(self._operators.keys())
+			'operators': list(self._operators.keys()),
+			'invocation_replacements': dict(self._invocation_replacements)
 		}}
+
 		for m_name in self._bot_modules:
 			mod = self._bot_modules[m_name]
 			if mod.has_state:
