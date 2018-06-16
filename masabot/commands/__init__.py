@@ -4,7 +4,8 @@ __all__ = [
 	'karma',
 	'animeme',
 	'translate',
-	'roll'
+	'roll',
+	'watchlist'
 ]
 
 

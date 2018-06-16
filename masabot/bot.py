@@ -305,6 +305,46 @@ class MasaBot(object):
 			_log.debug(log_msg)
 			return all_options[message.content]
 
+	async def prompt(self, context, message, timeout=60, type_conv=str):
+		"""
+		Prompt the user for open-ended input. Returns None if the prompt times out.
+
+		:type context: BotContext
+		:param context: The context of the bot.
+		:type message: str
+		:param message: The message to show before the prompt.
+		:type timeout: int
+		:param timeout: The number of seconds to wait before timing out the prompt.
+		:type type_check: Any
+		:param type_check: The type to put the input through before returning it.
+		:rtype: Any
+		:return: The input given by the user, or None if the prompt times out.
+		"""
+
+		full_message = message + "\n\n(Enter `" + (self._prefix * 2) + "` followed by your answer)"
+		await self.reply(context, full_message)
+		_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " started")
+
+		def check_option(msg):
+			if not msg.content.startswith(self._prefix * 2):
+				return False
+			# noinspection PyBroadException
+			try:
+				type_conv(msg.content[len(self._prefix * 2):])
+			except Exception:
+				return False
+			return True
+
+		message = await self._client.wait_for_message(timeout=timeout, author=context.author, check=check_option)
+		if message is None:
+			_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " timed out")
+			return None
+		else:
+			log_msg = "[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " received "
+			log_msg += repr(message.content)
+			_log.debug(log_msg)
+			return type_conv(message.content[len(self._prefix * 2):])
+
 	async def reply(self, context, message):
 		"""
 		Send a message in the same context as the message that caused the action to start.

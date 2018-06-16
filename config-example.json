@@ -11,6 +11,10 @@
     "animeme": {
       "username": "",
       "password": ""
+    },
+    "watchlist": {
+      "anilist-client-id": "",
+      "anilist-client-secret": ""
     }
   }
 }
