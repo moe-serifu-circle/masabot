@@ -1,8 +1,11 @@
 from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
 from ..bot import BotModuleError
 
+
+import urllib.parse
 import requests
 import logging
+import json.decoder
 
 
 _log = logging.getLogger(__name__)
@@ -49,11 +52,13 @@ class WatchListModule(BotBehaviorModule):
 	async def on_invocation(self, context, command, *args):
 		if context.author.id not in self._anilist_oauth_tokens:
 			await self.authorize(context)
+		else:
+			await self.bot_api.reply(context, "I already have an access token for you!")
 
 	async def authorize(self, context):
 		auth_payload = {
 			'client_id': self._anilist_id,
-			'redirect_uri': "https://github.com/moe-serifu-circle/masabot/elsewhere",
+			'redirect_uri': "https://github.com/moe-serifu-circle/masabot/blob/master/docs/oauth2-authorization-code.md",
 			'response_type': 'code'
 		}
 
@@ -65,9 +70,42 @@ class WatchListModule(BotBehaviorModule):
 
 		await self.bot_api.reply(context, msg)
 
-		code = await self.bot_api.prompt(context, "What's the authorization code?")
-		if code is None:
+		code_url = await self.bot_api.prompt(context, "What's the authorization code?")
+		if code_url is None:
 			raise BotModuleError("Oauth flow interrupted")
+
+		parsed_url = urllib.parse.urlparse(code_url)
+		query = urllib.parse.parse_qs(parsed_url.query)
+		if not 'code' in query:
+			raise BotModuleError("That URL doesn't contain a valid authorization code in it!")
+		code = query['code']
+
+		token_payload = {
+			'grant_type': 'authorization_code',
+			'client_id': self._anilist_id,
+			'client_secret': self._anilist_secret,
+			'redirect_uri': "https://github.com/moe-serifu-circle/masabot/blob/master/docs/oauth2-authorization-code.md",
+			'code': code
+		}
+
+		_log.debug("Sending token request to Anilist...")
+		resp = requests.post('https://anilist.co/api/v2/oauth/token', data=token_payload)
+		_log.debug("Response from Anilist: " + repr(resp.text))
+		try:
+			resp_json = resp.json()
+		except json.decoder.JSONDecodeError:
+			msg = "Oh no! There was a problem with that request! Anilist told me:\n```\n" + resp.text + "\n```"
+			raise BotModuleError(msg)
+
+		if 'access_token' in resp_json:
+			self._anilist_oauth_tokens[context.author.id] = resp_json['access_token']
+			_log.debug("User " + context.author.id + " is now authenticated to use Anilist")
+
+			await self.bot_api.reply(context, "Hooray! Now you can use my Anilist functionality!")
+		else:
+			msg = "There was a problem when I tried to use that authorization code! Maybe we can try again in a"
+			msg += " bit?"
+			raise BotModuleError(msg)
 
 
 BOT_MODULE_CLASS = WatchListModule
