@@ -1,9 +1,11 @@
-from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
-from ..bot import BotModuleError
+from . import BotBehaviorModule, InvocationTrigger
+from ..bot import BotModuleError, BotSyntaxError
+from ..http import HttpAgent
 
 
 import urllib.parse
 import requests
+import re
 import logging
 import json.decoder
 
@@ -23,12 +25,15 @@ class WatchListModule(BotBehaviorModule):
 			desc="Manages list of current anime on Anilist",
 			help_text=help_text,
 			triggers=[
-				InvocationTrigger("animelist")
+				InvocationTrigger("animelist"),
+				InvocationTrigger("animelist-auth")
 			],
 			has_state=True
 		)
 
-		self._anilist_oauth_tokens = {}
+		self._anilist_users = {}
+		self._anilist_clients = {}
+		""":type : dict[str, HttpAgent]"""
 		self._anilist_secret = ""
 		self._anilist_id = ""
 
@@ -41,19 +46,62 @@ class WatchListModule(BotBehaviorModule):
 		self._anilist_id = config['anilist-client-id']
 
 	def set_state(self, state):
-		if 'anilist-oauth-tokens' in state:
-			self._anilist_oauth_tokens = state['anilist-oauth-tokens']
+		if 'anilist-users' in state:
+			self._anilist_users = state['anilist-users']
+		for uid in self._anilist_users:
+			self._anilist_clients[uid] = self._create_anilist_client(uid)
 
 	def get_state(self):
 		return {
-			'anilist-oauth-tokens': self._anilist_oauth_tokens
+			'anilist-users': self._anilist_users
 		}
 
 	async def on_invocation(self, context, command, *args):
-		if context.author.id not in self._anilist_oauth_tokens:
-			await self.authorize(context)
-		else:
-			await self.bot_api.reply(context, "I already have an access token for you!")
+		if command == "animelist-auth":
+			if context.author.id not in self._anilist_users:
+				await self.authorize(context)
+			else:
+				await self.bot_api.reply(context, "I already have an access token for you!")
+		elif command == "animelist":
+			await self._show_anilist(context, args)
+
+	async def _show_anilist(self, context, args):
+		uid = context.author.id
+		if len(args) > 0:
+			m = re.search(r'<@!?(\d+)>$', args[0], re.DOTALL)
+			if m is None:
+				msg = "I can only look up the anime lists of users, and " + repr(str(args[0])) + " is not a user!"
+				raise BotSyntaxError(msg)
+			uid = m.group(1)
+		anime_list = self.get_user_anime_list(uid)
+
+	def get_user_anime_list(self, uid):
+		self._require_auth(uid)
+
+		gql = (
+			"query GetAnimeList($uid: Int) {"
+			"	MediaList(userId: $uid, type: ANIME) {"
+			"		status"
+			"		media {"
+			"			title {"
+			"				english"
+			"			}"
+			"		}"
+			"	}"
+			"}"
+		)
+		payload = {
+			'query': gql,
+			'variables': {
+				"uid": self._anilist_users[uid]['id']
+			}
+		}
+
+		cl = self._anilist_clients[uid]
+		resp = cl.request('POST', '/', payload=payload, auth=True)
+		return []
+
+
 
 	async def authorize(self, context):
 		auth_payload = {
@@ -64,7 +112,7 @@ class WatchListModule(BotBehaviorModule):
 
 		p = requests.Request('GET', 'https://anilist.co/api/v2/oauth/authorize', params=auth_payload).prepare()
 
-		msg = "Oh! It looks like you've never used my Anilist functionality before. I need you go to this website"
+		msg = "Oh! You want to authorize me to use your Anilist profile? Okay! I need you go to this website"
 		msg += " and tell Anilist that it's okay for me to access your profile first, okay?\n\nWhen you finish at that"
 		msg += " website, tell me what the authorization code is and then I'll be able to continue!\n\n" + p.url
 
@@ -72,7 +120,9 @@ class WatchListModule(BotBehaviorModule):
 
 		code_url = await self.bot_api.prompt(context, "What's the authorization code?")
 		if code_url is None:
-			raise BotModuleError("Oauth flow interrupted")
+			msg = "I really need you to access that website and tell me what the code is if you want to use Anilist!"
+			msg += " Let me know if you want to try again sometime, okay?"
+			raise BotModuleError(msg)
 
 		parsed_url = urllib.parse.urlparse(code_url)
 		query = urllib.parse.parse_qs(parsed_url.query)
@@ -88,6 +138,7 @@ class WatchListModule(BotBehaviorModule):
 			'code': code
 		}
 
+		await self.bot_api.reply_typing(context)
 		_log.debug("Sending token request to Anilist...")
 		resp = requests.post('https://anilist.co/api/v2/oauth/token', data=token_payload)
 		_log.debug("Response from Anilist: " + repr(resp.text))
@@ -97,14 +148,40 @@ class WatchListModule(BotBehaviorModule):
 			msg = "Oh no! There was a problem with that request! Anilist told me:\n```\n" + resp.text + "\n```"
 			raise BotModuleError(msg)
 
+		# TODO: actually use the 'expires-in' response object
 		if 'access_token' in resp_json:
-			self._anilist_oauth_tokens[context.author.id] = resp_json['access_token']
+			self._anilist_users[context.author.id] = {
+				'token': resp_json['access_token']
+			}
+			self._anilist_clients[context.author.id] = self._create_anilist_client(context.author.id)
 			_log.debug("User " + context.author.id + " is now authenticated to use Anilist")
+			_log.debug("Getting Anilist UID...")
+			_, user_data = self._anilist_clients[context.author.id].request('POST', '/', auth=True, payload={
+				'query': "{Viewer{id}}"
+			})
+			anilist_id = user_data['data']['Viewer']['id']
+			_log.debug("Got back UID: " + str(anilist_id))
 
+			self._anilist_users[context.author.id]['id'] = anilist_id
 			await self.bot_api.reply(context, "Hooray! Now you can use my Anilist functionality!")
 		else:
 			msg = "There was a problem when I tried to use that authorization code! Maybe we can try again in a"
 			msg += " bit?"
+			raise BotModuleError(msg)
+
+	def _create_anilist_client(self, uid):
+		def auth_func(req):
+			req.headers['Authorization'] = 'Bearer ' + self._anilist_users[uid]['token']
+			return req.prepare()
+
+		client = HttpAgent("graphql.anilist.co", ssl=True, auth_func=auth_func)
+
+		return client
+
+	def _require_auth(self, uid):
+		if uid not in self._anilist_users:
+			msg = "I haven't been given permission to access <@!" + uid + ">'s Anilist profile yet! But they can"
+			msg += " authorize me with the `animelist-auth` command."
 			raise BotModuleError(msg)
 
 
