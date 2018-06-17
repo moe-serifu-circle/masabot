@@ -76,6 +76,7 @@ class WatchListModule(BotBehaviorModule):
 		anime_list = self.get_user_anime_list(uid)
 		msg = "Okay! Here is <@!" + context.author.id + ">'s Anilist:\n\n"
 		msg += self.format_anime_list(anime_list)
+		await self.bot_api.reply(context, msg)
 		_log.info(anime_list)
 
 	def format_anime_list(self, anime_list):
@@ -91,23 +92,34 @@ class WatchListModule(BotBehaviorModule):
 		for anime in anime_list:
 			sorted_by_status[anime['status']].append(anime)
 
-		def add_eps()
+		def format_eps(anime_list, heading, show_eps):
+			msg = ""
+			if len(anime_list) > 0:
+				msg += heading + ":\n```\n"
+				for anime in anime_list:
+					msg += '* "'
+					titles = anime['media']['title']
+					if titles['english'] is not None:
+						msg += titles['english']
+					elif titles['romaji'] is not None:
+						msg += titles['romaji']
+					else:
+						msg += titles['native']
+					msg += '"'
+					if show_eps:
+						msg += ' (' + str(anime['progress']) + "/" + str(anime['media']['episodes']) + " episodes)"
+					msg += '\n'
+					msg += '```\n'
+			return msg
 
-		if len(sorted_by_status['CURRENT']) > 0:
-			msg = "Current Anime:\n```\n"
-			for anime in sorted_by_status['CURRENT']:
-				msg += '* "'
-				titles = anime['media']['title']
-				if titles['english'] is not None:
-					msg += titles['english']
-				elif titles['romaji'] is not None:
-					msg += titles['romaji']
-				else:
-					msg += titles['native']
-				msg += '" (' + str(anime['progress']) + "/" + str(anime['media']['episodes']) + " episodes)"
-				msg += '\n'
+		msg = format_eps(sorted_by_status['CURRENT'], "Current Anime", True)
+		msg += format_eps(sorted_by_status['REPEATING'], "Repeating", True)
+		msg += format_eps(sorted_by_status['COMPLETED'], "Completed", False)
+		msg += format_eps(sorted_by_status['PAUSED'], "On-hold", True)
+		msg += format_eps(sorted_by_status['DROPPED'], "Dropped", True)
+		msg += format_eps(sorted_by_status['PLANNING'], "Plan-to-watch", False)
 
-
+		return msg
 
 	def get_user_anime_list(self, uid, include_private=False):
 		self._require_auth(uid)
