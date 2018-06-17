@@ -74,34 +74,104 @@ class WatchListModule(BotBehaviorModule):
 				raise BotSyntaxError(msg)
 			uid = m.group(1)
 		anime_list = self.get_user_anime_list(uid)
+		msg = "Okay! Here is <@!" + context.author.id + ">'s Anilist:\n\n"
+		msg += self.format_anime_list(anime_list)
+		_log.info(anime_list)
 
-	def get_user_anime_list(self, uid):
+	def format_anime_list(self, anime_list):
+		sorted_by_status = {
+			'CURRENT': [],
+			'PLANNING': [],
+			'COMPLETED': [],
+			'DROPPED': [],
+			'PAUSED': [],
+			'REPEATING': []
+		}
+
+		for anime in anime_list:
+			sorted_by_status[anime['status']].append(anime)
+
+		def add_eps()
+
+		if len(sorted_by_status['CURRENT']) > 0:
+			msg = "Current Anime:\n```\n"
+			for anime in sorted_by_status['CURRENT']:
+				msg += '* "'
+				titles = anime['media']['title']
+				if titles['english'] is not None:
+					msg += titles['english']
+				elif titles['romaji'] is not None:
+					msg += titles['romaji']
+				else:
+					msg += titles['native']
+				msg += '" (' + str(anime['progress']) + "/" + str(anime['media']['episodes']) + " episodes)"
+				msg += '\n'
+
+
+
+	def get_user_anime_list(self, uid, include_private=False):
 		self._require_auth(uid)
 
 		gql = (
-			"query GetAnimeList($uid: Int) {"
-			"	MediaList(userId: $uid, type: ANIME) {"
-			"		status"
-			"		media {"
-			"			title {"
-			"				english"
+			"query GetAnimeList($uid: Int, $page: Int, $sort: [MediaListSort]) {"
+			"	Page(page: $page, perPage: 50) {"
+			"		pageInfo {"
+			"			total"
+			"			currentPage"
+			"			lastPage"
+			"			hasNextPage"
+			"			perPage"
+			"		}"
+			"		mediaList(userId: $uid, type: ANIME, sort: $sort) {"
+			"			status"
+			"			score"
+			"			progress"
+			"			private"
+			"			startedAt {"
+			"				year"
+			"				month"
+			"				day"
+			"			}"
+			"			completedAt {"
+			"				year"
+			"				month"
+			"				day"
+			"			}"
+			"			media {"
+			"				episodes"
+			"				title {"
+			"					english"
+			"					romaji"
+			"					native"
+			"					userPreferred"
+			"				}"
 			"			}"
 			"		}"
 			"	}"
 			"}"
 		)
-		payload = {
-			'query': gql,
-			'variables': {
-				"uid": self._anilist_users[uid]['id']
-			}
-		}
 
+		full_list = []
+		page = 1
 		cl = self._anilist_clients[uid]
-		resp = cl.request('POST', '/', payload=payload, auth=True)
-		return []
+		while True:
+			payload = {
+				'query': gql,
+				'variables': {
+					"uid": self._anilist_users[uid]['id'],
+					"page": page
+				}
+			}
+			_, resp = cl.request('POST', '/', payload=payload, auth=True)
+			page_list = resp['data']['Page']['mediaList']
+			full_list += [x for x in page_list if x['private'] == include_private]
+			page_info = resp["data"]["Page"]["pageInfo"]
+			if page_info['currentPage'] == page_info['lastPage']:
+				break
+			else:
+				page += 1
 
-
+		return full_list
 
 	async def authorize(self, context):
 		auth_payload = {
