@@ -3,8 +3,9 @@ discord_char_limit = 2000
 
 
 class BotSyntaxError(Exception):
-	def __init__(self, message):
+	def __init__(self, message, context=None):
 		super().__init__(message)
+		self.context = context
 
 
 class BotPermissionError(Exception):
@@ -14,12 +15,14 @@ class BotPermissionError(Exception):
 		self.author = context.author
 		self.command = command
 		self.module = module
+		self.context = context
 		super().__init__(message)
 
 
 class BotModuleError(RuntimeError):
-	def __init__(self, message):
+	def __init__(self, message, context=None):
 		super().__init__(message)
+		self.context = context
 
 
 def parse_user(mention_text):

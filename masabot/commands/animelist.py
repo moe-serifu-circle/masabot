@@ -351,22 +351,24 @@ class WatchListModule(BotBehaviorModule):
 
 		p = requests.Request('GET', 'https://anilist.co/api/v2/oauth/authorize', params=auth_payload).prepare()
 
+		dm_ctx = await self.bot_api.create_dm_context(context)
+
 		msg = "Oh! You want to authorize me to use your Anilist profile? Okay! I need you go to this website"
 		msg += " and tell Anilist that it's okay for me to access your profile first, okay?\n\nWhen you finish at that"
 		msg += " website, tell me what the authorization code is and then I'll be able to continue!\n\n" + p.url
 
-		await self.bot_api.reply(context, msg)
+		await self.bot_api.reply(dm_ctx, msg)
 
-		code_url = await self.bot_api.prompt(context, "What's the authorization code?", timeout=120)
+		code_url = await self.bot_api.prompt(dm_ctx, "What's the authorization code?", timeout=120)
 		if code_url is None:
 			msg = "I really need you to access that website and tell me what the code is if you want to use Anilist!"
 			msg += " Let me know if you want to try again sometime, okay?"
-			raise BotModuleError(msg)
+			raise BotModuleError(msg, dm_ctx)
 
 		parsed_url = urllib.parse.urlparse(code_url)
 		query = urllib.parse.parse_qs(parsed_url.query)
 		if not 'code' in query:
-			raise BotModuleError("That URL doesn't contain a valid authorization code in it!")
+			raise BotModuleError("That URL doesn't contain a valid authorization code in it!", dm_ctx)
 		code = query['code']
 
 		token_payload = {
@@ -377,7 +379,7 @@ class WatchListModule(BotBehaviorModule):
 			'code': code
 		}
 
-		await self.bot_api.reply_typing(context)
+		await self.bot_api.reply_typing(dm_ctx)
 		_log.debug("Sending token request to Anilist...")
 		resp = requests.post('https://anilist.co/api/v2/oauth/token', data=token_payload)
 		_log.debug("Response from Anilist: " + repr(resp.text))
@@ -402,11 +404,11 @@ class WatchListModule(BotBehaviorModule):
 			_log.debug("Got back UID: " + str(anilist_id))
 
 			self._anilist_users[context.author.id]['id'] = anilist_id
-			await self.bot_api.reply(context, "Hooray! Now you can use my Anilist functionality!")
+			await self.bot_api.reply(dm_ctx, "Hooray! Now you can use my Anilist functionality!")
 		else:
 			msg = "There was a problem when I tried to use that authorization code! Maybe we can try again in a"
 			msg += " bit?"
-			raise BotModuleError(msg)
+			raise BotModuleError(msg, dm_ctx)
 
 	def _create_anilist_client(self, uid):
 		def auth_func(req):

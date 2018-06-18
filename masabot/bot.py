@@ -95,9 +95,14 @@ class Timer(object):
 class BotContext(object):
 
 	def __init__(self, message):
-		self.source = message.channel
-		self.author = message.author
-		self.is_pm = self.source.is_private and len(self.source.recipients) == 1
+		if message is not None:
+			self.source = message.channel
+			self.author = message.author
+			self.is_pm = self.source.is_private and len(self.source.recipients) == 1
+		else:
+			self.source = None
+			self.author = None
+			self.is_pm = False
 
 	def mention(self):
 		"""
@@ -241,6 +246,18 @@ class MasaBot(object):
 			_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		self._load_modules(state_dict, conf['modules'])
+
+	async def create_dm_context(self, context):
+		"""
+		Create a copy of this context for sending DMs to the author.
+		:return: The DM context.
+		"""
+		chan = await self._client.start_private_message(context.author)
+		dm_context = BotContext(None)
+		dm_context.author = context.author
+		dm_context.source = chan
+		dm_context.is_pm = True
+		return dm_context
 
 	def run(self):
 		"""
@@ -1177,14 +1194,23 @@ class MasaBot(object):
 			msg += "."
 			_log.error(msg)
 			msg = "Sorry, <@!" + e.author.id + ">, but only my masters and operators can do that."
-			await self.reply(context, msg)
+			ctx = context
+			if e.context is not None:
+				ctx = e
+			await self.reply(ctx, msg)
 		except BotSyntaxError as e:
 			_log.exception("Syntax error")
-			await self.show_syntax_error(context, str(e))
+			ctx = context
+			if e.context is not None:
+				ctx = e.context
+			await self.show_syntax_error(ctx, str(e))
 		except BotModuleError as e:
 			_log.exception("Module error")
 			msg = "Oh no, <@!" + context.author.id + ">-samaaaaa! I can't quite do that! "
-			await self.reply(context, msg + str(e))
+			ctx = context
+			if e.context is not None:
+				ctx = e.context
+			await self.reply(ctx, msg + str(e))
 
 		if mod is not None and mod.has_state:
 			self._save_all()
