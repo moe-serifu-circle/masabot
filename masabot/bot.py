@@ -840,7 +840,7 @@ class MasaBot(object):
 		self.require_op(context, "deop", None)
 
 		if len(args) < 1:
-			raise BotSyntaxError("I need to know who you don't want to be an op")
+			raise BotSyntaxError("I need to know who you want to deop")
 
 		user = util.parse_channel(args[0])
 		if user not in self._operators:
