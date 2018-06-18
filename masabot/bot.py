@@ -545,7 +545,9 @@ class MasaBot(object):
 					msg += " called '" + help_module + "'. P-please don't be mad! I'll really do my best at everything"
 					msg += " else, okay?"
 				else:
-					m = self._bot_modules.get(help_module, self._invocations[help_module][0])
+					m = self._bot_modules.get(help_module, None)
+					if m is None:
+						m = self._invocations[help_module][0]
 					msg = "Oh yeah, the `" + m.name + "` module! `" + m.description + "`\n\n" + m.help_text
 		await self.reply(context, msg)
 

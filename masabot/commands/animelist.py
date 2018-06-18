@@ -18,17 +18,28 @@ _log.setLevel(logging.DEBUG)
 class WatchListModule(BotBehaviorModule):
 
 	def __init__(self, bot_api):
-		help_text = ""
-
+		help_text = "This module accesses your list on Anilist for viewing and updating! You can view your Anilist"
+		help_text += " entries by typing `anilist` by itself, and you can view other users' Anilists by typing their"
+		help_text += " name after the command.\n\nBefore using the anilist module, you will need to give me permission"
+		help_text += " to access your Anilist. To do that, use the `anilist-auth` command!\n\nIf you want, you can"
+		help_text += " update the episode count using the `anilist-update` command! Just give the name of the anime"
+		help_text += " you want to update, and it'll increase the number of episodes seen by 1! Oh, and if you want to"
+		help_text += " set the number of episodes seen to an exact number, you can give that number after the name."
+		help_text += "\n\nTo view your own anilist: `anilist`\nTo view someone else's anilist: `anilist <mention-user>`"
+		help_text += ".\nTo increase the seen episode count of a current show: `anilist <show name>`\nTo set the"
+		help_text += " watched episodes to an exact number: `anilist <show name> <number of eps>`.\n\nOh! One last"
+		help_text += " thing! Some shows on Anilist are R-18, and not everyone wants to see that! So, if you want to"
+		help_text += " work with R-18 shows through my interface, you'll have to do it either in a DM or in a channel"
+		help_text += " marked as NSFW, okay?"
 		super().__init__(
 			bot_api,
-			name="watchlist",
+			name="animelist",
 			desc="Manages list of current anime on Anilist",
 			help_text=help_text,
 			triggers=[
-				InvocationTrigger("animelist"),
-				InvocationTrigger("animelist-update"),
-				InvocationTrigger("animelist-auth"),
+				InvocationTrigger("anilist"),
+				InvocationTrigger("anilist-update"),
+				InvocationTrigger("anilist-auth"),
 			],
 			has_state=True
 		)
@@ -59,14 +70,14 @@ class WatchListModule(BotBehaviorModule):
 		}
 
 	async def on_invocation(self, context, command, *args):
-		if command == "animelist-auth":
+		if command == "anilist-auth":
 			if context.author.id not in self._anilist_users:
 				await self.authorize(context)
 			else:
 				await self.bot_api.reply(context, "I already have an access token for you!")
-		elif command == "animelist":
+		elif command == "anilist":
 			await self._show_anilist(context, args)
-		elif command == "animelist-update":
+		elif command == "anilist-update":
 			await self._add_anilist_episode(context, *args)
 
 	async def _add_anilist_episode(self, context, *args):
@@ -346,7 +357,7 @@ class WatchListModule(BotBehaviorModule):
 
 		await self.bot_api.reply(context, msg)
 
-		code_url = await self.bot_api.prompt(context, "What's the authorization code?")
+		code_url = await self.bot_api.prompt(context, "What's the authorization code?", timeout=120)
 		if code_url is None:
 			msg = "I really need you to access that website and tell me what the code is if you want to use Anilist!"
 			msg += " Let me know if you want to try again sometime, okay?"
@@ -409,7 +420,7 @@ class WatchListModule(BotBehaviorModule):
 	def _require_auth(self, uid):
 		if uid not in self._anilist_users:
 			msg = "I haven't been given permission to access <@!" + uid + ">'s Anilist profile yet! But they can"
-			msg += " authorize me with the `animelist-auth` command."
+			msg += " authorize me with the `anilist-auth` command."
 			raise BotModuleError(msg)
 
 

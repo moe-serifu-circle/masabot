@@ -5,7 +5,7 @@ __all__ = [
 	'animeme',
 	'translate',
 	'roll',
-	'watchlist'
+	'animelist'
 ]
 
 
