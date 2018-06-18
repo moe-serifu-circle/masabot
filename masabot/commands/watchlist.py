@@ -1,6 +1,7 @@
 from . import BotBehaviorModule, InvocationTrigger
 from ..bot import BotModuleError, BotSyntaxError
 from ..http import HttpAgent
+from .. import util
 
 
 import urllib.parse
@@ -74,12 +75,15 @@ class WatchListModule(BotBehaviorModule):
 				raise BotSyntaxError(msg)
 			uid = m.group(1)
 		anime_list = self.get_user_anime_list(uid)
-		msg = "Okay! Here is <@!" + context.author.id + ">'s Anilist:\n\n"
-		msg += self.format_anime_list(anime_list)
-		await self.bot_api.reply(context, msg)
-		_log.info(anime_list)
+		pager = util.DiscordPager()
+		pager.add_line("Okay! Here is <@!" + context.author.id + ">'s Anilist:")
+		pager.add_line()
+		self.format_anime_list(anime_list, pager)
+		for page in pager.get_pages():
+			await self.bot_api.reply(context, page)
 
-	def format_anime_list(self, anime_list):
+	# noinspection PyMethodMayBeStatic
+	def format_anime_list(self, anime_list, pager):
 		sorted_by_status = {
 			'CURRENT': [],
 			'PLANNING': [],
@@ -92,34 +96,33 @@ class WatchListModule(BotBehaviorModule):
 		for anime in anime_list:
 			sorted_by_status[anime['status']].append(anime)
 
-		def format_eps(anime_list, heading, show_eps):
-			msg = ""
+		def format_eps(anime_list, heading, show_eps, pager):
 			if len(anime_list) > 0:
-				msg += heading + ":\n```\n"
+				pager.add_line(heading + ":")
+				pager.start_code_block()
 				for anime in anime_list:
-					msg += '* "'
+					list_item = '* "'
 					titles = anime['media']['title']
 					if titles['english'] is not None:
-						msg += titles['english']
+						list_item += titles['english']
 					elif titles['romaji'] is not None:
-						msg += titles['romaji']
+						list_item += titles['romaji']
 					else:
-						msg += titles['native']
-					msg += '"'
+						list_item += titles['native']
+					list_item += '"'
 					if show_eps:
-						msg += ' (' + str(anime['progress']) + "/" + str(anime['media']['episodes']) + " episodes)"
-					msg += '\n'
-					msg += '```\n'
-			return msg
+						list_item += ' (' + str(anime['progress']) + "/" + str(anime['media']['episodes']) + " episodes)"
+					pager.add_line(list_item)
+				pager.end_code_block()
 
-		msg = format_eps(sorted_by_status['CURRENT'], "Current Anime", True)
-		msg += format_eps(sorted_by_status['REPEATING'], "Repeating", True)
-		msg += format_eps(sorted_by_status['COMPLETED'], "Completed", False)
-		msg += format_eps(sorted_by_status['PAUSED'], "On-hold", True)
-		msg += format_eps(sorted_by_status['DROPPED'], "Dropped", True)
-		msg += format_eps(sorted_by_status['PLANNING'], "Plan-to-watch", False)
+		format_eps(sorted_by_status['CURRENT'], "Current Anime", True, pager)
+		format_eps(sorted_by_status['REPEATING'], "Repeating", True, pager)
+		format_eps(sorted_by_status['COMPLETED'], "Completed", False, pager)
+		format_eps(sorted_by_status['PAUSED'], "On-hold", True, pager)
+		format_eps(sorted_by_status['DROPPED'], "Dropped", True, pager)
+		format_eps(sorted_by_status['PLANNING'], "Plan-to-watch", False, pager)
 
-		return msg
+		return pager
 
 	def get_user_anime_list(self, uid, include_private=False):
 		self._require_auth(uid)
