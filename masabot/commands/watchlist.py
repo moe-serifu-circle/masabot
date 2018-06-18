@@ -27,7 +27,8 @@ class WatchListModule(BotBehaviorModule):
 			help_text=help_text,
 			triggers=[
 				InvocationTrigger("animelist"),
-				InvocationTrigger("animelist-auth")
+				InvocationTrigger("animelist-update"),
+				InvocationTrigger("animelist-auth"),
 			],
 			has_state=True
 		)
@@ -54,7 +55,7 @@ class WatchListModule(BotBehaviorModule):
 
 	def get_state(self):
 		return {
-			'anilist-users': self._anilist_users
+			'anilist-users': self._anilist_users,
 		}
 
 	async def on_invocation(self, context, command, *args):
@@ -65,6 +66,99 @@ class WatchListModule(BotBehaviorModule):
 				await self.bot_api.reply(context, "I already have an access token for you!")
 		elif command == "animelist":
 			await self._show_anilist(context, args)
+		elif command == "animelist-update":
+			await self._add_anilist_episode(context, *args)
+
+	async def _add_anilist_episode(self, context, *args):
+		if len(args) < 1:
+			raise BotSyntaxError("I need to know the name of the show you want to mark down your progress on.")
+		search = args[0]
+		if len(args) > 1:
+			try:
+				ep_count = int(args[1])
+			except ValueError:
+				msg = "The second argument should be the number of episodes, and " + repr(args[1]) + " is not a whole"
+				msg += " number!"
+				raise BotSyntaxError(msg)
+		else:
+			ep_count = None
+
+		uid = context.author.id
+		await self.bot_api.reply_typing(context)
+		anime_list = self.get_user_anime_list(uid, include_nsfw=self.bot_api.is_nsfw_channel(context))
+
+		matching_titles = []
+		for x in anime_list:
+			if x['status'] != 'REPEATING' and x['status'] != 'CURRENT':
+				continue
+			titles = x['media']['title']
+
+			if titles['romaji'] is not None:
+				romaji = titles['romaji'].strip().lower()
+			else:
+				romaji = ''
+
+			if titles['native'] is not None:
+				native = titles['native'].strip()
+			else:
+				native = ''
+
+			if titles['english'] is not None:
+				eng = titles['english'].strip().lower()
+			else:
+				eng = ''
+
+			lower_search = search.strip().lower()
+			if lower_search in romaji or lower_search in native or lower_search in eng:
+				matching_titles.append(x)
+
+		if len(matching_titles) < 1:
+			msg = "I couldn't find any show on your Anilist that matches that! Be sure to go online and add it first."
+			raise BotModuleError(msg)
+
+		if len(matching_titles) > 1:
+			old_matching_titles = matching_titles
+			matching_titles = []
+			for x in old_matching_titles:
+				titles = x['media']['title']
+				romaji = titles['romaji']
+				native = titles['native']
+				eng = titles['english']
+
+				if romaji is None:
+					romaji = ''
+				if native is None:
+					native = ''
+				if eng is None:
+					eng = ''
+
+				if search in romaji or search in native or search in eng:
+					matching_titles.append(x)
+
+		if len(matching_titles) > 1:
+			msg = "I'm sorry, but you've got multiple shows that match that in your Anilist! Can you be a bit more"
+			msg += " specific?"
+			raise BotModuleError(msg)
+
+		entry = matching_titles[0]
+		if ep_count is None:
+			ep_count = entry['progress'] + 1
+
+		if ep_count > entry['media']['episodes']:
+			raise BotModuleError("You've already watched all the episodes in that show!")
+
+		if ep_count == entry['media']['episodes']:
+			new_state = 'COMPLETED'
+		else:
+			new_state = None
+
+		new_progress, new_status = self.update_user_list_entry(uid, entry['id'], ep_count, new_state)
+		msg = "Okay! I've updated your Anilist watch count for " + repr(str(entry['media']['title']['userPreferred']))
+		msg += " to " + str(new_progress) + " out of " + str(entry['media']['episodes']) + " episode"
+		msg += ('s' if entry['media']['episodes'] != 1 else '') + '.'
+		if new_status == 'COMPLETED':
+			msg += " Wow! You finished it!"
+		await self.bot_api.reply(context, msg)
 
 	async def _show_anilist(self, context, args):
 		uid = context.author.id
@@ -75,8 +169,8 @@ class WatchListModule(BotBehaviorModule):
 				raise BotSyntaxError(msg)
 			uid = m.group(1)
 		await self.bot_api.reply_typing(context)
-		anime_list = self.get_user_anime_list(uid)
-		pager = util.DiscordPager()
+		anime_list = self.get_user_anime_list(uid, include_nsfw=self.bot_api.is_nsfw_channel(context))
+		pager = util.DiscordPager("_(" + context.mention() + "'s Anilist, continued)_")
 		pager.add_line("Okay! Here is <@!" + context.author.id + ">'s Anilist:")
 		pager.add_line()
 		self.format_anime_list(anime_list, pager)
@@ -125,7 +219,48 @@ class WatchListModule(BotBehaviorModule):
 
 		return pager
 
-	def get_user_anime_list(self, uid, include_private=False):
+	def update_user_list_entry(self, uid, entry_id, ep_count=None, status=None):
+		if ep_count is None and status is None:
+			raise ValueError("Need to set at least one value")
+
+		self._require_auth(uid)
+
+		gql = (
+			"mutation UpdateUserAnimeEpisodes($entry_id: Int, $status: MediaListStatus, $episodes: Int) {"
+			"	SaveMediaListEntry(id: $entry_id, status: $status, progress: $episodes) {"
+			"		id"
+			"		status"
+			"		progress"
+			"		media {"
+			"			episodes"
+			"		}"
+			"	}"
+			"}"
+		)
+
+		cl = self._anilist_clients[uid]
+		payload = {
+			'query': gql,
+			'variables': {
+				"entry_id": entry_id
+			}
+		}
+		if ep_count is not None:
+			payload['variables']['episodes'] = ep_count
+		if status is not None:
+			payload['variables']['status'] = status
+
+		_, resp = cl.request('POST', '/', payload=payload, auth=True)
+		actual_id = resp['data']['SaveMediaListEntry']['id']
+
+		if actual_id != entry_id:
+			raise ValueError("Returned ID not same as sent ID")
+
+		new_status = resp['data']['SaveMediaListEntry']['status']
+		new_progress = resp['data']['SaveMediaListEntry']['progress']
+		return new_progress, new_status
+
+	def get_user_anime_list(self, uid, include_private=False, include_nsfw=False):
 		self._require_auth(uid)
 
 		gql = (
@@ -139,6 +274,7 @@ class WatchListModule(BotBehaviorModule):
 			"			perPage"
 			"		}"
 			"		mediaList(userId: $uid, type: ANIME, sort: $sort) {"
+			"			id"
 			"			status"
 			"			score"
 			"			progress"
@@ -181,7 +317,12 @@ class WatchListModule(BotBehaviorModule):
 			}
 			_, resp = cl.request('POST', '/', payload=payload, auth=True)
 			page_list = resp['data']['Page']['mediaList']
-			full_list += [x for x in page_list if x['private'] == include_private]
+			for x in page_list:
+				if x['private'] and not include_private:
+					continue
+				if x['media']['isAdult'] and not include_nsfw:
+					continue
+				full_list.append(x)
 			page_info = resp["data"]["Page"]["pageInfo"]
 			if page_info['currentPage'] == page_info['lastPage']:
 				break

@@ -28,7 +28,7 @@ def _fmt_channel(ch):
 	"""
 
 	try:
-		return "DM " + ch.id + "/" + ch.name + "#" + ch.discriminator
+		return "DM " + str(ch.id) + "/" + str(ch.name) + "#" + str(ch.discriminator)
 	except AttributeError:
 		if ch.type == discord.ChannelType.text or ch.type == discord.ChannelType.voice:
 			return ch.server.id + "/" + repr(ch.server.name) + " #" + ch.name
@@ -253,7 +253,7 @@ class MasaBot(object):
 	def is_nsfw_channel(self, ch_context):
 		"""
 		Check if the given context contains an NSFW channel. Does not actually use the Discord API; uses supplementary
-		info given to MasaBot in marknsfw and unmark nsfw commands.
+		info given to MasaBot in mark nsfw and unmark nsfw commands.
 
 		:type ch_context: BotContext | discord.Channel
 		:param ch_context: The BotContext or Channel to check if is NSFW.
@@ -263,6 +263,8 @@ class MasaBot(object):
 		try:
 			ch_id = ch_context.id
 		except AttributeError:
+			if ch_context.is_pm:
+				return True
 			ch_id = ch_context.source.id
 
 		if ch_id not in self._nsfw_channels:

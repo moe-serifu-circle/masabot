@@ -68,12 +68,13 @@ class DiscordPager(object):
 	The messages can then all be sent sequentially.
 	"""
 
-	def __init__(self):
+	def __init__(self, continue_message=None):
 		self._pages = []
 		self._pages.append("")
 		self._prepend_newline = False
 		self._prepend_codeblock = False
 		self._in_code_block = False
+		self._continue_message = continue_message
 
 	def add_line(self, line=""):
 		self.add(line)
@@ -98,6 +99,8 @@ class DiscordPager(object):
 			if was_in_code_block:
 				self._pages[-1] += '\n```'
 			self._pages.append("")
+			if self._continue_message is not None:
+				self._pages[-1] += str(self._continue_message) + '\n'
 			if was_in_code_block or self._prepend_codeblock:
 				self._pages[-1] += '```\n'
 				self._in_code_block = True
