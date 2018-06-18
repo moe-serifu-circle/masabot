@@ -1,5 +1,5 @@
 from . import BotBehaviorModule, InvocationTrigger
-from ..bot import BotModuleError, BotSyntaxError
+from ..util import BotModuleError, BotSyntaxError
 from ..http import HttpAgent
 from .. import util
 
@@ -74,6 +74,7 @@ class WatchListModule(BotBehaviorModule):
 				msg = "I can only look up the anime lists of users, and " + repr(str(args[0])) + " is not a user!"
 				raise BotSyntaxError(msg)
 			uid = m.group(1)
+		await self.bot_api.reply_typing(context)
 		anime_list = self.get_user_anime_list(uid)
 		pager = util.DiscordPager()
 		pager.add_line("Okay! Here is <@!" + context.author.id + ">'s Anilist:")
@@ -160,6 +161,7 @@ class WatchListModule(BotBehaviorModule):
 			"					native"
 			"					userPreferred"
 			"				}"
+			"				isAdult"
 			"			}"
 			"		}"
 			"	}"

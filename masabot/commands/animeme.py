@@ -1,5 +1,5 @@
 from . import BotBehaviorModule, InvocationTrigger
-from ..bot import BotSyntaxError, BotModuleError
+from ..util import BotSyntaxError, BotModuleError
 
 import requests
 import random

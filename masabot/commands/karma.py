@@ -1,5 +1,5 @@
 from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
-from ..bot import BotSyntaxError
+from ..util import BotSyntaxError
 
 import re
 import logging

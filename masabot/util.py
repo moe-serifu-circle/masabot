@@ -2,18 +2,64 @@
 discord_char_limit = 2000
 
 
-def get_uid_from_mention(mention_text):
+class BotSyntaxError(Exception):
+	def __init__(self, message):
+		super().__init__(message)
+
+
+class BotPermissionError(Exception):
+	def __init__(self, context, command, module=None, message=None):
+		if message is None:
+			message = "Operation requires operator permission"
+		self.author = context.author
+		self.command = command
+		self.module = module
+		super().__init__(message)
+
+
+class BotModuleError(RuntimeError):
+	def __init__(self, message):
+		super().__init__(message)
+
+
+def parse_user(mention_text):
 	"""
+	Parse a user identifier from a user mention.
+
 	:type mention_text: str
+	:param mention_text: The mention text.
+	:rtype: str
+	:return: The user ID.
 	"""
-	"<@!?(\d+)>"
 	mention_text = mention_text.strip()
 	if not mention_text.startswith('<@') or not mention_text.endswith('>'):
-		raise ValueError("Not a mention: '" + mention_text + "'")
-	mention_text = mention_text[2:-1]
-	if mention_text.startswith('!'):
-		mention_text = mention_text[1:]
-	return str(int(mention_text))
+		raise BotSyntaxError(repr(str(mention_text)) + " is not a user mention")
+	parsed = mention_text[2:-1]
+	if parsed.startswith('!'):
+		parsed = parsed[1:]
+	if not parsed.isdigit():
+		raise BotSyntaxError(repr(str(mention_text)) + " is not a user mention")
+
+	return parsed
+
+
+def parse_channel(mention_text):
+	"""
+	Parse a channel identifier from a channel mention.
+
+	:type mention_text: str
+	:param mention_text: The mention text.
+	:rtype: str
+	:return: The channel ID.
+	"""
+	mention_text = mention_text.strip()
+	if not mention_text.startswith('<#') or not mention_text.endswith('>'):
+		raise BotSyntaxError(repr(str(mention_text)) + " is not a channel mention")
+	parsed = mention_text[2:-1]
+	if not parsed.isdigit():
+		raise BotSyntaxError(repr(str(mention_text)) + " is not a channel mention")
+
+	return parsed
 
 
 class DiscordPager(object):

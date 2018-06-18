@@ -1,5 +1,5 @@
 from . import BotBehaviorModule, InvocationTrigger
-from ..bot import BotSyntaxError
+from ..util import BotSyntaxError
 
 
 import logging
