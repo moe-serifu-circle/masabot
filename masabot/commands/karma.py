@@ -3,6 +3,7 @@ from ..util import BotSyntaxError
 
 import re
 import logging
+import random
 
 
 _log = logging.getLogger(__name__)
@@ -38,13 +39,20 @@ class KarmaModule(BotBehaviorModule):
 
 		self._karma = {}
 		self._buzzkill_limit = 5
+		self._tsundere_chance = 0.1
 
 	def get_state(self):
-		return {'karma': self._karma, 'buzzkill': self._buzzkill_limit}
+		return {
+			'karma': self._karma,
+			'buzzkill': self._buzzkill_limit,
+			'tsundere-chance': self._tsundere_chance
+		}
 
 	def set_state(self, state):
 		self._karma = state['karma']
 		self._buzzkill_limit = state['buzzkill']
+		if 'tsundere-chance' in state:
+			self._tsundere_chance = state['tsundere-chance']
 
 	async def on_invocation(self, context, command, *args):
 		if command == "karma":
@@ -122,7 +130,11 @@ class KarmaModule(BotBehaviorModule):
 		self._karma[uuid] += amount
 		_log.debug("Modified karma of user " + uuid + " by " + str(amount) + "; new total " + str(self._karma[uuid]))
 
-		msg = "Okay! <@" + uuid + ">'s karma is now " + str(self._karma[uuid])
+		if random.random() < self._tsundere_chance and amount > 0:
+			msg = "F-fine, <@" + uuid + ">'s karma is now " + str(self._karma[uuid]) + ". B-b-but it's not like I like"
+			msg += " them or anything weird like that. So don't get the wrong idea! B-baka..."
+		else:
+			msg = "Okay! <@" + uuid + ">'s karma is now " + str(self._karma[uuid])
 		return msg
 
 
