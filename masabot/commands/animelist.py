@@ -17,7 +17,7 @@ _log.setLevel(logging.DEBUG)
 
 class WatchListModule(BotBehaviorModule):
 
-	def __init__(self, bot_api):
+	def __init__(self, bot_api, resource_root):
 		help_text = "This module accesses your list on Anilist for viewing and updating! You can view your Anilist"
 		help_text += " entries by typing `anilist` by itself, and you can view other users' Anilists by typing their"
 		help_text += " name after the command.\n\nBefore using the anilist module, you will need to give me permission"
@@ -41,6 +41,7 @@ class WatchListModule(BotBehaviorModule):
 				InvocationTrigger("anilist-update"),
 				InvocationTrigger("anilist-auth"),
 			],
+			resource_root=resource_root,
 			has_state=True
 		)
 

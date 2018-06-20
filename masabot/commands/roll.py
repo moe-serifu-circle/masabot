@@ -12,7 +12,7 @@ _log.setLevel(logging.DEBUG)
 
 class DiceRollerModule(BotBehaviorModule):
 
-	def __init__(self, bot_api):
+	def __init__(self, bot_api, resource_root):
 		help_text = "To roll the dice, use the `roll` command followed by the number of dice and sides to role in the"
 		help_text += " format <X>d<Y>. This will roll X number of Y-sided dice.\n\nExample: `roll 4d6` will roll 4"
 		help_text += " d6's.\n\nIf the number of dice is left out, a single die will be rolled. If the number of sides"
@@ -32,6 +32,7 @@ class DiceRollerModule(BotBehaviorModule):
 				InvocationTrigger('roll-maxsides'),
 				InvocationTrigger('roll-maxdice')
 			],
+			resource_root=resource_root,
 			has_state=True
 		)
 

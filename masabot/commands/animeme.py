@@ -14,7 +14,7 @@ _log.setLevel(logging.DEBUG)
 
 class AnimemeModule(BotBehaviorModule):
 
-	def __init__(self, bot_api):
+	def __init__(self, bot_api, resource_root):
 		help_text = "Generates anime memes by assigning a random background to the given text. Type `animeme` followed"
 		help_text += " by one or two sentences in quotes to generate a meme for them. Example: `animeme \"This meme\""
 		help_text += " \"is awesome!\"`.\n\nOps are able to add new images to the system from by using the"
@@ -33,6 +33,7 @@ class AnimemeModule(BotBehaviorModule):
 				InvocationTrigger('animeme-remove'),
 				InvocationTrigger('animeme-info')
 			],
+			resource_root=resource_root,
 			has_state=True
 		)
 

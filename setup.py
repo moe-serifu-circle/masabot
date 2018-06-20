@@ -22,7 +22,7 @@ def find_version():
 
 
 def get_required_packages():
-	return ['discord.py', 'requests', 'pynacl', 'googletrans']
+	return ['discord.py', 'requests', 'pynacl', 'googletrans', 'Pillow']
 
 
 if len(sys.argv) > 1 and sys.argv[1] == 'get_required_packages':

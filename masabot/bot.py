@@ -958,7 +958,7 @@ class MasaBot(object):
 			}
 			new_timer_handlers = list(self._timers)
 			mod = importlib.import_module("masabot.commands." + module_str)
-			bot_module = mod.BOT_MODULE_CLASS(self)
+			bot_module = mod.BOT_MODULE_CLASS(self, 'resources')
 			if bot_module.name in names:
 				raise BotModuleError("cannot load duplicate module '" + bot_module.name + "'")
 			for t in bot_module.triggers:
@@ -1275,6 +1275,8 @@ class MasaBot(object):
 
 
 def start():
+	if not os.path.exists('resources'):
+		os.mkdir('resources')
 	bot = MasaBot("config.json")
 	bot.run()
 

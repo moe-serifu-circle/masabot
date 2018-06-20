@@ -12,7 +12,7 @@ _log.setLevel(logging.DEBUG)
 
 class KarmaModule(BotBehaviorModule):
 
-	def __init__(self, bot_api):
+	def __init__(self, bot_api, resource_root):
 		help_text = "The karma system assigns arbitrary points to users (and generic things) and allows other uses to"
 		help_text += " increase or decrease the number of karma points.\n\nTo change the number of points, mention a"
 		help_text += " user or any item followed by a '++' or '--' to increase or decrease their karma. Add more"
@@ -34,6 +34,7 @@ class KarmaModule(BotBehaviorModule):
 				InvocationTrigger('karma'),
 				InvocationTrigger('karma-buzzkill')
 			],
+			resource_root=resource_root,
 			has_state=True
 		)
 
