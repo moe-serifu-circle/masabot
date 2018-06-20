@@ -7,6 +7,7 @@ import logging
 import re
 import io
 
+from PIL import Image, ImageFont, ImageDraw
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
@@ -163,23 +164,25 @@ class AnimemeModule(BotBehaviorModule):
 
 		_log.debug("Fetching for template ID " + str(img_id))
 
-		response = requests.post("https://api.imgflip.com/caption_image", data={
-			"template_id": img_id,
-			"username": self._user,
-			"password": self._pass,
-			"text0": meme_line_1,
-			"text1": meme_line_2
-		})
+		im = Image.open(self.open_resource('templates', str(img_id))).convert("RGB")
+		fillcolor = "red"
+		shadowcolor = "yellow"
+		text = "hi there"
+		font = ImageFont.truetype('fonts/anton/anton-regular.ttf', 30)
+		draw = ImageDraw.Draw(im)
+		x, y = 10, 10
 
-		if not response.json()['success']:
-			msg = ""
-			if 'error_message' in response.json():
-				msg = " " + response.json()['error_message']
-			raise BotModuleError("Imgflip returned an error when I tried to make the meme!" + msg)
+		draw.text((x - 1, y - 1), text, font=font, fill=shadowcolor)
+		draw.text((x + 1, y - 1), text, font=font, fill=shadowcolor)
+		draw.text((x - 1, y + 1), text, font=font, fill=shadowcolor)
+		draw.text((x + 1, y + 1), text, font=font, fill=shadowcolor)
 
-		msg = response.json()['data']['url'] + " _(" + str(img_id) + ")_"
+		draw.text((x, y), text, font=font, fill=fillcolor)
 
-		await self.bot_api.reply(context, msg)
+		buf = io.BytesIO()
+		im.save(buf, format='PNG')
+
+		await self.bot_api.reply_with_file(context, buf, "thefile", "example file")
 
 	# noinspection PyMethodMayBeStatic
 	async def get_template_preview(self, template_id):

@@ -1,5 +1,6 @@
 import datetime
-import os
+import os.path
+import logging
 
 __all__ = [
 	'karma',
@@ -8,6 +9,11 @@ __all__ = [
 	'roll',
 	'animelist'
 ]
+
+
+
+_log = logging.getLogger(__name__)
+_log.setLevel(logging.DEBUG)
 
 
 def mention_target_any():
@@ -82,8 +88,51 @@ class BotBehaviorModule(object):
 		if not os.path.exists(self._resource_dir):
 			os.mkdir(self._resource_dir)
 
-	def get_resource_path(self, resource):
-		return os.path.join(self._resource_dir, resource)
+	def open_resource(self, *resource_components, **kwargs):
+		"""
+		Open a resource in binary mode and get the file pointer for it. All resources are opened in binary mode; if text
+		mode is needed, module state should be used instead.
+
+		:type resource_components: str
+		:param resource: The path to the resource to open. Must be relative to the resource store root for the module.
+		:type for_writing: bool
+		:param for_writing: Whether to open the resource for writing instead. Defaults to False.
+		:type append: bool
+		:param append: If opening the resource for writing, this sets whether to append to the end of the resource.
+		Defaults to False.
+		:rtype: File-like object.
+		:return: The file like object ready for use.
+		"""
+
+		for_writing = kwargs.get('for_writing', False)
+		append = kwargs.get('append', False)
+
+		if resource_components[-1].endswith('/'):
+			raise ValueError("Resource cannot end in a '/'")
+
+		path = os.path.join(self._resource_dir, *resource_components)
+		if for_writing:
+			path_dirs = []
+			parent_dir = resource_components[:-1]
+
+			_log.info(parent_dir)
+			while parent_dir != '':
+				parent_dir, cur_dir = parent_dir[:-1], parent_dir[-1]
+				path_dirs.insert(0, cur_dir)
+
+			cur_create_dir = self._resource_dir
+			for new_dir in path_dirs:
+				cur_create_dir = os.path.join(cur_create_dir, new_dir)
+				if not os.path.exists(cur_create_dir):
+					os.mkdir(cur_create_dir)
+
+			mode = 'wb'
+			if append:
+				mode += '+'
+		else:
+			mode = 'rb'
+
+		return open(path, mode)
 
 	def load_config(self, config):
 		pass
