@@ -55,13 +55,24 @@ class KarmaModule(BotBehaviorModule):
 		if 'tsundere-chance' in state:
 			self._tsundere_chance = state['tsundere-chance']
 
-	async def on_invocation(self, context, command, *args):
+	async def on_invocation(self, context, metadata, command, *args):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type command: str
+		:type args: str
+		"""
 		if command == "karma":
 			await self.show_karma(context, args)
 		elif command == "karma-buzzkill":
 			await self.configure_buzzkill(context, args)
 
-	async def on_regex_match(self, context, *match_groups):
+	async def on_regex_match(self, context, metadata, *match_groups):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type match_groups: str
+		"""
 		msg = None
 
 		user = match_groups[1]

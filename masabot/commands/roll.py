@@ -49,7 +49,13 @@ class DiceRollerModule(BotBehaviorModule):
 		self._max_sides = state.get('max-sides', 100)
 		self._max_count = state.get('max-count', 100)
 
-	async def on_invocation(self, context, command, *args):
+	async def on_invocation(self, context, metadata, command, *args):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type command: str
+		:type args: str
+		"""
 		if command == 'roll':
 			await self.roll_dice(context, args)
 		elif command == 'roll-maxsides':

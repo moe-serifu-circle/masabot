@@ -70,7 +70,13 @@ class WatchListModule(BotBehaviorModule):
 			'anilist-users': self._anilist_users,
 		}
 
-	async def on_invocation(self, context, command, *args):
+	async def on_invocation(self, context, metadata, command, *args):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type command: str
+		:type args: str
+		"""
 		if command == "anilist-auth":
 			if context.author.id not in self._anilist_users:
 				await self.authorize(context)

@@ -59,7 +59,13 @@ class AnimemeModule(BotBehaviorModule):
 		}
 		return new_state
 
-	async def on_invocation(self, context, command, *args):
+	async def on_invocation(self, context, metadata, command, *args):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type command: str
+		:type args: str
+		"""
 		if command == "animeme":
 			await self.generate_animeme(context, args)
 		elif command == "animeme-add":
@@ -164,7 +170,7 @@ class AnimemeModule(BotBehaviorModule):
 
 		_log.debug("Fetching for template ID " + str(img_id))
 
-		im = Image.open(self.open_resource('templates', str(img_id))).convert("RGB")
+		im = Image.open(self.open_resource('templates/' + str(img_id))).convert("RGB")
 		fillcolor = "red"
 		shadowcolor = "yellow"
 		text = "hi there"

@@ -69,7 +69,13 @@ class TranslationModule(BotBehaviorModule):
 			'ro': 'romanian'
 		}
 
-	async def on_invocation(self, context, command, *args):
+	async def on_invocation(self, context, metadata, command, *args):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type command: str
+		:type args: str
+		"""
 		if len(args) < 1:
 			raise BotSyntaxError("I don't know what you want me to translate...")
 

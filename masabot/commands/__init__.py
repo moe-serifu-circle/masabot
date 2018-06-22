@@ -11,7 +11,6 @@ __all__ = [
 ]
 
 
-
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
@@ -88,13 +87,23 @@ class BotBehaviorModule(object):
 		if not os.path.exists(self._resource_dir):
 			os.mkdir(self._resource_dir)
 
-	def open_resource(self, *resource_components, **kwargs):
+	def open_resource(self, resource, for_writing=False, append=False):
 		"""
 		Open a resource in binary mode and get the file pointer for it. All resources are opened in binary mode; if text
 		mode is needed, module state should be used instead.
 
-		:type resource_components: str
-		:param resource: The path to the resource to open. Must be relative to the resource store root for the module.
+		All resources exist within a generic 'resource store'; each module has its own separate resource store that
+		no other module can access. The specific details of how the resource store functions is up to the
+		implementation, and callers should not rely on such details. The current implementation stores resources as
+		files on the filesystem, but this may change in the future.
+
+		The resource should be given as relative to the module's resource store, which is automatically set up by this
+		module and can be depended on to already exist. I.e. If a module needed the resource located in
+		<module_store>/images/my_image.png, the path "images/my_image.png" should be used. The 'flavor' of path used is
+		platform-agnostic; unix-style paths should always be used.
+
+		:type resource: str
+		:param resource: The path to the resource to open.
 		:type for_writing: bool
 		:param for_writing: Whether to open the resource for writing instead. Defaults to False.
 		:type append: bool
@@ -103,36 +112,23 @@ class BotBehaviorModule(object):
 		:rtype: File-like object.
 		:return: The file like object ready for use.
 		"""
+		if resource.endswith('/'):
+			raise ValueError("Resource cannot end in a '/' character.")
+		if resource.startswith('/'):
+			raise ValueError("Resource cannot start with a '/' character.")
 
-		for_writing = kwargs.get('for_writing', False)
-		append = kwargs.get('append', False)
+		path = os.path.normpath(resource)
 
-		if resource_components[-1].endswith('/'):
-			raise ValueError("Resource cannot end in a '/'")
-
-		path = os.path.join(self._resource_dir, *resource_components)
 		if for_writing:
-			path_dirs = []
-			parent_dir = resource_components[:-1]
-
-			_log.info(parent_dir)
-			while parent_dir != '':
-				parent_dir, cur_dir = parent_dir[:-1], parent_dir[-1]
-				path_dirs.insert(0, cur_dir)
-
-			cur_create_dir = self._resource_dir
-			for new_dir in path_dirs:
-				cur_create_dir = os.path.join(cur_create_dir, new_dir)
-				if not os.path.exists(cur_create_dir):
-					os.mkdir(cur_create_dir)
-
+			self._create_resource_dirs(path)
 			mode = 'wb'
 			if append:
 				mode += '+'
 		else:
 			mode = 'rb'
 
-		return open(path, mode)
+		full_path = os.path.join(self._resource_dir, path)
+		return open(full_path, mode)
 
 	def load_config(self, config):
 		pass
@@ -143,14 +139,47 @@ class BotBehaviorModule(object):
 	def set_state(self, state):
 		pass
 
-	async def on_invocation(self, context, command, *args):
+	async def on_invocation(self, context, metadata, command, *args):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type command: str
+		:type args: str
+		"""
 		pass
 
-	async def on_mention(self, context, message, mention_names):
+	async def on_mention(self, context, metadata, message, mention_names):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type message: str
+		:type mention_names: list[str]
+		"""
 		pass
 
-	async def on_regex_match(self, context, *match_groups):
+	async def on_regex_match(self, context, metadata, *match_groups):
+		"""
+		:type context: masabot.bot.BotContext
+		:type metadata: masabot.util.MessageMetadata
+		:type match_groups: str
+		"""
 		pass
 
 	async def on_timer_fire(self):
 		pass
+
+	def _create_resource_dirs(self, resource_path):
+		path_dirs = []
+		parent_dir = os.path.split(resource_path)[0]
+
+		_log.info(parent_dir)
+		while parent_dir != '':
+			parent_dir, cur_dir = os.path.split(parent_dir)
+			path_dirs.insert(0, cur_dir)
+
+		cur_create_dir = self._resource_dir
+		for new_dir in path_dirs:
+			_log.info(parent_dir)
+			cur_create_dir = os.path.join(cur_create_dir, new_dir)
+			if not os.path.exists(cur_create_dir):
+				os.mkdir(cur_create_dir)

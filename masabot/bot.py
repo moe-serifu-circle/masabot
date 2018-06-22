@@ -10,7 +10,7 @@ import time
 import re
 import shlex
 from . import configfile, commands, util
-from .util import BotSyntaxError, BotModuleError, BotPermissionError
+from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata
 
 
 _log = logging.getLogger(__name__)
@@ -1078,6 +1078,7 @@ class MasaBot(object):
 
 	async def _handle_invocation(self, message):
 		context = BotContext(message)
+		meta = MessageMetadata.from_message(message)
 
 		log_msg = "[" + _fmt_channel(context.source) + "]: received invocation " + repr(message.content)
 		log_msg += " from " + context.author.id + "/" + context.author_name()
@@ -1133,7 +1134,7 @@ class MasaBot(object):
 			await self._execute_action(context, self.mark_sfw(context, ch_name))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
-				await self._execute_action(context, handler.on_invocation(context, cmd, *args), handler)
+				await self._execute_action(context, handler.on_invocation(context, meta, cmd, *args), handler)
 		else:
 			_log.debug("Ignoring unknown command " + repr(cmd))
 
@@ -1141,6 +1142,7 @@ class MasaBot(object):
 		handled_already = []
 		mentions = message.raw_mentions
 		context = BotContext(message)
+		meta = MessageMetadata.from_message(message)
 
 		log_msg = "[" + _fmt_channel(context.source) + "]: received mentions (" + ", ".join(repr(x) for x in mentions)
 		log_msg += ") " + repr(message.content) + " from " + context.author.id + "/" + context.author_name()
@@ -1149,24 +1151,25 @@ class MasaBot(object):
 		if len(self._any_mention_handlers) > 0:
 			for h in self._any_mention_handlers:
 				if h.name not in handled_already:
-					await self._execute_action(context, h.on_mention(context, message.content, mentions), h)
+					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
 					handled_already.append(h.name)
 
 		if '<@' + self._client.user.id + '>' in mentions or '<@!' + self._client.user.id + '>' in mentions:
 			for h in self._self_mention_handlers:
 				if h.name not in handled_already:
-					await self._execute_action(context, h.on_mention(context, message.content, mentions), h)
+					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
 					handled_already.append(h.name)
 
 		for m in mentions:
 			if m in self._mention_handlers:
 				for h in self._mention_handlers[m]:
 					if h.name not in handled_already:
-						await self._execute_action(context, h.on_mention(context, message.content, mentions), h)
+						await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
 						handled_already.append(h.name)
 
 	async def _handle_regex_scan(self, message):
 		context = BotContext(message)
+		meta = MessageMetadata.from_message(message)
 		for regex in self._regex_handlers:
 			h_list = self._regex_handlers[regex]
 
@@ -1179,7 +1182,7 @@ class MasaBot(object):
 				for i in range(regex.groups+1):
 					match_groups.append(m.group(i))
 				for h in h_list:
-					await self._execute_action(context, h.on_regex_match(context, *match_groups), h)
+					await self._execute_action(context, h.on_regex_match(context, meta, *match_groups), h)
 
 	async def _execute_action(self, context, action, mod=None):
 		try:
