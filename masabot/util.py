@@ -1,3 +1,6 @@
+from . import http
+import urllib.parse
+
 
 discord_char_limit = 2000
 
@@ -216,6 +219,23 @@ class Attachment(object):
 		"""
 		return self.width is not None and self.height is not None
 
+	def download(self):
+		"""
+		Downloads the attachment from the URL and returns the bytes that make it up.
+
+		:rtype: bytes
+		:return: The bytes that make up the attachment.
+		"""
+
+		parsed_url = urllib.parse.urlparse(self.url)
+		ssl = False
+		if parsed_url.scheme.lower() == 'https':
+			ssl = True
+
+		agent = http.HttpAgent(parsed_url.netloc, response_payload='binary', ssl=ssl)
+		_, data = agent.request('GET', parsed_url.path)
+		return data
+
 	@staticmethod
 	def from_dict(att_dict):
 		"""
@@ -227,7 +247,7 @@ class Attachment(object):
 		:rtype: Attachment
 		:return: The new attachment.
 		"""
-		att_id = att_dict['att_id']
+		att_id = att_dict['id']
 		filename = att_dict['filename']
 		size = att_dict['size']
 		url = att_dict['url']
@@ -251,6 +271,7 @@ class MessageMetadata(object):
 		if attachments is None:
 			attachments = []
 		self.attachments = list(attachments)
+		""":type : list[Attachment]"""
 
 	def has_attachments(self):
 		"""

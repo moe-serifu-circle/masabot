@@ -1,6 +1,7 @@
 import datetime
 import os.path
 import logging
+import pathlib
 
 __all__ = [
 	'karma',
@@ -87,7 +88,19 @@ class BotBehaviorModule(object):
 		if not os.path.exists(self._resource_dir):
 			os.mkdir(self._resource_dir)
 
-	def open_resource(self, resource, for_writing=False, append=False):
+	def remove_resource(self, resource):
+		"""
+		Removes an existing resource. If the resource does not already exist, this function has no effect.
+
+		:type resource: str
+		:param resource: The resource to remove.
+		"""
+		path = os.path.normpath(resource)
+		full_path = os.path.join(self._resource_dir, path)
+		if os.path.exists(full_path):
+			os.remove(full_path)
+
+	def open_resource(self, resource, for_writing=False):
 		"""
 		Open a resource in binary mode and get the file pointer for it. All resources are opened in binary mode; if text
 		mode is needed, module state should be used instead.
@@ -106,10 +119,8 @@ class BotBehaviorModule(object):
 		:param resource: The path to the resource to open.
 		:type for_writing: bool
 		:param for_writing: Whether to open the resource for writing instead. Defaults to False.
-		:type append: bool
-		:param append: If opening the resource for writing, this sets whether to append to the end of the resource.
 		Defaults to False.
-		:rtype: File-like object.
+		:rtype: io.BytesIO
 		:return: The file like object ready for use.
 		"""
 		if resource.endswith('/'):
@@ -122,13 +133,25 @@ class BotBehaviorModule(object):
 		if for_writing:
 			self._create_resource_dirs(path)
 			mode = 'wb'
-			if append:
-				mode += '+'
 		else:
 			mode = 'rb'
 
 		full_path = os.path.join(self._resource_dir, path)
 		return open(full_path, mode)
+
+	def list_resources(self, pattern='**/*'):
+		"""
+		List the paths to all resources that this module has access to.
+
+		:type pattern: str
+		:param pattern: Limits the returned resources to those that match the globbing pattern. '**' is any number of
+		sub-paths. By default, this is set to '**/*', which returns all resources, but it can be changed to another
+		pattern to alter what is returned; e.g. "**/*.txt" would return all resources that end in .txt, and "*.txt"
+		would return all resources that end in '.txt' that are not in a sub-path.
+		:rtype: list[str]
+		:return: A list of the paths of all resources that currently exist, and are accessible to this module.
+		"""
+		return pathlib.Path(self._resource_dir).glob(pattern)
 
 	def load_config(self, config):
 		pass
@@ -172,14 +195,12 @@ class BotBehaviorModule(object):
 		path_dirs = []
 		parent_dir = os.path.split(resource_path)[0]
 
-		_log.info(parent_dir)
 		while parent_dir != '':
 			parent_dir, cur_dir = os.path.split(parent_dir)
 			path_dirs.insert(0, cur_dir)
 
 		cur_create_dir = self._resource_dir
 		for new_dir in path_dirs:
-			_log.info(parent_dir)
 			cur_create_dir = os.path.join(cur_create_dir, new_dir)
 			if not os.path.exists(cur_create_dir):
 				os.mkdir(cur_create_dir)

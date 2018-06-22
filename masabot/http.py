@@ -74,12 +74,12 @@ class HttpAgent(object):
 		:type request_payload: ``str``
 		:param request_payload: How to encode the payload in requests when no option is given. Valid options
 		are 'json' to send payload as 'application/json', or 'form' to send payload as
-		'application/x-www-form-urlencoded'. Regardless of the choice here, it can be overriden per individual request.
+		'application/x-www-form-urlencoded'. Regardless of the choice here, it can be overridden per individual request.
 		:type response_payload: ``str``
 		:param response_payload: How to decode the payload in responses when no option is given. Valid options
 		are 'json' to decode response payload as 'application/json' and return the interpreted map, 'text' to decode the
 		content as characters, or 'binary' to do no encoding.
-		'application/x-www-form-urlencoded'. Regardless of the choice here, it can be overriden per individual request.
+		'application/x-www-form-urlencoded'. Regardless of the choice here, it can be overridden per individual request.
 		:type ignored_errors: ``list[int]``
 		:param ignored_errors: A list of HTTP codes which should be ignored when checking for exceptions. Normally,
 		HTTP responses that include codes in the 4XX or 5XX will cause an exception to be raised. Pass in a list of ints
