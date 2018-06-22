@@ -173,7 +173,7 @@ class AnimemeModule(BotBehaviorModule):
 			"text1": meme_line_2
 		}
 
-		response = self._client.request('post', '/caption_image', payload=data)
+		_, response = self._client.request('post', '/caption_image', payload=data)
 
 		if not response['success']:
 			msg = ""
