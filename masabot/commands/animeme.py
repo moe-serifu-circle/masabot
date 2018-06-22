@@ -281,6 +281,23 @@ class AnimemeModule(BotBehaviorModule):
 BOT_MODULE_CLASS = AnimemeModule
 
 
+class RangeMap(object):
+
+	def __init__(self, default_value):
+		self._default = default_value
+		self._rules = []
+
+	def add_rule(self, start, end, value):
+		self._rules.insert(0, (start, end, value))
+
+	def get(self, key):
+		for r in self._rules:
+			start, end, value = r
+			if start <= key <= end:
+				return value
+		return self._default
+
+
 class Pen(object):
 
 	def __init__(self, im, max_size, min_size):
@@ -299,7 +316,7 @@ class Pen(object):
 		self._left_bound = 0
 		self._top_bound = 0
 		self._bot_bound = im.height - 1
-		self._font_path = None
+		self._fonts = RangeMap('anton/anton-regular.ttf')
 		self._max_size = max_size
 		self._min_size = min_size
 
@@ -309,8 +326,8 @@ class Pen(object):
 		if bg is not None:
 			self._bg_color = bg
 
-	def set_font(self, path):
-		self._font_path = path
+	def set_font_mapping(self, path, codepoint_start, codepoint_end):
+		self._fonts.add_rule(codepoint_start, codepoint_end, path)
 
 	def set_right_bound(self, bound):
 		self._right_bound = bound
@@ -326,8 +343,20 @@ class Pen(object):
 
 	def draw_top_aligned_text(self, text, center=True):
 		max_width = self._right_bound - self._left_bound + 1
+		font_size = self._max_size
 
-		font = ImageFont.truetype(self._font_path, self._max_size)
+		line_so_far = ""
+		length_so_far = 0
+		while True:
+			word_end = self._find_next_break(text)
+			next_word = text[:word_end]
+			next_word_len = self._get_render_len(next_word, font_size)
+			if word_end != len(text):
+				text = text[word_end:]
+			else:
+				break
+
+
 
 		# first try to fit the whole thing on one line:
 
@@ -340,6 +369,12 @@ class Pen(object):
 		for ch in text:
 			idx += 1
 			cat = unicodedata.category(ch)
-			if cat == 'Lo' or cat.startswith('Z') or ch == '\n' or ch == '\t' or ch == '\r':
+			if cat == 'Lo':
+				return idx + 1
+			elif cat.startswith('Z') or ch == '\n' or ch == '\t' or ch == '\r':
 				return idx
-		return idx + 1
+		return len(text)
+
+	def _get_render_len(self, word, size):
+		for ch in word:
+			self._fonts.get()
