@@ -1,4 +1,5 @@
 from . import BotBehaviorModule, InvocationTrigger
+from .. import http
 from ..util import BotSyntaxError, BotModuleError
 
 import requests
@@ -14,7 +15,7 @@ _log.setLevel(logging.DEBUG)
 
 class AnimemeModule(BotBehaviorModule):
 
-	def __init__(self, bot_api):
+	def __init__(self, bot_api, resource_root):
 		help_text = "Generates anime memes by assigning a random background to the given text. Type `animeme` followed"
 		help_text += " by one or two sentences in quotes to generate a meme for them. Example: `animeme \"This meme\""
 		help_text += " \"is awesome!\"`.\n\nOps are able to add new images to the system from by using the"
@@ -33,12 +34,14 @@ class AnimemeModule(BotBehaviorModule):
 				InvocationTrigger('animeme-remove'),
 				InvocationTrigger('animeme-info')
 			],
+			resource_root=resource_root,
 			has_state=True
 		)
 
 		self.image_ids = []
 		self._user = ""
 		self._pass = ""
+		self._client = http.HttpAgent("api.imgflip.com", ssl=True)
 
 	def load_config(self, config):
 		if 'username' not in config:
@@ -162,21 +165,23 @@ class AnimemeModule(BotBehaviorModule):
 
 		_log.debug("Fetching for template ID " + str(img_id))
 
-		response = requests.post("https://api.imgflip.com/caption_image", data={
+		data={
 			"template_id": img_id,
 			"username": self._user,
 			"password": self._pass,
 			"text0": meme_line_1,
 			"text1": meme_line_2
-		})
+		}
 
-		if not response.json()['success']:
+		response = self._client.request('post', '/caption_image', payload=data)
+
+		if not response['success']:
 			msg = ""
-			if 'error_message' in response.json():
-				msg = " " + response.json()['error_message']
+			if 'error_message' in response:
+				msg = " " + response['error_message']
 			raise BotModuleError("Imgflip returned an error when I tried to make the meme!" + msg)
 
-		msg = response.json()['data']['url'] + " _(" + str(img_id) + ")_"
+		msg = response['data']['url'] + " _(" + str(img_id) + ")_"
 
 		await self.bot_api.reply(context, msg)
 

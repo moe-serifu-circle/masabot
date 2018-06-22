@@ -11,7 +11,7 @@ _log.setLevel(logging.DEBUG)
 
 class TranslationModule(BotBehaviorModule):
 
-	def __init__(self, bot_api):
+	def __init__(self, bot_api, resource_root):
 		help_text = "To translate text, type `tl` followed by the phrase to translate (in quotes):\n\n`tl"
 		help_text += " \"안녕하세요\"`\n\nThe text will be translated to English, and the source language will be"
 		help_text += " automatically detected.\n\nTo set the source language, give the code of the language after the"
@@ -26,6 +26,7 @@ class TranslationModule(BotBehaviorModule):
 			triggers=[
 				InvocationTrigger('tl'),
 			],
+			resource_root=resource_root,
 			has_state=False
 		)
 

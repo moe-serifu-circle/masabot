@@ -1,4 +1,5 @@
 import datetime
+import os
 
 __all__ = [
 	'karma',
@@ -49,7 +50,7 @@ class TimerTrigger(object):
 
 
 class BotBehaviorModule(object):
-	def __init__(self, bot_api, name, desc, help_text, triggers, has_state=False):
+	def __init__(self, bot_api, name, desc, help_text, triggers, resource_root, has_state=False):
 		"""
 		Create a new BotBehaviorModule instance.
 
@@ -65,6 +66,8 @@ class BotBehaviorModule(object):
 		this particular module is displayed.
 		:type triggers: list[InvocationTrigger | RegexTrigger | MentionTrigger | TimerTrigger]
 		:param triggers: All possible triggers that cause this module to be executed.
+		:type resource_root: str
+		:param resource_root: The root directory that resources are to be placed in.
 		:type has_state: bool
 		:param has_state: Whether this module has state. If this is true, then the module should define get_state()
 		set_state() methods for saving state to a dict and setting state from a dict.
@@ -75,6 +78,12 @@ class BotBehaviorModule(object):
 		self.has_state = has_state
 		self.triggers = triggers
 		self.bot_api = bot_api
+		self._resource_dir = os.path.join(resource_root, name)
+		if not os.path.exists(self._resource_dir):
+			os.mkdir(self._resource_dir)
+
+	def get_resource_path(self, resource):
+		return os.path.join(self._resource_dir, resource)
 
 	def load_config(self, config):
 		pass

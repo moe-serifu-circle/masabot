@@ -40,6 +40,8 @@ else
     mkdir ".supervisor"
 fi
 
+python supervisor/supervisor.py redeploy
+
 while [ -n "$running" ]
 do
     python masabot.py
