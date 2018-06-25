@@ -183,13 +183,13 @@ class AnimemeModule(BotBehaviorModule):
 		im = Image.open(self.open_resource('templates/' + self._template_filename(template_id)))
 		":type : Image.Image"
 
-		#self._draw_meme_text(im, upper, lower)
+		self._draw_meme_text(im, meme_line_1, meme_line_2)
 
 		buf = io.BytesIO()
 		im.save(buf, format='PNG')
 		buf.seek(0)
 
-		await self.bot_api.reply_with_file(context, buf, "thefile.png", "example file")
+		await self.bot_api.reply_with_file(context, buf, template_id + "-generated.png")
 
 	# noinspection PyMethodMayBeStatic
 	async def get_template_preview(self, template_id):
@@ -263,19 +263,11 @@ class AnimemeModule(BotBehaviorModule):
 		return all_data
 
 	def _draw_meme_text(self, im, upper, lower):
-		fillcolor = "red"
-		shadowcolor = "yellow"
-		text = "hi there"
-		font = ImageFont.truetype('fonts/anton/anton-regular.ttf', 30)
-		draw = ImageDraw.Draw(im)
-		x, y = 10, 10
-
-		draw.text((x - 1, y - 1), text, font=font, fill=shadowcolor)
-		draw.text((x + 1, y - 1), text, font=font, fill=shadowcolor)
-		draw.text((x - 1, y + 1), text, font=font, fill=shadowcolor)
-		draw.text((x + 1, y + 1), text, font=font, fill=shadowcolor)
-
-		draw.text((x, y), text, font=font, fill=fillcolor)
+		pen = Pen(im, 30, 15)
+		pen.set_color(fg="white", bg="black")
+		pen.draw_top_aligned_text(upper)
+		if lower is not None and lower != '':
+			pen.draw_bottom_aligned_text(lower)
 
 
 BOT_MODULE_CLASS = AnimemeModule
@@ -315,7 +307,7 @@ class Pen(object):
 		self._right_bound = im.width - 1
 		self._left_bound = 0
 		self._top_bound = 0
-		self._bot_bound = im.height - 1
+		self._bottom_bound = im.height - 1
 		self._fonts = RangeMap('anton/anton-regular.ttf')
 		self._max_size = max_size
 		self._min_size = min_size
@@ -343,7 +335,7 @@ class Pen(object):
 		if y is not None:
 			self._pos_y = y
 
-	def draw_top_aligned_text(self, text, center=True):
+	def draw_top_aligned_text(self, text):
 		max_width = self._right_bound - self._left_bound + 1
 		lines, f_size = self._wrap_text(text, max_width)
 
@@ -354,7 +346,23 @@ class Pen(object):
 			line_width = self._get_render_width(line, f_size)
 			offset_x = round((max_width - line_width) / 2)
 			offset_y = round(self._line_spacing / 2)
-			y = (line_num * line_height) + offset_y
+			y = self._top_bound + (line_num * line_height) + offset_y
+			x = offset_x
+			self._draw_text(x, y, text, f_size)
+			line_num += 1
+
+	def draw_bottom_aligned_text(self, text):
+		max_width = self._right_bound - self._left_bound + 1
+		lines, f_size = self._wrap_text(text, max_width)
+
+		true_line_height = ImageFont.truetype(self._fonts.get(ord('A')), f_size).getsize('Ag')[1]
+		line_height = true_line_height + self._line_spacing
+		line_num = 0
+		for line in lines:
+			line_width = self._get_render_width(line, f_size)
+			offset_x = round((max_width - line_width) / 2)
+			offset_y = round(self._line_spacing / 2)
+			y = self._bottom_bound - (line_height * (len(lines) - line_num)) + offset_y
 			x = offset_x
 			self._draw_text(x, y, text, f_size)
 			line_num += 1
@@ -363,9 +371,17 @@ class Pen(object):
 		cur_x = x
 		cur_y = y
 		for ch in text:
-			f = ImageFont.truetype(self._fonts.get(ord(ch)))
+			f = ImageFont.truetype(self._fonts.get(ord(ch)), size=size)
+			b = self._border_width
 
+			self._ctx.text((cur_x - b, cur_y - b), ch, font=f, fill=self._bg_color)
+			self._ctx.text((cur_x + b, cur_y - b), ch, font=f, fill=self._bg_color)
+			self._ctx.text((cur_x - b, cur_y + b), ch, font=f, fill=self._bg_color)
+			self._ctx.text((cur_x + b, cur_y + b), ch, font=f, fill=self._bg_color)
 
+			self._ctx.text((cur_x, cur_y), ch, font=f, fill=self._fg_color)
+			delta = f.getsize(ch)[1]
+			cur_x += delta
 
 	def _wrap_text(self, text, width):
 		# first try to fit the whole thing on one line:
