@@ -10,7 +10,7 @@ import time
 import re
 import shlex
 from . import configfile, commands, util
-from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata
+from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
 
 
 _log = logging.getLogger(__name__)
@@ -237,12 +237,20 @@ class MasaBot(object):
 
 		@self._client.event
 		async def on_error(event, *args, **kwargs):
+			pager = DiscordPager("_(error continued)_")
 			message = args[0]
 			e = traceback.format_exc()
 			logging.exception("Exception in main loop")
 			msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
-			msg = msg_start + "\n\n```\n" + e + "\n```"
-			await self._client.send_message(message.channel, msg)
+			pager.add_line(msg_start)
+			pager.add_line()
+			pager.start_code_block()
+			for line in e.splitlines():
+				pager.add_line(line)
+			pager.end_code_block()
+			pages = pager.get_pages()
+			for p in pages:
+				await self._client.send_message(message.channel, p)
 			_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		self._load_modules(state_dict, conf['modules'])

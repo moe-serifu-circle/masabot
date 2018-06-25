@@ -176,7 +176,7 @@ class AnimemeModule(BotBehaviorModule):
 			raise BotModuleError(msg)
 
 		await self.bot_api.reply_typing(context)
-		template_id = random.choice(self.template_ids)
+		template_id = random.sample(self.template_ids, 1)[0]
 
 		_log.debug("Creating animeme for template ID " + str(template_id))
 
