@@ -263,9 +263,12 @@ class MasaBot(object):
 		"""
 		Begin execution of bot. Blocks until complete.
 		"""
-		self._master_timer_task = self._client.loop.create_task(self._run_timer())
 		_log.info("Connecting...")
-		self._client.run(self._api_key)
+		try:
+			self._master_timer_task = self._client.loop.create_task(self._run_timer())
+			self._client.run(self._api_key)
+		finally:
+			self._client.close()
 
 	def is_nsfw_channel(self, ch_context):
 		"""
@@ -568,8 +571,10 @@ class MasaBot(object):
 					msg = "Oh yeah, the `" + m.name + "` module! `" + m.description + "`\n\n" + m.help_text
 		await self.reply(context, msg)
 
-	async def quit(self, context):
+	async def quit(self, context, restart_command="quit"):
 		self.require_op(context, "quit", None)
+		with open('.supervisor/restart-command', 'w') as fp:
+			fp.write(restart_command)
 		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
 		_log.info("Shutting down...")
 		self._master_timer_task.cancel()
@@ -880,8 +885,6 @@ class MasaBot(object):
 
 	async def _redeploy(self, context, reason=None):
 		self.require_op(context, "redeploy", None)
-		with open('.supervisor/restart-command', 'w') as fp:
-			fp.write("redeploy")
 		if reason is not None:
 			with open('.supervisor/reason', 'w') as fp:
 				fp.write(reason)
@@ -889,7 +892,7 @@ class MasaBot(object):
 		msg = "Oh! It looks like " + context.author_name() + " has triggered a redeploy. I'll be going down now, but"
 		msg += " don't worry! I'll be right back!"
 		await self.announce(msg)
-		await self.quit(context)
+		await self.quit(context, "redeploy")
 
 	async def _check_supervisor_files(self):
 		if not os.path.exists('.supervisor/status'):
@@ -906,7 +909,7 @@ class MasaBot(object):
 		os.remove('.supervisor/status')
 		if status['action'] == 'redeploy':
 			if status['success']:
-				msg = "My redeploy completed! Yay, everything went well!\n\n"
+				msg = "My deploy completed! Yay, everything went well!\n\n"
 
 				if len(status['packages']) < 1:
 					msg += "There were no changes to my dependencies."
@@ -929,7 +932,7 @@ class MasaBot(object):
 				if reason is not None:
 					msg += "\n\n--------\n\nOh! Oh! I gotta tell you! The whole reason I went down is because " + reason
 			else:
-				msg = "Oh no, it looks like something went wrong during my redeploy :c\n\n"
+				msg = "Oh no, it looks like something went wrong during my deploy :c\n\n"
 				if not status['check_package_success']:
 					msg += "Something went wrong when I was looking for new packages to install!\n\n"
 				msg += "```\n" + status['message'] + "\n"
@@ -1278,7 +1281,13 @@ def start():
 	if not os.path.exists('resources'):
 		os.mkdir('resources')
 	bot = MasaBot("config.json")
-	bot.run()
+	try:
+		bot.run()
+	except KeyboardInterrupt:
+		# this is a normal shutdown, so notify any supervisor by writing to the restart-command file
+		with open('.supervisor/restart-command', 'w') as fp:
+			fp.write("quit")
+		raise
 
 
 def _copy_handler_dict(dict_to_copy):

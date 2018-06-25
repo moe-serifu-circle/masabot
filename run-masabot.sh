@@ -53,8 +53,13 @@ do
         then
             git pull
             python supervisor/supervisor.py redeploy
+        elif [ "$cmd" = "quit" ]
+        then
+            running=
+            echo "Clean shutdown"
         fi
     else
-        running=
+        echo "Unclean shutdown; restarting bot in 30 seconds..."
+        sleep 30
     fi
 done
