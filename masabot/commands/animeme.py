@@ -319,6 +319,8 @@ class Pen(object):
 		self._fonts = RangeMap('anton/anton-regular.ttf')
 		self._max_size = max_size
 		self._min_size = min_size
+		self._line_spacing = 2
+		self._border_width = 1
 
 	def set_color(self, fg=None, bg=None):
 		if fg is not None:
@@ -343,25 +345,87 @@ class Pen(object):
 
 	def draw_top_aligned_text(self, text, center=True):
 		max_width = self._right_bound - self._left_bound + 1
-		font_size = self._max_size
+		lines, f_size = self._wrap_text(text, max_width)
 
-		line_so_far = ""
-		length_so_far = 0
-		while True:
-			word_end = self._find_next_break(text)
-			next_word = text[:word_end]
-			next_word_len = self._get_render_len(next_word, font_size)
-			if word_end != len(text):
-				text = text[word_end:]
-			else:
-				break
+		true_line_height = ImageFont.truetype(self._fonts.get(ord('A')), f_size).getsize('Ag')[1]
+		line_height = true_line_height + self._line_spacing
+		line_num = 0
+		for line in lines:
+			line_width = self._get_render_width(line, f_size)
+			offset_x = round((max_width - line_width) / 2)
+			offset_y = round(self._line_spacing / 2)
+			y = (line_num * line_height) + offset_y
+			x = offset_x
+			self._draw_text(x, y, text, f_size)
+			line_num += 1
+
+	def _draw_text(self, x, y, text, size):
+		cur_x = x
+		cur_y = y
+		for ch in text:
+			f = ImageFont.truetype(self._fonts.get(ord(ch)))
 
 
 
+	def _wrap_text(self, text, width):
 		# first try to fit the whole thing on one line:
 
-		# try to add the next sequence of characters up to the next potential break
-		# if it fits, excellent. If it does not, end the line, trim the rest, and continue
+		fit_text, more_text_remains, remaining, f_size = self._fit_to_line(text, width, self._max_size, self._min_size)
+
+		lines = [fit_text]
+
+		if more_text_remains:
+			# then it didn't fit, so repeat for all remaining lines
+			while more_text_remains:
+				size = self._min_size
+				fit_text, more_text_remains, remaining, f_size = self._fit_to_line(remaining, width, size, size)
+				lines.append(fit_text)
+
+		return lines, f_size
+
+	def _fit_to_line(self, text, max_width, max_font_size, min_font_size):
+		"""
+		Fits the given text to a line.
+		:param text: The text to fit.
+		:param max_width: The maximum width of a line.
+		:param max_font_size: The maximum size the font can be.
+		:param min_font_size: The minimum size the font can be.
+
+		:return: A tuple.
+		The line, whether there is more text, the rest of the text, the font size of the final version.
+		"""
+		line_so_far = ''
+		more_lines = False
+		font_size = 0
+		for font_size in range(max_font_size, min_font_size - 1, -1):
+			line_so_far = ""
+			length_so_far = 0
+			space_chars = 0
+			more_lines = False
+			while True:
+				word_end = self._find_next_break(text)
+				next_word = text[:word_end]
+				next_word_len = self._get_render_width((' ' * space_chars) + next_word, font_size)
+				if length_so_far + next_word_len <= max_width:
+					line_so_far += (' ' * space_chars) + next_word
+					length_so_far += next_word_len
+				else:
+					more_lines = True
+					break
+
+				# find next space for adding to next word
+				space_chars = 0
+				while word_end < len(text) and self._is_space(text[word_end]):
+					space_chars += 1
+					word_end += 1
+
+				if word_end != len(text):
+					text = text[word_end:]
+				else:
+					break
+			if not more_lines:
+				break
+		return line_so_far, more_lines, text if more_lines else '', font_size
 
 	def _find_next_break(self, text):
 		import unicodedata
@@ -371,10 +435,19 @@ class Pen(object):
 			cat = unicodedata.category(ch)
 			if cat == 'Lo':
 				return idx + 1
-			elif cat.startswith('Z') or ch == '\n' or ch == '\t' or ch == '\r':
+			elif self._is_space(ch):
 				return idx
 		return len(text)
 
-	def _get_render_len(self, word, size):
+	def _is_space(self, ch):
+		import unicodedata
+		cat = unicodedata.category(ch)
+		return cat.startswith('Z') or ch == '\n' or ch == '\t' or ch == '\r'
+
+	def _get_render_width(self, word, font_size):
+		total_size = 0
 		for ch in word:
-			self._fonts.get()
+			font_name = self._fonts.get(ord(ch))
+			f = ImageFont.truetype(font_name, font_size)
+			total_size += f.getsize(ch)[0]
+		return total_size
