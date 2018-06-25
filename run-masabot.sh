@@ -40,7 +40,7 @@ else
     mkdir ".supervisor"
 fi
 
-python supervisor/supervisor.py redeploy
+python supervisor/supervisor.py initial-deploy
 
 while [ -n "$running" ]
 do

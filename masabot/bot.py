@@ -907,9 +907,11 @@ class MasaBot(object):
 		else:
 			reason = None
 		os.remove('.supervisor/status')
-		if status['action'] == 'redeploy':
-			if status['success']:
-				msg = "My deploy completed! Yay, everything went well!\n\n"
+		action = status['action']
+		msg = None
+		if action == 'redeploy' or action == 'deploy':
+			if action == 'redeploy' and status['success']:
+				msg = "My redeploy completed! Yay, everything went well!\n\n"
 
 				if len(status['packages']) < 1:
 					msg += "There were no changes to my dependencies."
@@ -931,8 +933,8 @@ class MasaBot(object):
 
 				if reason is not None:
 					msg += "\n\n--------\n\nOh! Oh! I gotta tell you! The whole reason I went down is because " + reason
-			else:
-				msg = "Oh no, it looks like something went wrong during my deploy :c\n\n"
+			elif not status['success']:
+				msg = "Oh no, it looks like something went wrong during my " + action + " :c\n\n"
 				if not status['check_package_success']:
 					msg += "Something went wrong when I was looking for new packages to install!\n\n"
 				msg += "```\n" + status['message'] + "\n"
@@ -946,7 +948,8 @@ class MasaBot(object):
 						ch_msg = " -\n" + change['message'] + "\n"
 					msg += "* " + pkg + ": " + change['action'] + " " + ch_status + ch_msg
 				msg += "```"
-			await self.announce(msg)
+			if msg is not None:
+				await self.announce(msg)
 
 	def _load_modules(self, state_dict, module_configs):
 		names = []
