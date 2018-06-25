@@ -79,7 +79,7 @@ def run_venv_shell(exe):
 	return lines
 
 
-def redeploy():
+def deploy(is_redeploy=False):
 	installed = []
 	if os.path.exists(os.path.join('.supervisor', 'installed-packages')):
 		with open(os.path.join('.supervisor', 'installed-packages'), 'r') as fp:
@@ -87,7 +87,7 @@ def redeploy():
 				installed.append(line.strip())
 
 	output_dict = {
-		'action': "redeploy"
+		'action': "redeploy" if is_redeploy else "deploy"
 	}
 
 	try:
@@ -167,7 +167,10 @@ if __name__ == "__main__":
 
 	if sys.argv[1] == 'redeploy':
 		print("Running redeploy...")
-		output = redeploy()
+		output = deploy(is_redeploy=True)
+	elif sys.argv[1] == 'initial-deploy':
+		print("Running deploy...")
+		output = deploy()
 	else:
 		print("Unknown subcommand '" + sys.argv[1] + "'", file=sys.stderr)
 		sys.exit(3)
