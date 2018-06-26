@@ -180,6 +180,7 @@ class AnimemeModule(BotBehaviorModule):
 
 		_log.debug("Creating animeme for template ID " + str(template_id))
 
+		padded_id = str(template_id).zfill(self._template_digits)
 		im = Image.open(self.open_resource('templates/' + self._template_filename(template_id)))
 		":type : Image.Image"
 
@@ -189,7 +190,7 @@ class AnimemeModule(BotBehaviorModule):
 		im.save(buf, format='PNG')
 		buf.seek(0)
 
-		await self.bot_api.reply_with_file(context, buf, template_id + "-generated.png")
+		await self.bot_api.reply_with_file(context, buf, str(template_id) + "-generated.png", "(" + padded_id + ")")
 
 	# noinspection PyMethodMayBeStatic
 	async def get_template_preview(self, template_id):
@@ -308,7 +309,7 @@ class Pen(object):
 		self._left_bound = 0
 		self._top_bound = 0
 		self._bottom_bound = im.height - 1
-		self._fonts = RangeMap('anton/anton-regular.ttf')
+		self._fonts = RangeMap('fonts/anton/anton-regular.ttf')
 		self._max_size = max_size
 		self._min_size = min_size
 		self._line_spacing = 2
