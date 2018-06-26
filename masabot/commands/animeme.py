@@ -1,4 +1,5 @@
 from . import BotBehaviorModule, InvocationTrigger
+from .. import util
 from ..util import BotSyntaxError, BotModuleError
 
 import requests
@@ -6,6 +7,7 @@ import random
 import logging
 import re
 import io
+import asyncio
 
 from PIL import Image, ImageFont, ImageDraw
 
@@ -32,7 +34,9 @@ class AnimemeModule(BotBehaviorModule):
 				InvocationTrigger('animeme'),
 				InvocationTrigger('animeme-add'),
 				InvocationTrigger('animeme-remove'),
-				InvocationTrigger('animeme-info')
+				InvocationTrigger('animeme-info'),
+				InvocationTrigger('animeme-layout'),
+				InvocationTrigger('animeme-list')
 			],
 			resource_root=resource_root,
 			has_state=True
@@ -43,7 +47,9 @@ class AnimemeModule(BotBehaviorModule):
 		self._pass = ""
 		self._last_new_template = -1
 		self._template_digits = 6
-		self._desired_width = 640
+		self._template_width = 640
+		self._pen = Pen(30, 15, 'fonts/anton/anton-regular.ttf')
+		self._pen.set_color(fg="white", bg="black")
 
 	def load_config(self, config):
 		if 'username' not in config:
@@ -58,11 +64,17 @@ class AnimemeModule(BotBehaviorModule):
 			self.template_ids = set(state['image-ids'])
 		if 'last-added' in state:
 			self._last_new_template = state['last-added']
+		if 'template-width' in state:
+			self._template_width = state['template-width']
+		if 'font-layout' in state:
+			self._pen.set_from_state_dict(state['font-layout'])
 
 	def get_state(self):
 		new_state = {
 			'image-ids': list(self.template_ids),
-			'last-added': self._last_new_template
+			'last-added': self._last_new_template,
+			'template-width': self._template_width,
+			'font-layout': self._pen.get_state_dict()
 		}
 		return new_state
 
@@ -80,7 +92,133 @@ class AnimemeModule(BotBehaviorModule):
 		elif command == "animeme-remove":
 			await self.remove_animeme(context, args)
 		elif command == "animeme-info":
-			await self.get_animeme_info(context)
+			t_id = None
+			if len(args) > 0:
+				t_id = self._validate_template_id(args[0])
+			await self.get_animeme_info(context, t_id)
+		elif command == 'animeme-layout':
+			await self.set_or_get_layout_param(context, args)
+		elif command == 'animeme-list':
+			await self.list_animemes(context)
+
+	async def list_animemes(self, context):
+		pager = util.DiscordPager("_(template list, continued)_")
+		pager.add("Sure! Here's the complete list of all animeme templates I'm using. ")
+		pager.add_line("You can use `animeme-info` followed by the id of a template to see a picture of it!")
+		pager.start_code_block()
+		for t_id in self.template_ids:
+			pager.add_line(str(t_id))
+		pager.end_code_block()
+
+		pages = pager.get_pages()
+		for p in pages:
+			await self.bot_api.reply(context, p)
+
+	async def set_or_get_layout_param(self, context, args):
+		layout_params = ['kerning', 'template-width', 'spacing', 'border', 'minfont', 'maxfont']
+		if len(args) < 1:
+			msg = "I need to know what layout parameter you want to set or get, it can be any one of these: "
+			msg += ','.join('`' + x + '`' for x in layout_params) + '.'
+			raise BotSyntaxError(msg)
+
+		param = args[0]
+
+		if param not in layout_params:
+			msg = "That's not a valid layout parameter! It has to be one of these: "
+			msg += ','.join('`' + x + '`' for x in layout_params) + ', okay?'
+			raise BotSyntaxError(msg)
+
+		if len(args) > 1:
+			await self.set_layout_param(context, param, args[1])
+		else:
+			await self.get_layout_param(context, param)
+
+	async def set_layout_param(self, context, param, value):
+		self.bot_api.require_op(context, "animeme-layout " + str(param) + " <value>", self.name)
+
+		if param == 'kerning':
+			value = util.str_to_int(value, min=0, name="kerning")
+			if self._pen.kerning == value:
+				msg = "Haha, the kerning is already set to " + str(value) + ", so yay!"
+			else:
+				self._pen.kerning = value
+				_log.debug("Set animeme kerning to " + str(value))
+				msg = "Okay, I'll set the kerning to " + str(value) + " pixels!"
+		elif param == 'template-width':
+			value = util.str_to_int(value, min=1, name="template width")
+			if self._template_width == value:
+				msg = "Ah, well, the template width is already set to " + str(value) + ", so yay!"
+			else:
+				msg = "Ah, well, I can do that, but I'll have to resize all the templates I'm already using, and some"
+				msg += " of them might lose quality! Also, it might take me a little bit. Are you sure you want me to"
+				msg += " do that?"
+				if await self.bot_api.confirm(context, msg):
+					self._template_width = value
+					_log.debug("Set animeme template width to " + str(value))
+					msg = "Okay, I've changed the width, but now I need to resize my images! I'll let you know as soon"
+					msg += " as I'm done!"
+					await self.bot_api.reply(context, msg)
+					_log.debug("Resize started, " + str(len(self.template_ids)) + " to resize...")
+					await self._resize_templates()
+					_log.debug("Resize of templates completed")
+					msg = "All done, " + context.mention() + "! I resized all my templates!"
+				else:
+					msg = "Okay! I'll leave my templates alone, then."
+		elif param == 'spacing':
+			value = util.str_to_float(value, min=0, name="word spacing")
+			if self._pen.word_spacing_factor == value:
+				msg = "Mmm, the word spacing is already set to " + str(value) + "..."
+			else:
+				self._pen.word_spacing_factor = value
+				_log.debug("Set animeme word spacing factor to " + str(value))
+				msg = "Okay, I'll set the word spacing to " + str(value) + "x the width of a single space!"
+		elif param == 'border':
+			value = util.str_to_int(value, min=0, name="border width")
+			if self._pen.border_width == value:
+				msg = "Oh, the border width is already set to " + str(value) + "."
+			else:
+				self._pen.border_width = value
+				_log.debug("Set animeme border width to " + str(value))
+				msg = "Okay, I'll set the border width to " + str(value) + " pixels!"
+		elif param == 'minfont':
+			value = util.str_to_int(value, min=2, name="minimum font size")
+			if self._pen.min_font_size == value:
+				msg = "Oh, the minimum font size is already set to " + str(value) + "."
+			else:
+				self._pen.min_font_size = value
+				_log.debug("Set animeme minimum font size to " + str(value))
+				msg = "Okay, I'll set the minimum font size to " + str(value) + " points!"
+		elif param == 'maxfont':
+			value = util.str_to_int(value, min=2, name="maximum font size")
+			if self._pen.max_font_size == value:
+				msg = "Oh, the maximum font size is already set to " + str(value) + "."
+			else:
+				self._pen.max_font_size = value
+				_log.debug("Set animeme maximum font size to " + str(value))
+				msg = "Okay, I'll set the maximum font size to " + str(value) + " points!"
+		else:
+			raise BotSyntaxError("I don't know anything about the `" + param + "` layout parameter... what is that?")
+
+		await self.bot_api.reply(context, msg)
+
+	async def get_layout_param(self, context, param):
+		if param == 'kerning':
+			msg = "Sure! I've got the kerning set to " + str(self._pen.kerning) + " pixels right now."
+		elif param == 'template-width':
+			msg = "Sure! I've got the template width set to " + str(self._template_width) + " pixels right now."
+		elif param == 'spacing':
+			msg = "Sure! I've got the word spacing set to " + str(self._pen.word_spacing_factor) + " times the width of"
+			msg += " a regular space."
+		elif param == 'border':
+			msg = "Sure! I'm currently setting a " + str(self._pen.border_width) + " pixel border on the text."
+		elif param == 'minfont':
+			msg = "Sure! The minimum size of the font is set to " + str(self._pen.min_font_size) + " points."
+		elif param == 'maxfont':
+			msg = "Sure! The maximum size of the font is set to " + str(self._pen.max_font_size) + " points."
+		else:
+			raise BotSyntaxError("I don't know anything about the `" + param + "` layout parameter... what is that?")
+
+		await self.bot_api.reply(context, msg)
 
 	async def add_animeme(self, context, metadata, args):
 		self.bot_api.require_op(context, "animeme-add", self.name)
@@ -157,9 +295,17 @@ class AnimemeModule(BotBehaviorModule):
 			await self.bot_api.reply(context, "Mmm, all right, but I was already not using that template for animemes.")
 		return
 
-	async def get_animeme_info(self, context):
-		msg = "Sure! I've currently got " + str(len(self.template_ids)) + " images for use with animemes."
-		await self.bot_api.reply(context, msg)
+	async def get_animeme_info(self, context, t_id=None):
+		if t_id is None:
+			msg = "Sure! I've currently got " + str(len(self.template_ids)) + " images for use with animemes."
+			await self.bot_api.reply(context, msg)
+		else:
+			if t_id not in self.template_ids:
+				raise BotModuleError("I don't have a template with that ID!")
+			msg = "Oh, sure! Here's template " + str(t_id).zfill(self._template_digits) + ":"
+			file = self._template_filename(t_id)
+			with self.open_resource('templates/' + file) as fp:
+				await self.bot_api.reply_with_file(context, fp, file, msg)
 
 	async def generate_animeme(self, context, args):
 		if len(args) < 1:
@@ -190,7 +336,7 @@ class AnimemeModule(BotBehaviorModule):
 		im.save(buf, format='PNG')
 		buf.seek(0)
 
-		await self.bot_api.reply_with_file(context, buf, str(template_id) + "-generated.png", "(" + padded_id + ")")
+		await self.bot_api.reply_with_file(context, buf, str(template_id) + "-generated.png", "_(" + padded_id + ")_")
 
 	# noinspection PyMethodMayBeStatic
 	async def get_template_preview(self, template_id):
@@ -244,18 +390,29 @@ class AnimemeModule(BotBehaviorModule):
 
 		return temp_id
 
+	async def _resize_templates(self):
+		for template_id in self.template_ids:
+			with self.open_resource('templates/' + self._template_filename(template_id)) as fp:
+				data = fp.read()
+			data = self._normalize_template(data)
+			with self.open_resource('templates/' + self._template_filename(template_id), for_writing=True) as fp:
+				fp.write(data)
+				fp.flush()
+			_log.debug("Resized animeme template " + str(template_id))
+			await asyncio.sleep(0.1)
+
 	def _normalize_template(self, template_data):
 		with io.BytesIO(template_data) as buf:
 			im = Image.open(buf).convert("RGB")
 			""":type : Image.Image"""
-			if im.width != self._desired_width:
-				ratio = self._desired_width / float(im.width)
+			if im.width != self._template_width:
+				ratio = self._template_width / float(im.width)
 				new_height = round(im.height * ratio)
 				if ratio > 1:
 					resample_algo = Image.HAMMING
 				else:
 					resample_algo = Image.LANCZOS
-				im = im.resize((self._desired_width, new_height), resample_algo)
+				im = im.resize((self._template_width, new_height), resample_algo)
 
 			with io.BytesIO() as out_buf:
 				im.save(out_buf, format='PNG')
@@ -263,12 +420,12 @@ class AnimemeModule(BotBehaviorModule):
 				all_data = out_buf.read()
 		return all_data
 
+	# noinspection PyMethodMayBeStatic
 	def _draw_meme_text(self, im, upper, lower):
-		pen = Pen(im, 30, 15)
-		pen.set_color(fg="white", bg="black")
-		pen.draw_top_aligned_text(upper)
+		self._pen.set_image(im)
+		self._pen.draw_top_aligned_text(upper)
 		if lower is not None and lower != '':
-			pen.draw_bottom_aligned_text(lower)
+			self._pen.draw_bottom_aligned_text(lower)
 
 
 BOT_MODULE_CLASS = AnimemeModule
@@ -293,33 +450,66 @@ class RangeMap(object):
 
 class Pen(object):
 
-	def __init__(self, im, max_size, min_size):
+	def __init__(self, max_size, min_size, default_font):
 		"""
 		Create a new one.
-		:type im: Image.Image
-		:param im:
 		"""
-		self._image = im
-		self._ctx = ImageDraw.Draw(im)
+		self._image = None
+		""":type : Image.Image"""
+		self._ctx = None
+		""":type : ImageDraw.ImageDraw"""
 		self._fg_color = "black"
 		self._bg_color = "white"
 		self._pos_x = 0
 		self._pos_y = 0
-		self._right_bound = im.width - 1
+		self._right_bound = 0
 		self._left_bound = 0
 		self._top_bound = 0
+		self._bottom_bound = 0
+		self._fonts = RangeMap(default_font)
+		self.max_font_size = max_size
+		self.min_font_size = min_size
+		self.line_spacing = 2
+		self.border_width = 1
+		self.kerning = 2
+		self.word_spacing_factor = 1.5
+
+	def set_from_state_dict(self, state):
+		self.border_width = state.get('border-width', self.border_width)
+		self.kerning = state.get('kerning', self.kerning)
+		self.word_spacing_factor = state.get('spacing-factor', self.word_spacing_factor)
+		self.min_font_size = state.get('min-font-size', self.min_font_size)
+		self.max_font_size = state.get('max-font-size', self.max_font_size)
+
+	def get_state_dict(self):
+		d = {
+			'border-width': self.border_width,
+			'kerning': self.kerning,
+			'spacing-factor': self.word_spacing_factor,
+			'min-font-size': self.min_font_size,
+			'max-font-size': self.max_font_size
+		}
+		return d
+
+	def set_image(self, im):
+		self._image = im
+		self._ctx = ImageDraw.Draw(im)
+		self._right_bound = im.width - 1
 		self._bottom_bound = im.height - 1
-		self._fonts = RangeMap('fonts/anton/anton-regular.ttf')
-		self._max_size = max_size
-		self._min_size = min_size
-		self._line_spacing = 2
-		self._border_width = 1
 
 	def set_color(self, fg=None, bg=None):
 		if fg is not None:
 			self._fg_color = fg
 		if bg is not None:
 			self._bg_color = bg
+
+	def get_color(self):
+		"""
+		Return a tuple containing foreground and background colors.
+		:rtype: (Any, Any)
+		:return: The tuple
+		"""
+		return self._fg_color, self._bg_color
 
 	def set_font_mapping(self, path, codepoint_start, codepoint_end):
 		self._fonts.add_rule(codepoint_start, codepoint_end, path)
@@ -341,12 +531,12 @@ class Pen(object):
 		lines, f_size = self._wrap_text(text, max_width)
 
 		true_line_height = ImageFont.truetype(self._fonts.get(ord('A')), f_size).getsize('Ag')[1]
-		line_height = true_line_height + self._line_spacing
+		line_height = true_line_height + self.line_spacing
 		line_num = 0
 		for line in lines:
 			line_width = self._get_render_width(line, f_size)
 			offset_x = round((max_width - line_width) / 2)
-			offset_y = round(self._line_spacing / 2)
+			offset_y = round(self.line_spacing / 2)
 			y = self._top_bound + (line_num * line_height) + offset_y
 			x = offset_x
 			self._draw_text(x, y, text, f_size)
@@ -357,12 +547,12 @@ class Pen(object):
 		lines, f_size = self._wrap_text(text, max_width)
 
 		true_line_height = ImageFont.truetype(self._fonts.get(ord('A')), f_size).getsize('Ag')[1]
-		line_height = true_line_height + self._line_spacing
+		line_height = true_line_height + self.line_spacing
 		line_num = 0
 		for line in lines:
 			line_width = self._get_render_width(line, f_size)
 			offset_x = round((max_width - line_width) / 2)
-			offset_y = round(self._line_spacing / 2)
+			offset_y = round(self.line_spacing / 2)
 			y = self._bottom_bound - (line_height * (len(lines) - line_num)) + offset_y
 			x = offset_x
 			self._draw_text(x, y, text, f_size)
@@ -371,30 +561,43 @@ class Pen(object):
 	def _draw_text(self, x, y, text, size):
 		cur_x = x
 		cur_y = y
+		first_char = False
 		for ch in text:
+			if first_char:
+				first_char = False
+			else:
+				cur_x += self.kerning
+
 			f = ImageFont.truetype(self._fonts.get(ord(ch)), size=size)
-			b = self._border_width
+			b = self.border_width
 
-			self._ctx.text((cur_x - b, cur_y - b), ch, font=f, fill=self._bg_color)
-			self._ctx.text((cur_x + b, cur_y - b), ch, font=f, fill=self._bg_color)
-			self._ctx.text((cur_x - b, cur_y + b), ch, font=f, fill=self._bg_color)
-			self._ctx.text((cur_x + b, cur_y + b), ch, font=f, fill=self._bg_color)
+			ch_width = f.getsize(ch)[0]
 
-			self._ctx.text((cur_x, cur_y), ch, font=f, fill=self._fg_color)
-			delta = f.getsize(ch)[1]
-			cur_x += delta
+			if ch != ' ':
+				self._ctx.text((cur_x - b, cur_y - b), ch, font=f, fill=self._bg_color)
+				self._ctx.text((cur_x + b, cur_y - b), ch, font=f, fill=self._bg_color)
+				self._ctx.text((cur_x - b, cur_y + b), ch, font=f, fill=self._bg_color)
+				self._ctx.text((cur_x + b, cur_y + b), ch, font=f, fill=self._bg_color)
+
+				self._ctx.text((cur_x, cur_y), ch, font=f, fill=self._fg_color)
+			else:
+				ch_width *= self.word_spacing_factor
+
+			cur_x += ch_width
 
 	def _wrap_text(self, text, width):
 		# first try to fit the whole thing on one line:
 
-		fit_text, more_text_remains, remaining, f_size = self._fit_to_line(text, width, self._max_size, self._min_size)
+		fit_text, more_text_remains, remaining, f_size = self._fit_to_line(
+			text, width, self.max_font_size, self.min_font_size
+		)
 
 		lines = [fit_text]
 
 		if more_text_remains:
 			# then it didn't fit, so repeat for all remaining lines
 			while more_text_remains:
-				size = self._min_size
+				size = self.min_font_size
 				fit_text, more_text_remains, remaining, f_size = self._fit_to_line(remaining, width, size, size)
 				lines.append(fit_text)
 
@@ -419,10 +622,15 @@ class Pen(object):
 			length_so_far = 0
 			space_chars = 0
 			more_lines = False
+			first_word = True
 			while True:
 				word_end = self._find_next_break(text)
 				next_word = text[:word_end]
 				next_word_len = self._get_render_width((' ' * space_chars) + next_word, font_size)
+				if first_word:
+					first_word = False
+				else:
+					next_word_len += self.kerning
 				if length_so_far + next_word_len <= max_width:
 					line_so_far += (' ' * space_chars) + next_word
 					length_so_far += next_word_len
@@ -456,6 +664,7 @@ class Pen(object):
 				return idx
 		return len(text)
 
+	# noinspection PyMethodMayBeStatic
 	def _is_space(self, ch):
 		import unicodedata
 		cat = unicodedata.category(ch)
@@ -463,8 +672,18 @@ class Pen(object):
 
 	def _get_render_width(self, word, font_size):
 		total_size = 0
+		first_char = True
 		for ch in word:
+			if first_char:
+				first_char = False
+			else:
+				total_size += self.kerning
 			font_name = self._fonts.get(ord(ch))
 			f = ImageFont.truetype(font_name, font_size)
-			total_size += f.getsize(ch)[0]
+			ch_width = f.getsize(ch)[0]
+
+			if ch == ' ':
+				ch_width *= self.word_spacing_factor
+
+			total_size += ch_width
 		return total_size

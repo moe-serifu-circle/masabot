@@ -136,6 +136,76 @@ class DiscordPager(object):
 		return complete_pages
 
 
+def str_to_int(str_value, min=None, max=None, name="value"):
+	"""
+	Convert a string value to an int. If the conversion fails, instead of a ValueError, a BotSyntaxError is
+	generated.
+
+	:type str_value: str
+	:param str_value: The value to be converted.
+	:type min: int
+	:param min: The minimum value a number can be. If not set, no lower limit is enforced.
+	:type max: int
+	:param max: The maximum value a number can be. If not set, no upper limit is enforced.
+	:type name: str
+	:param name: What the value should be called in the resulting error, should conversion fail. If no name
+	is given, no reference to a name is included in the resulting error.
+	:rtype: int
+	:return: The converted int.
+	"""
+	try:
+		value = int(str_value)
+	except ValueError:
+		msg = "I need the " + name + " to be a whole number, and " + repr(str_value)
+		msg += " isn't one at all!"
+		raise BotSyntaxError(msg)
+
+	if min is not None and value < min:
+		msg = "The " + name + " just has to be at least " + str(min) + ", so " + str(value) + " is too small!"
+		raise BotSyntaxError(msg)
+
+	if max is not None and value > max:
+		msg = "The " + name + " really can't be any bigger than " + str(max) + ", so " + str(value) + " is too big!"
+		raise BotSyntaxError(msg)
+
+	return value
+
+
+def str_to_float(str_value, min=None, max=None, name="value"):
+	"""
+	Convert a string value to a float. If the conversion fails, instead of a ValueError, a BotSyntaxError is
+	generated.
+
+	:type str_value: str
+	:param str_value: The value to be converted.
+	:type min: float
+	:param min: The minimum value a number can be. If not set, no lower limit is enforced.
+	:type max: float
+	:param max: The maximum value a number can be. If not set, no upper limit is enforced.
+	:type name: str
+	:param name: What the value should be called in the resulting error, should conversion fail. If no name
+	is given, no reference to a name is included in the resulting error.
+	:rtype: float
+	:return: The converted float.
+	"""
+	try:
+		value = float(str_value)
+	except ValueError:
+		msg = "I need the " + name + " to be a whole number, and " + repr(str_value)
+		msg += " isn't one at all!"
+		raise BotSyntaxError(msg)
+
+	if min is not None and value < min:
+		msg = "The " + name + " just has to be at least " + str(min) + ", so " + str(value) + " is too small!"
+		raise BotSyntaxError(msg)
+
+	if max is not None and value > max:
+		msg = "The " + name + " really can't be any bigger than " + str(max) + ", so " + str(value) + " is too big!"
+		raise BotSyntaxError(msg)
+
+	return value
+
+
 class Attachment(object):
 	"""
 	A data file that is attached to an existing message. This file is hosted on Discord and can be accessed either via a
