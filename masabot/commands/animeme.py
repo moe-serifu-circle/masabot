@@ -66,7 +66,7 @@ class AnimemeModule(BotBehaviorModule):
 
 	def set_state(self, state):
 		if 'template-ids' in state:
-			self.template_ids = set(state['image-ids'])
+			self.template_ids = set(state['template-ids'])
 		if 'last-added' in state:
 			self._last_new_template = state['last-added']
 		if 'template-width' in state:
