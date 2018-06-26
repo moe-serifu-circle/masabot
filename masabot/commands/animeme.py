@@ -21,9 +21,14 @@ class AnimemeModule(BotBehaviorModule):
 		help_text = "Generates anime memes by assigning a random background to the given text. Type `animeme` followed"
 		help_text += " by one or two sentences in quotes to generate a meme for them. Example: `animeme \"This meme\""
 		help_text += " \"is awesome!\"`.\n\nOps are able to add new images to the system from by using the"
-		help_text += " `animeme-add` command, followed by the ImageFlip ID of the image to add. They can also use the"
-		help_text += " `animeme-remove` command followed by the ImageFlip ID to remove an image from the system."
-		help_text += " In addition, the `animeme-info` command will tell how many template IDs there currently are."
+		help_text += " `animeme-add` command as a comment to an image upload. They can also use the"
+		help_text += " `animeme-remove` command followed by the template ID to remove an image from the system."
+		help_text += " In addition, the `animeme-info` command will tell how many template IDs there currently are, and"
+		help_text += " you can see any current template by running `animeme-info` followed by the template ID!\n\n"
+		help_text += "The `animeme-list` command will show a list of all template IDs that I'm currently using!\n\n"
+		help_text += "The `animeme-layout` command shows the values of my text layout engine. Give the name of a"
+		help_text += " parameter after the command and I'll tell what its value is! Oh, and ops can also set the value"
+		help_text += " of a parameter by giving the new value after the name."
 
 		super().__init__(
 			bot_api,
