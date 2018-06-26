@@ -527,7 +527,7 @@ class Pen(object):
 			self._pos_y = y
 
 	def draw_top_aligned_text(self, text):
-		max_width = self._right_bound - self._left_bound + 1
+		max_width = (self._right_bound - self._left_bound + 1) - (4 * self.border_width)
 		lines, f_size = self._wrap_text(text, max_width)
 
 		true_line_height = ImageFont.truetype(self._fonts.get(ord('A')), f_size).getsize('Ag')[1]
@@ -543,7 +543,7 @@ class Pen(object):
 			line_num += 1
 
 	def draw_bottom_aligned_text(self, text):
-		max_width = self._right_bound - self._left_bound + 1
+		max_width = (self._right_bound - self._left_bound + 1) - (4 * self.border_width)
 		lines, f_size = self._wrap_text(text, max_width)
 
 		true_line_height = ImageFont.truetype(self._fonts.get(ord('A')), f_size).getsize('Ag')[1]
