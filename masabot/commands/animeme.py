@@ -315,9 +315,9 @@ class AnimemeModule(BotBehaviorModule):
 	async def generate_animeme(self, context, args):
 		if len(args) < 1:
 			raise BotSyntaxError("I need at least one line of text to make a meme.")
-		meme_line_1 = args[0]
+		meme_line_1 = args[0].upper()
 		if len(args) > 1:
-			meme_line_2 = args[1]
+			meme_line_2 = args[1].upper()
 		else:
 			meme_line_2 = ""
 
