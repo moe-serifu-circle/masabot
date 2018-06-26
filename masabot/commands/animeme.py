@@ -539,7 +539,7 @@ class Pen(object):
 			offset_y = round(self.line_spacing / 2)
 			y = self._top_bound + (line_num * line_height) + offset_y
 			x = offset_x
-			self._draw_text(x, y, text, f_size)
+			self._draw_text(x, y, line, f_size)
 			line_num += 1
 
 	def draw_bottom_aligned_text(self, text):
@@ -555,7 +555,7 @@ class Pen(object):
 			offset_y = round(self.line_spacing / 2)
 			y = self._bottom_bound - (line_height * (len(lines) - line_num)) + offset_y
 			x = offset_x
-			self._draw_text(x, y, text, f_size)
+			self._draw_text(x, y, line, f_size)
 			line_num += 1
 
 	def _draw_text(self, x, y, text, size):
@@ -566,10 +566,12 @@ class Pen(object):
 			if first_char:
 				first_char = False
 			else:
-				cur_x += self.kerning
+				cur_x += self.kerning * self.font_size_ratio(size)
 
 			f = ImageFont.truetype(self._fonts.get(ord(ch)), size=size)
-			b = self.border_width
+			b = self.border_width * self.font_size_ratio(size)
+			if 0 < b < 1:
+				b = 1
 
 			ch_width = f.getsize(ch)[0]
 
@@ -587,19 +589,17 @@ class Pen(object):
 
 	def _wrap_text(self, text, width):
 		# first try to fit the whole thing on one line:
-
 		fit_text, more_text_remains, remaining, f_size = self._fit_to_line(
 			text, width, self.max_font_size, self.min_font_size
 		)
 
 		lines = [fit_text]
 
-		if more_text_remains:
-			# then it didn't fit, so repeat for all remaining lines
-			while more_text_remains:
-				size = self.min_font_size
-				fit_text, more_text_remains, remaining, f_size = self._fit_to_line(remaining, width, size, size)
-				lines.append(fit_text)
+		# then it didn't fit, so repeat for all remaining lines
+		while more_text_remains:
+			size = self.min_font_size
+			fit_text, more_text_remains, remaining, f_size = self._fit_to_line(remaining, width, size, size)
+			lines.append(fit_text)
 
 		return lines, f_size
 
@@ -617,20 +617,22 @@ class Pen(object):
 		line_so_far = ''
 		more_lines = False
 		font_size = 0
+		working_text = text
 		for font_size in range(max_font_size, min_font_size - 1, -1):
 			line_so_far = ""
+			working_text = text
 			length_so_far = 0
 			space_chars = 0
 			more_lines = False
 			first_word = True
 			while True:
-				word_end = self._find_next_break(text)
-				next_word = text[:word_end]
+				word_end = self._find_next_break(working_text)
+				next_word = working_text[:word_end]
 				next_word_len = self._get_render_width((' ' * space_chars) + next_word, font_size)
 				if first_word:
 					first_word = False
 				else:
-					next_word_len += self.kerning
+					next_word_len += self.kerning * self.font_size_ratio(font_size)
 				if length_so_far + next_word_len <= max_width:
 					line_so_far += (' ' * space_chars) + next_word
 					length_so_far += next_word_len
@@ -640,17 +642,17 @@ class Pen(object):
 
 				# find next space for adding to next word
 				space_chars = 0
-				while word_end < len(text) and self._is_space(text[word_end]):
+				while word_end < len(working_text) and self._is_space(working_text[word_end]):
 					space_chars += 1
 					word_end += 1
 
-				if word_end != len(text):
-					text = text[word_end:]
+				if word_end != len(working_text):
+					working_text = working_text[word_end:]
 				else:
 					break
 			if not more_lines:
 				break
-		return line_so_far, more_lines, text if more_lines else '', font_size
+		return line_so_far, more_lines, working_text if more_lines else '', font_size
 
 	def _find_next_break(self, text):
 		import unicodedata
@@ -677,7 +679,7 @@ class Pen(object):
 			if first_char:
 				first_char = False
 			else:
-				total_size += self.kerning
+				total_size += self.kerning * self.font_size_ratio(font_size)
 			font_name = self._fonts.get(ord(ch))
 			f = ImageFont.truetype(font_name, font_size)
 			ch_width = f.getsize(ch)[0]
@@ -687,3 +689,6 @@ class Pen(object):
 
 			total_size += ch_width
 		return total_size
+
+	def font_size_ratio(self, cur):
+		return cur / float(self.max_font_size)
