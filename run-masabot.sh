@@ -40,7 +40,7 @@ else
     mkdir ".supervisor"
 fi
 
-python supervisor/supervisor.py redeploy
+python supervisor/supervisor.py initial-deploy
 
 while [ -n "$running" ]
 do
@@ -53,8 +53,13 @@ do
         then
             git pull
             python supervisor/supervisor.py redeploy
+        elif [ "$cmd" = "quit" ]
+        then
+            running=
+            echo "Clean shutdown"
         fi
     else
-        running=
+        echo "Unclean shutdown; restarting bot in 30 seconds..."
+        sleep 30
     fi
 done

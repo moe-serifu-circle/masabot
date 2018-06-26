@@ -4,9 +4,17 @@ import sys
 from . import bot
 
 
+_log = logging.getLogger("masabot")  # use exact module name because name might be __main__
+_log.setLevel(logging.DEBUG)
+
+
 def run():
 	_setup_logger()
-	bot.start()
+	# noinspection PyBroadException
+	try:
+		bot.start()
+	except Exception:
+		_log.exception("Exception in main thread")
 
 
 class _ExactLevelFilter(object):
