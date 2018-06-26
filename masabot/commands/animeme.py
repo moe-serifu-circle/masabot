@@ -65,7 +65,7 @@ class AnimemeModule(BotBehaviorModule):
 		self._pass = config['password']
 
 	def set_state(self, state):
-		if 'image-ids' in state:
+		if 'template-ids' in state:
 			self.template_ids = set(state['image-ids'])
 		if 'last-added' in state:
 			self._last_new_template = state['last-added']
@@ -76,7 +76,7 @@ class AnimemeModule(BotBehaviorModule):
 
 	def get_state(self):
 		new_state = {
-			'image-ids': list(self.template_ids),
+			'template-ids': list(self.template_ids),
 			'last-added': self._last_new_template,
 			'template-width': self._template_width,
 			'font-layout': self._pen.get_state_dict()
@@ -112,7 +112,7 @@ class AnimemeModule(BotBehaviorModule):
 		pager.add_line("You can use `animeme-info` followed by the id of a template to see a picture of it!")
 		pager.start_code_block()
 		for t_id in self.template_ids:
-			pager.add_line(str(t_id))
+			pager.add_line(str(t_id).zfill(self._template_digits))
 		pager.end_code_block()
 
 		pages = pager.get_pages()
