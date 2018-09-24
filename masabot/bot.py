@@ -228,7 +228,7 @@ class MasaBot(object):
 			if message.author.id == self._client.user.id:
 				return  # don't answer own messages
 			if message.content.startswith(self._prefix):
-				if message.content.trim() == self._prefix:
+				if message.content.strip() == self._prefix:
 					return  # don't reply to messages that are JUST the prefix
 				await self._handle_invocation(message)
 			else:
