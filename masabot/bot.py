@@ -220,7 +220,12 @@ class MasaBot(object):
 			_log.info("Connected to servers:")
 			for c in self._client.servers:
 				_log.info("* " + str(c))
-			await self.announce("Hello! I'm now online ^_^")
+			_log.info("Bot is now online")
+			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
+			if clean_shutdown:
+				await self.announce("Hello! I'm now online ^_^")
+			else:
+				_log.info("Back from unclean shutdown caused by: " + repr(reason))
 			await self._check_supervisor_files()
 
 		@self._client.event
@@ -904,7 +909,33 @@ class MasaBot(object):
 		await self.announce(msg)
 		await self.quit(context, "redeploy")
 
+	# noinspection PyMethodMayBeStatic
+	def _check_supervisor_unclean_shutdown(self):
+		"""
+		Retrieve whether the last shutdown was clean, and then clean the source data containing that information.
+
+		Check if the last shutdown was a clean one. If it was not, give the reason as well. If the current execution is
+		the first time the bot is started, or if the last shutdown of the bot was caused by an intention to quit from
+		within the bot (e.g. by calling bot.quit()), the first element of the returned tuple will be True, and the
+		second will always be None. If the shutdown happened by another means, the first element will be False, and the
+		second will be the reason for unclean shutdown if one was provided by the supervisor invocation system.
+
+		Note that calling this function will cause the source files where the information was read from to be removed,
+		so all invocations after the first one will not contain valid information.
+
+		:rtype: (bool, str)
+		:return: A tuple containing whether the shutdown was clean and the reason for unclean shutdown
+		"""
+		if not os.path.exists('.supervisor/unclean-shutdown'):
+			return True, None
+		with open('.supervisor/unclean-shutdown') as fp:
+			info = json.load(fp)
+		os.remove('.supervisor/unclean-shutdown')
+		reason = info.get('reason', None)
+		return False, reason
+
 	async def _check_supervisor_files(self):
+		# NOTE: this function does not check for .supervisor/unclean-shutdown; that functionality is elsewhere
 		if not os.path.exists('.supervisor/status'):
 			return
 		_log.debug("Returning from redeploy...")
