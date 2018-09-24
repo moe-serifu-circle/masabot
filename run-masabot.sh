@@ -34,8 +34,7 @@ fi
 
 if [ -d ".supervisor" ]
 then
-    rm -rf ".supervisor/restart-command"
-    rm -rf ".supervisor/status"
+    rm -rf ".supervisor"/*
 else
     mkdir ".supervisor"
 fi
@@ -61,5 +60,6 @@ do
     else
         echo "Unclean shutdown; restarting bot in 30 seconds..."
         sleep 30
+        echo '{"reason":"Exited without receiving quit command"}' >> ".supervisor/unclean-shutdown"
     fi
 done
