@@ -191,7 +191,7 @@ def str_to_float(str_value, min=None, max=None, name="value"):
 	try:
 		value = float(str_value)
 	except ValueError:
-		msg = "I need the " + name + " to be a whole number, and " + repr(str_value)
+		msg = "I need the " + name + " to be a real number, and " + repr(str_value)
 		msg += " isn't one at all!"
 		raise BotSyntaxError(msg)
 
