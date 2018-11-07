@@ -90,18 +90,24 @@ class KarmaModule(BotBehaviorModule):
 				msg = "Buzzkill mode enabled;"
 				msg += " karma change greater than " + str(self._buzzkill_limit) + " not allowed"
 			else:
-				msg = self.add_user_karma(user, amount)
+				msg = self.add_user_karma(user, context.source.server.id, amount)
 		if msg is not None:
 			await self.bot_api.reply(context, msg)
 
 	async def show_karma(self, context, args):
+		"""
+		replys with given user's karma, by default displays the local karma 
+		(karma only from current server)
+		:type context: masabot.bot.BotContext
+		:type args: str
+		"""
 		if len(args) >= 1:
 			m = re.search(r'<@!?(\d+)>$', args[0], re.DOTALL)
 			if m is None:
 				raise BotSyntaxError(str(args[0]) + " is not something that can have karma")
-			msg = self.get_user_karma(m.group(1))
+			msg = self.get_user_karma(m.group(1), guild_id=context.source.server.id)
 		else:
-			msg = self.get_user_karma(context.author.id)
+			msg = self.get_user_karma(context.author.id, guild_id=context.source.server.id)
 		await self.bot_api.reply(context, msg)
 
 	async def configure_buzzkill(self, context, args):
@@ -131,22 +137,45 @@ class KarmaModule(BotBehaviorModule):
 				msg = "Hmm... It looks like there is currently no limit to how much karma can change by. Hooray!"
 			await self.bot_api.reply(context, msg)
 
-	def get_user_karma(self, uuid):
-		amt = self._karma.get(uuid, 0)
+	def get_user_karma(self, uuid, global_karma=False, guild_id=None):
+		"""
+		returns given user's karma
+		:type uuid: str
+		:type global_karma: boolean
+		:param global_karma: set to true for user's global karma
+		:type guild_id: int
+		:param guild_id: guild id for local karma
+		"""
+		amt = 0
+		if uuid in self._karma:
+			if global_karma:
+				amt = self._karam[uuid].get("global", 0)
+			else:
+				amt = self._karma[uuid].get(guild_id, 0)
 		msg = "<@" + uuid + ">'s karma is at " + str(amt) + "."
 		return msg
 
-	def add_user_karma(self, uuid, amount):
+	def add_user_karma(self, uuid, guild_id, amount):
 		if uuid not in self._karma:
-			self._karma[uuid] = 0
-		self._karma[uuid] += amount
-		_log.debug("Modified karma of user " + uuid + " by " + str(amount) + "; new total " + str(self._karma[uuid]))
+			self._karma[uuid] = {}
+		if guild_id == None:
+			self._karma[uuid][0] = 0
+		elif guild_id not in self._karma[uuid]:
+			self._karma[uuid][guild_id] = 0
+
+		if "global" not in self._karma:
+			self._karma[uuid]["global"] = 0
+
+		self._karma[uuid][guild_id] += amount
+		self._karma[uuid]["global"] += amount
+
+		_log.debug("Modified karma of user " + uuid + " by " + str(amount) + "; new total " + str(self._karma[uuid][guild_id]))
 
 		if random.random() < self._tsundere_chance and amount > 0:
-			msg = "F-fine, <@" + uuid + ">'s karma is now " + str(self._karma[uuid]) + ". B-b-but it's not like I like"
+			msg = "F-fine, <@" + uuid + ">'s karma is now " + str(self._karma[uuid][guild_id]) + ". B-b-but it's not like I like"
 			msg += " them or anything weird like that. So don't get the wrong idea! B-baka..."
 		else:
-			msg = "Okay! <@" + uuid + ">'s karma is now " + str(self._karma[uuid])
+			msg = "Okay! <@" + uuid + ">'s karma is now " + str(self._karma[uuid][guild_id])
 		return msg
 
 
