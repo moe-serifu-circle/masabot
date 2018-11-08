@@ -18,7 +18,10 @@ class KarmaModule(BotBehaviorModule):
 		help_text += " user or any item followed by a '++' or '--' to increase or decrease their karma. Add more"
 		help_text += " '+'/'-' characters to change the amount by even more.\n\nTo view the amount of karma, use the"
 		help_text += " `karma` command followed by the mention of the user to check (or the name of the thing to"
-		help_text += " check). As a shortcut, you can view your own karma by invoking `karma` with no arguments.\n\n"
+		help_text += " check). As a shortcut, you can view your own karma by invoking `karma` with no arguments.\n"
+		help_text += "If you would like to see a user's global karma (or your own global karma), simply add a `global`"
+		help_text += " to the end of the command (e.g. `karma global` to see your own, `karma @user global` to see"
+		help_text += " another user's global karma). \n\n"
 		help_text += "In order to prevent huge karma changes, there is a buzzkill mode, which limits the amount that"
 		help_text += " karma can change by. The `karma-buzzkill` command with no arguments will give what the current"
 		help_text += " buzzkill limit is, and ops are able to give an argument to set the limit. Setting the limit to"
@@ -90,7 +93,10 @@ class KarmaModule(BotBehaviorModule):
 				msg = "Buzzkill mode enabled;"
 				msg += " karma change greater than " + str(self._buzzkill_limit) + " not allowed"
 			else:
-				msg = self.add_user_karma(user, context.source.server.id, amount)
+				if hasattr(context.source, "server"): 
+					msg = self.add_user_karma(user, context.source.server.id, amount)
+				else:
+					msg = self.add_user_karma(user, 0, amount)
 		if msg is not None:
 			await self.bot_api.reply(context, msg)
 
@@ -101,13 +107,27 @@ class KarmaModule(BotBehaviorModule):
 		:type context: masabot.bot.BotContext
 		:type args: str
 		"""
+		guild = None
+		if hasattr(context.source, "server"): 
+			guild = context.source.server.id
+		else:
+			guild = 0
+
+		global_karma = False
+		if len(args) > 1 and args[1].lower() == "global":
+			global_karma = True
+
 		if len(args) >= 1:
 			m = re.search(r'<@!?(\d+)>$', args[0], re.DOTALL)
 			if m is None:
-				raise BotSyntaxError(str(args[0]) + " is not something that can have karma")
-			msg = self.get_user_karma(m.group(1), guild_id=context.source.server.id)
+				if args[0].lower() == "global":
+					msg = self.get_user_karma(context.author.id, guild_id=guild, global_karma=True)
+				else:
+					raise BotSyntaxError(str(args[0]) + " is not something that can have karma")
+			else:
+				msg = self.get_user_karma(m.group(1), guild_id=guild, global_karma=global_karma)
 		else:
-			msg = self.get_user_karma(context.author.id, guild_id=context.source.server.id)
+			msg = self.get_user_karma(context.author.id, guild_id=guild, global_karma=global_karma)
 		await self.bot_api.reply(context, msg)
 
 	async def configure_buzzkill(self, context, args):
@@ -149,10 +169,16 @@ class KarmaModule(BotBehaviorModule):
 		amt = 0
 		if uuid in self._karma:
 			if global_karma:
-				amt = self._karam[uuid].get("global", 0)
+				amt = 0
+				for i in self._karma[uuid]:
+					amt += self._karma[uuid][i]
 			else:
 				amt = self._karma[uuid].get(guild_id, 0)
-		msg = "<@" + uuid + ">'s karma is at " + str(amt) + "."
+
+		if global_karma:
+			msg = "<@" + uuid + ">'s global karma is at " + str(amt) + "."
+		else:
+			msg = "<@" + uuid + ">'s karma is at " + str(amt) + "."
 		return msg
 
 	def add_user_karma(self, uuid, guild_id, amount):
@@ -163,11 +189,7 @@ class KarmaModule(BotBehaviorModule):
 		elif guild_id not in self._karma[uuid]:
 			self._karma[uuid][guild_id] = 0
 
-		if "global" not in self._karma:
-			self._karma[uuid]["global"] = 0
-
 		self._karma[uuid][guild_id] += amount
-		self._karma[uuid]["global"] += amount
 
 		_log.debug("Modified karma of user " + uuid + " by " + str(amount) + "; new total " + str(self._karma[uuid][guild_id]))
 
