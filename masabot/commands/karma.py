@@ -170,7 +170,7 @@ class KarmaModule(BotBehaviorModule):
 		if uuid in self._karma:
 			#convert old karma format to new karma format
 			if isinstance(self._karma[uuid], int):
-				self._karma[uuid] = {server_id: self_karma[uuid]}
+				self._karma[uuid] = {server_id: self._karma[uuid]}
 
 			if global_karma:
 				amt = 0
@@ -191,7 +191,7 @@ class KarmaModule(BotBehaviorModule):
 		# to the first server that requests it
 		if uuid in self._karma:
 			if isinstance(self._karma[uuid], int):
-				self._karma[uuid] = {server_id: self_karma[uuid]}
+				self._karma[uuid] = {server_id: self._karma[uuid]}
 
 		if uuid not in self._karma:
 			self._karma[uuid] = {}
