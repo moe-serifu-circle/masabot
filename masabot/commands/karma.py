@@ -165,8 +165,13 @@ class KarmaModule(BotBehaviorModule):
 		:type server_id: int
 		:param server_id: server id for local karma
 		"""
+
 		amt = 0
 		if uuid in self._karma:
+			#convert old karma format to new karma format
+			if isinstance(self._karma[uuid], int):
+				self._karma[uuid] = {server_id: self_karma[uuid]}
+
 			if global_karma:
 				amt = 0
 				for i in self._karma[uuid]:
@@ -185,8 +190,8 @@ class KarmaModule(BotBehaviorModule):
 		# fix for user's still in old karma format, gives current karma
 		# to the first server that requests it
 		if uuid in self._karma:
-			if isinstance(self._karma[uuid]), int):
-				self._karma[uuid] = {server_id:self_karma[uuid]}
+			if isinstance(self._karma[uuid], int):
+				self._karma[uuid] = {server_id: self_karma[uuid]}
 
 		if uuid not in self._karma:
 			self._karma[uuid] = {}
