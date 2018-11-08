@@ -18,14 +18,13 @@ class KarmaModule(BotBehaviorModule):
 		help_text += " user or any item followed by a '++' or '--' to increase or decrease their karma. Add more"
 		help_text += " '+'/'-' characters to change the amount by even more.\n\nTo view the amount of karma, use the"
 		help_text += " `karma` command followed by the mention of the user to check (or the name of the thing to"
-		help_text += " check). As a shortcut, you can view your own karma by invoking `karma` with no arguments.\n"
+		help_text += " check). As a shortcut, you can view your own karma by invoking `karma` with no arguments.\n\n"
 		help_text += "If you would like to see a user's global karma (or your own global karma), simply add a `global`"
 		help_text += " to the end of the command (e.g. `karma global` to see your own, `karma @user global` to see"
-		help_text += " another user's global karma). \n\n"
-		help_text += "In order to prevent huge karma changes, there is a buzzkill mode, which limits the amount that"
-		help_text += " karma can change by. The `karma-buzzkill` command with no arguments will give what the current"
-		help_text += " buzzkill limit is, and ops are able to give an argument to set the limit. Setting the limit to"
-		help_text += " anything less than 1 disables buzzkill mode entirely, allowing any amount of karma change."
+		help_text += " another user's global karma). \n\n In order to prevent huge karma changes, there is a buzzkill mode,"
+		help_text += " which limits the amount that karma can change by. The `karma-buzzkill` command with no arguments"
+		help_text += " will give what the current buzzkill limit is, and ops are able to give an argument to set the limit."
+		help_text += " Setting the limit to anything less than 1 disables buzzkill mode entirely, allowing any amount of karma change."
 
 		super().__init__(
 			bot_api,
