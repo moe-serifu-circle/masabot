@@ -181,6 +181,13 @@ class KarmaModule(BotBehaviorModule):
 		return msg
 
 	def add_user_karma(self, uuid, server_id, amount):
+
+		# fix for user's still in old karma format, gives current karma
+		# to the first server that requests it
+		if uuid in self._karma:
+			if isinstance(self._karma[uuid]), int):
+				self._karma[uuid] = {server_id:self_karma[uuid]}
+
 		if uuid not in self._karma:
 			self._karma[uuid] = {}
 		if server_id == None:
