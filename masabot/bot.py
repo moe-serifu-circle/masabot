@@ -1246,7 +1246,7 @@ class MasaBot(object):
 			msg = "Sorry, <@!" + e.author.id + ">, but only my masters and operators can do that."
 			ctx = context
 			if e.context is not None:
-				ctx = e
+				ctx = e.context
 			await self.reply(ctx, msg)
 		except BotSyntaxError as e:
 			_log.exception("Syntax error")
