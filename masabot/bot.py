@@ -883,7 +883,7 @@ class MasaBot(object):
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to deop")
 
-		user = util.parse_channel(args[0])
+		user = util.parse_user(args[0])
 		if user not in self._operators:
 			await self.reply(context, "It looks like <@!" + user + "> is already not an op.")
 			return
