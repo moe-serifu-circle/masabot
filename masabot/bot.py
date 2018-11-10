@@ -974,6 +974,8 @@ class MasaBot(object):
 
 				if reason is not None:
 					msg += "\n\n--------\n\nOh! Oh! I gotta tell you! The whole reason I went down is because " + reason
+				else:
+					msg = None
 			elif not status['success']:
 				msg = "Oh no, it looks like something went wrong during my " + action + " :c\n\n"
 				if not status['check_package_success']:
