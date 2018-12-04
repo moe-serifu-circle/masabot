@@ -19,9 +19,11 @@ class KarmaModule(BotBehaviorModule):
 		help_text += " '+'/'-' characters to change the amount by even more.\n\nTo view the amount of karma, use the"
 		help_text += " `karma` command followed by the mention of the user to check (or the name of the thing to"
 		help_text += " check). As a shortcut, you can view your own karma by invoking `karma` with no arguments.\n\n"
+		help_text += "Additionally, if you want to check the karma leaderboard for this server, you can view it by"
+		help_text += " invoking `karma-top` with no arguments.\n\n"
 		help_text += "If you would like to see a user's global karma (or your own global karma), simply add a `global`"
 		help_text += " to the end of the command (e.g. `karma global` to see your own, `karma @user global` to see"
-		help_text += " another user's global karma). \n\n In order to prevent huge karma changes, there is a buzzkill mode," 
+		help_text += " another user's global karma). \n\nIn order to prevent huge karma changes, there is a buzzkill mode," 
 		help_text += " which limits the amount that karma can change by. The `karma-buzzkill` command with no arguments"
 		help_text += " will give what the current buzzkill limit is, and ops are able to give an argument to set the limit."
 		help_text += " Setting the limit to anything less than 1 disables buzzkill mode entirely, allowing any amount of karma change."
@@ -34,7 +36,8 @@ class KarmaModule(BotBehaviorModule):
 			triggers=[
 				RegexTrigger(r'<@!?(\d+)>\s*(\+\++|--+)$'),
 				InvocationTrigger('karma'),
-				InvocationTrigger('karma-buzzkill')
+				InvocationTrigger('karma-buzzkill'),
+				InvocationTrigger('karma-top')
 			],
 			resource_root=resource_root,
 			has_state=True
@@ -68,6 +71,8 @@ class KarmaModule(BotBehaviorModule):
 			await self.show_karma(context, args)
 		elif command == "karma-buzzkill":
 			await self.configure_buzzkill(context, args)
+		elif command == "karma-top":
+			await self.show_toplist_karma(context, args)
 
 	async def on_regex_match(self, context, metadata, *match_groups):
 		"""
@@ -127,6 +132,46 @@ class KarmaModule(BotBehaviorModule):
 				msg = self.get_user_karma(m.group(1), server_id=server, global_karma=global_karma)
 		else:
 			msg = self.get_user_karma(context.author.id, server_id=server, global_karma=global_karma)
+		await self.bot_api.reply(context, msg)
+	
+	async def show_toplist_karma(self, context, args):
+		"""
+		replies with the karma of the top users as well as the caller's place in the leaderboard
+		:type context: masabot.bot.BotContext
+		:type args: str
+		""" 
+		server = None
+		if hasattr(context.source, "server"): 
+			server = context.source.server.id
+		else:
+			server = 0
+
+		# temp_karma_sorted = [("232323", {"5345" : 41, "23423" : 12}), ("userid", {"serverid1" : karma1, "serverid2" : karma2}, ...]
+		temp_karma_sorted = sorted(self._karma.items(), key=lambda usv: usv[1][server], reverse=True)	# List has format as above
+		
+		tkslen = len(temp_karma_sorted)		# Number of users in karma list
+
+		usridx = 0	# Index of author in list before loop
+		for x in temp_karma_sorted:	# Loops to calculate ranking of author
+			if not x[0] == context.author.id:
+				usridx += 1
+			else:
+				break
+
+		msg = "Sure! Here is a list of the top karma earners in this server.\n\n"
+		if usridx == tkslen:		# Checks if user is in the karma list
+			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(context.author.name, "-", 0, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		else:
+			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(context.source.server.get_member(temp_karma_sorted[usridx][0]).name, 
+									usridx + 1, temp_karma_sorted[usridx][1][server], "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		
+		for i in range(0, 5):		# Appends top 5 karma values in server if applicable
+			if tkslen > i:
+				struserid = context.source.server.get_member(temp_karma_sorted[i][0]).name
+				karmaval = temp_karma_sorted[i][1][server]
+				msg += "{:^32.32} {:^1} | {} karma\n".format(struserid, i + 1, karmaval)
+		msg += "```"
+
 		await self.bot_api.reply(context, msg)
 
 	async def configure_buzzkill(self, context, args):
@@ -210,6 +255,8 @@ class KarmaModule(BotBehaviorModule):
 		else:
 			msg = "Okay! <@" + uuid + ">'s karma is now " + str(self._karma[uuid][server_id])
 		return msg
+
+	
 
 
 BOT_MODULE_CLASS = KarmaModule
