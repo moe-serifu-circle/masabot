@@ -69,3 +69,8 @@ The following environment variables are recognized:
 
 * ``MASABOT_ANIMELIST__ANILIST_CLIENT_SECRET`` corresponds to ``"animelist"."anilist-client-secret"`` in the config
   file.
+
+
+Integration Tests
+-----------------
+To execute integration tests, go to the project root directory and then type in `./run-int-tests.sh`.
