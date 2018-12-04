@@ -33,6 +33,6 @@ fi
 
 . "$virtual_dir/activate"
 
-python -m unittest discover -p "*_test.py"
+python -m unittest discover -s tests/integration -p "*_test.py"
 
 kill -- -$$
