@@ -1,0 +1,14 @@
+
+pipeline:
+  integration-tests:
+    image: python:3.6
+    commands:
+      - "virtualenv .venv"
+      - "./run-masabot.sh &"
+      - "sleep 20"
+      - "python -m unittest discover -s tests/integration -p \"*_test.py\""
+      - "pkill -P $$"
+    when:
+      event: [pull_request, push]
+      branch: master
+
