@@ -26,6 +26,8 @@ def load_config(json_path):
 		config['animelist']['anilist-client-id'] = os.environ["MASABOT_ANIMELIST__ANILIST_CLIENT_ID"]
 	if os.environ.get("MASABOT_ANIMELIST__ANILIST_CLIENT_SECRET", None) is not None:
 		config['animelist']['anilist-client-secret'] = os.environ["MASABOT_ANIMELIST__ANILIST_CLIENT_SECRET"]
+	if os.environ.get("MASABOT_ANNOUNCE_CHANNELS", None) is not None:
+		config['announce-channels'] = os.environ['MASABOT_ANNOUNCE_CHANNELS'].split(',')
 
 	if 'prefix' not in config:
 		_log.warning("No prefix in config; defaulting to '!'")

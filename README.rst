@@ -70,6 +70,9 @@ The following environment variables are recognized:
 * ``MASABOT_ANIMELIST__ANILIST_CLIENT_SECRET`` corresponds to ``"animelist"."anilist-client-secret"`` in the config
   file.
 
+* ``MASABOT_ANNOUNCE_CHANNELS`` corresponds to ``"announce-channels"`` in the config file. This variable contains the
+  name of each room to announce in, separated by commas.
+
 
 Integration Tests
 -----------------
