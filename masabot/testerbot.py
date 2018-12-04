@@ -67,6 +67,8 @@ class BotCommandExecutor(object):
 		raised. The timeout cannot be set to None.
 		:type timeout: int
 		:param timeout: The number of seconds to wait for output to be produced.
+		:rtype: str
+		:return: The output text
 		"""
 		if timeout is None:
 			raise ValueError("timeout cannot be None")
