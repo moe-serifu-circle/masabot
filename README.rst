@@ -1,7 +1,9 @@
-# masabot
+MasaBot
+=======
 An automated discord bot for handling typical tasks.
 
-## Dev Setup
+Dev Setup
+---------
 Masabot requires python 3. If you don't have it, install it.
 
 To install `masabot`, first clone the repo to the local system::
@@ -42,15 +44,36 @@ Once `masabot` is fully configured, it can be started via its supervisor. To lau
 Assuming everything is configured properly, MasaBot will now be started and running on the servers she has been invited
 to.
 
-Hello
------
+animelist Module: Additional Setup
+..................................
 
-
-## Watchlist Module: Additional Setup
-
-### Anilist
+Anilist
+~~~~~~~
 First, go to anilist at  https://anilist.co/settings/developer and create a new
 API v2 client. Set the name to anything you want, but be sure to set the
 redirect URI to something on your system.
 
 Then, copy the secret and client ID to your config.json file.
+
+
+Environment Variables
+---------------------
+Some environment variables may be used to override settings in the ``config.json`` file. If present, the value
+of the environment variable takes precedence over any that are defined in config.
+
+The following environment variables are recognized:
+
+* ``MASABOT_DISCORD_API_KEY`` corresponds to ``"discord-api-key"`` in the config file.
+
+* ``MASABOT_ANIMELIST__ANILIST_CLIENT_ID`` corresponds to ``"animelist"."anilist-client-id"`` in the config file.
+
+* ``MASABOT_ANIMELIST__ANILIST_CLIENT_SECRET`` corresponds to ``"animelist"."anilist-client-secret"`` in the config
+  file.
+
+* ``MASABOT_ANNOUNCE_CHANNELS`` corresponds to ``"announce-channels"`` in the config file. This variable contains the
+  name of each room to announce in, separated by commas.
+
+
+Integration Tests
+-----------------
+To execute integration tests, go to the project root directory and then type in `./run-int-tests.sh`.
