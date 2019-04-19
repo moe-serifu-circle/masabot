@@ -144,7 +144,8 @@ class KarmaModule(BotBehaviorModule):
 		if hasattr(context.source, "server"): 
 			server = context.source.server.id
 		else:
-			server = 0
+			await self.bot_api.reply(context, "There are no leaderboards in private messages, baka!")
+			return
 
 		# temp_karma_sorted = [("232323", {"5345" : 41, "23423" : 12}), ("userid", {"serverid1" : karma1, "serverid2" : karma2}, ...]
 		temp_karma_sorted = sorted(self._karma.items(), key=lambda usv: usv[1][server], reverse=True)	# List has format as above
@@ -160,10 +161,10 @@ class KarmaModule(BotBehaviorModule):
 
 		msg = "Sure! Here is a list of the top karma earners in this server.\n\n"
 		if usridx == tkslen:		# Checks if user is in the karma list
-			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(context.author.name, "-", 0, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(context.author.name, "-", 0, 				"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		else:
 			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(context.source.server.get_member(temp_karma_sorted[usridx][0]).name, 
-									usridx + 1, temp_karma_sorted[usridx][1][server], "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+									usridx + 1, temp_karma_sorted[usridx][1][server], 					"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		
 		for i in range(0, 5):		# Appends top 5 karma values in server if applicable
 			if tkslen > i:
