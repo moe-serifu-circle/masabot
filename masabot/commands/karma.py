@@ -144,7 +144,7 @@ class KarmaModule(BotBehaviorModule):
 		if hasattr(context.source, "server"): 
 			server = context.source.server.id
 		else:
-			await self.bot_api.reply(context, "There are no leaderboards in private messages baka!")
+			await self.bot_api.reply(context, "There are no leaderboards in private messages, baka!")
 			return
 
 		# temp_karma_sorted = [("232323", {"5345" : 41, "23423" : 12}), ("userid", {"serverid1" : karma1, "serverid2" : karma2}, ...]
