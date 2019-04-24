@@ -12,4 +12,6 @@ pipeline:
     when:
       event: [pull_request, push]
       branch: master
-
+    environment:
+      BOTCOMMAND_API_KEY:
+        from_secret: botcommand_api_key
