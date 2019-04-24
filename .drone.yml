@@ -6,6 +6,7 @@ pipeline:
       - "python -m venv .venv"
       - "./run-masabot.sh &"
       - "sleep 20"
+      - ". .venv/bin/activate"
       - "python -m unittest discover -s tests/integration -p \"*_test.py\""
       - "pkill -P $$"
     when:
