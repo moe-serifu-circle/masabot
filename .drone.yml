@@ -3,7 +3,7 @@ pipeline:
   integration-tests:
     image: python:3.6
     commands:
-      - "python -m virtualenv .venv"
+      - "python -m venv .venv"
       - "./run-masabot.sh &"
       - "sleep 20"
       - "python -m unittest discover -s tests/integration -p \"*_test.py\""
