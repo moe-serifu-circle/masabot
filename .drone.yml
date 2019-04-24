@@ -6,7 +6,7 @@ pipeline:
     commands:
       - "python -m venv .venv"
       - "./run-masabot.sh &"
-      - "env"
+      - "printenv"
       - "sleep 20"
       - ". .venv/bin/activate"
       - "python -m unittest discover -s tests/integration -p \"*_test.py\""
