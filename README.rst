@@ -19,7 +19,8 @@ by git::
     cd masabot
     python3 -m venv .venv
 
-Then, to enter the virtual environment (which should always be done to avoid polluting the global python namespace), you run the activation script.
+Then, to enter the virtual environment (which should always be done to avoid polluting the global python namespace), you
+run the activation script.
 
 On Windows, this is::
 
