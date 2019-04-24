@@ -2,7 +2,7 @@
 pipeline:
   integration-tests:
     image: python:3.6
-    secrets: [botcommand_api_key]
+    secrets: [botcommand_api_key, mykey]
     commands:
       - "python -m venv .venv"
       - "./run-masabot.sh &"
