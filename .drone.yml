@@ -2,9 +2,11 @@
 pipeline:
   integration-tests:
     image: python:3.6
+    secrets: [botcommand_api_key]
     commands:
       - "python -m venv .venv"
       - "./run-masabot.sh &"
+      - "echo $BOTCOMMAND_API_KEY"
       - "sleep 20"
       - ". .venv/bin/activate"
       - "python -m unittest discover -s tests/integration -p \"*_test.py\""
@@ -12,5 +14,3 @@ pipeline:
     when:
       event: [pull_request, push]
       branch: master
-    secrets:
-     - botcommand_api_key
