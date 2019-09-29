@@ -176,6 +176,7 @@ class MasaBot(object):
 		self._operators = {}
 		self._nsfw_channels = {}
 		self._timers = []
+		self._setup_complete = False
 		""":type : list[Timer]"""
 		self._master_timer_task = None
 
@@ -209,13 +210,13 @@ class MasaBot(object):
 		@self._client.event
 		async def on_ready():
 			_log.info("Logged in as " + self._client.user.name)
-			_log.info("ID: " + self._client.user.id)
+			_log.info("ID: " + str(self._client.user.id))
 
 			if self._client.user.avatar_url == '':
 				_log.info("Avatar not yet set; uploading...")
 				with open('avatar.png', 'rb') as avatar_fp:
 					avatar_data = avatar_fp.read()
-				await self._client.edit_profile(avatar=avatar_data)
+				await self._client.user.edit(avatar=avatar_data)
 
 			_log.info("Connected to servers:")
 			for c in self._client.servers:
@@ -227,6 +228,7 @@ class MasaBot(object):
 			else:
 				_log.info("Back from unclean shutdown caused by: " + repr(reason))
 			await self._check_supervisor_files()
+			self._setup_complete = True
 
 		@self._client.event
 		async def on_message(message):
@@ -244,21 +246,29 @@ class MasaBot(object):
 
 		@self._client.event
 		async def on_error(event, *args, **kwargs):
-			pager = DiscordPager("_(error continued)_")
-			message = args[0]
-			e = traceback.format_exc()
-			logging.exception("Exception in main loop")
-			msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
-			pager.add_line(msg_start)
-			pager.add_line()
-			pager.start_code_block()
-			for line in e.splitlines():
-				pager.add_line(line)
-			pager.end_code_block()
-			pages = pager.get_pages()
-			for p in pages:
-				await self._client.send_message(message.channel, p)
-			_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
+			if len(args) < 1:
+				# assume that we did not come from on_message
+				_log.exception("Exception in startup")
+				if not self._setup_complete:
+					with open('.supervisor/restart-command', 'w') as fp:
+						fp.write("quit")
+				await self._client.close()
+			else:
+				message = args[0]
+				pager = DiscordPager("_(error continued)_")
+				e = traceback.format_exc()
+				logging.exception("Exception in main loop")
+				msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
+				pager.add_line(msg_start)
+				pager.add_line()
+				pager.start_code_block()
+				for line in e.splitlines():
+					pager.add_line(line)
+				pager.end_code_block()
+				pages = pager.get_pages()
+				for p in pages:
+					await self._client.send_message(message.channel, p)
+				_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		self._load_modules(state_dict, conf['modules'])
 
@@ -279,11 +289,9 @@ class MasaBot(object):
 		Begin execution of bot. Blocks until complete.
 		"""
 		_log.info("Connecting...")
-		try:
-			self._master_timer_task = self._client.loop.create_task(self._run_timer())
-			self._client.run(self._api_key)
-		finally:
-			self._client.close()
+		# WARNING! WE REMOVED client.close() HERE.
+		self._master_timer_task = self._client.loop.create_task(self._run_timer())
+		self._client.run(self._api_key)
 
 	def is_nsfw_channel(self, ch_context):
 		"""

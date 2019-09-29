@@ -26,6 +26,8 @@ def cmd_end():
 
 def get_activation_command(virtualenv_dir=None):
 	if virtualenv_dir is not None:
+		while virtualenv_dir.endswith('/') or virtualenv_dir.endswith('\\'):
+			virtualenv_dir = virtualenv_dir[:-1]
 		if not os.path.exists(virtualenv_dir) or not os.path.isdir(virtualenv_dir):
 			msg = "Virtual environment path '" + str(virtualenv_dir) + "' not found"
 			raise ValueError(msg)
@@ -68,6 +70,7 @@ def run_venv_shell(exe, path=None):
 	lines = []
 	cmd = get_activation_command(path) + ' ' + cmd_end() + ' ' + exe + ' >' + os.path.join('.supervisor', 'temp')
 	cmd += ' 2>&1'
+
 	try:
 		subprocess.check_output(cmd, shell=True, universal_newlines=True)
 	except subprocess.CalledProcessError as e:
