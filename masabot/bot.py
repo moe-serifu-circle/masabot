@@ -21,7 +21,7 @@ def _fmt_channel(ch):
 	"""
 	Print a channel in human-readable format.
 
-	:type ch: discord.Channel | discord.PrivateChannel | discord.User
+	:type ch: discord.TextChannel | discord.PrivateChannel | discord.User
 	:param ch: The channel.
 	:rtype: str
 	:return: A string with the channel details
@@ -31,10 +31,10 @@ def _fmt_channel(ch):
 		return "DM " + str(ch.id) + "/" + str(ch.name) + "#" + str(ch.discriminator)
 	except AttributeError:
 		if ch.type == discord.ChannelType.text or ch.type == discord.ChannelType.voice:
-			return ch.server.id + "/" + repr(ch.server.name) + " #" + ch.name
+			return str(ch.guild.id) + "/" + repr(ch.guild.name) + " #" + ch.name
 		elif ch.type == discord.ChannelType.private:
 			other = ch.recipients[0]
-			return "DM " + other.id + "/" + other.name + "#" + other.discriminator
+			return "DM " + str(other.id) + "/" + other.name + "#" + other.discriminator
 		else:
 			return "Unknown ChannelType"
 
@@ -98,7 +98,7 @@ class BotContext(object):
 		if message is not None:
 			self.source = message.channel
 			self.author = message.author
-			self.is_pm = self.source.is_private and len(self.source.recipients) == 1
+			self.is_pm = isinstance(message, discord.abc.PrivateChannel) and len(self.source.recipients) == 1
 		else:
 			self.source = None
 			self.author = None
@@ -176,8 +176,8 @@ class MasaBot(object):
 		self._operators = {}
 		self._nsfw_channels = {}
 		self._timers = []
-		self._setup_complete = False
 		""":type : list[Timer]"""
+		self._setup_complete = False
 		self._master_timer_task = None
 
 		# default replacements; will be overridden if present in state file
@@ -219,8 +219,8 @@ class MasaBot(object):
 				await self._client.user.edit(avatar=avatar_data)
 
 			_log.info("Connected to servers:")
-			for c in self._client.servers:
-				_log.info("* " + str(c))
+			for g in self._client.guilds:
+				_log.info("* " + str(g))
 			_log.info("Bot is now online")
 			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
 			if clean_shutdown:
@@ -252,7 +252,7 @@ class MasaBot(object):
 				if not self._setup_complete:
 					with open('.supervisor/restart-command', 'w') as fp:
 						fp.write("quit")
-				await self._client.close()
+					await self._client.close()
 			else:
 				message = args[0]
 				pager = DiscordPager("_(error continued)_")
@@ -267,7 +267,7 @@ class MasaBot(object):
 				pager.end_code_block()
 				pages = pager.get_pages()
 				for p in pages:
-					await self._client.send_message(message.channel, p)
+					await message.channel.send(p)
 				_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		self._load_modules(state_dict, conf['modules'])
@@ -323,10 +323,10 @@ class MasaBot(object):
 		:type message: str
 		:param message: The message to send.
 		"""
-		for c in self._client.servers:
-			for ch in c.channels:
+		for g in self._client.guilds:
+			for ch in g.channels:
 				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
-					await self._client.send_message(ch, message)
+					await ch.send(message)
 					_log.debug(_fmt_send(ch, message))
 
 	async def reply_typing(self, context):
@@ -471,7 +471,7 @@ class MasaBot(object):
 			dest = context.author
 		else:
 			dest = context.source
-		await self._client.send_message(dest, message)
+		await dest.send(message)
 		_log.debug(_fmt_send(dest, message))
 
 	async def reply_with_file(self, context, fp, filename=None, message=None):
@@ -598,7 +598,7 @@ class MasaBot(object):
 		self.require_op(context, "quit", None)
 		with open('.supervisor/restart-command', 'w') as fp:
 			fp.write(restart_command)
-		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
+		await self.reply(context, "Right away, <@!" + str(context.author.id) + ">! See you later!")
 		_log.info("Shutting down...")
 		self._master_timer_task.cancel()
 		await self._client.logout()
@@ -764,7 +764,7 @@ class MasaBot(object):
 		the default, as a suitable error message will be generated from the other properties if this method is called
 		from within a core command function or from within one of a module's on_X methods().
 		"""
-		if context.author.id not in self._operators:
+		if str(context.author.id) not in self._operators:
 			raise BotPermissionError(context, command, module, message=message)
 
 	async def show_ops(self, context):
@@ -1138,7 +1138,7 @@ class MasaBot(object):
 		meta = MessageMetadata.from_message(message)
 
 		log_msg = "[" + _fmt_channel(context.source) + "]: received invocation " + repr(message.content)
-		log_msg += " from " + context.author.id + "/" + context.author_name()
+		log_msg += " from " + str(context.author.id) + "/" + context.author_name()
 		_log.debug(log_msg)
 
 		try:
@@ -1247,13 +1247,13 @@ class MasaBot(object):
 			_log.debug("Executing registered action in " + mod_name + " module...")
 			await action
 		except BotPermissionError as e:
-			msg = "User " + e.author.name + "#" + e.author.discriminator + " (ID: " + e.author.id + ") was denied"
+			msg = "User " + e.author.name + "#" + e.author.discriminator + " (ID: " + str(e.author.id) + ") was denied"
 			msg += " permission to execute privileged command " + repr(e.command)
 			if e.module is not None:
 				msg += " in module " + repr(e.module)
 			msg += "."
 			_log.error(msg)
-			msg = "Sorry, <@!" + e.author.id + ">, but only my masters and operators can do that."
+			msg = "Sorry, <@!" + str(e.author.id) + ">, but only my masters and operators can do that."
 			ctx = context
 			if e.context is not None:
 				ctx = e.context
