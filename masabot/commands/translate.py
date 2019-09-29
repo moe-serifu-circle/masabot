@@ -1,7 +1,7 @@
 from . import BotBehaviorModule, InvocationTrigger
 from ..util import BotSyntaxError, BotModuleError
 
-import py_translator
+import googletrans
 import logging
 
 
@@ -30,7 +30,7 @@ class TranslationModule(BotBehaviorModule):
 			has_state=False
 		)
 
-		self._translator = py_translator.Translator()
+		self._translator = googletrans.Translator()
 
 		self._langs = {
 			'af': 'afrikaans',

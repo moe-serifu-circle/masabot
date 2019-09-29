@@ -38,17 +38,17 @@ echo "Using virtual environment directory '$virtual_dir'"
 
 if [ -d "$virtual_dir/bin" ]
 then
-    virtual_dir="$virtual_dir/bin"
+    virtualenv_path="$virtual_dir/bin"
 elif [ -d "$virtual_dir/Scripts" ]
 then
-    virtual_dir="$virtual_dir/Scripts"
+    virtualenv_path="$virtual_dir/Scripts"
 else
     echo "Virtual environment not found in '$virtual_dir/bin' or '$virtual_dir/Scripts'." >&2
     echo "Please ensure setup is correct." >&2
     exit 1
 fi
 
-. "$virtual_dir/activate"
+. "$virtualenv_path/activate"
 
 if [ -d ".supervisor" ]
 then
@@ -57,7 +57,7 @@ else
     mkdir ".supervisor"
 fi
 
-python supervisor/supervisor.py initial-deploy
+python supervisor/supervisor.py initial-deploy "$virtual_dir"
 
 while [ -n "$running" ]
 do
@@ -69,7 +69,7 @@ do
         if [ "$cmd" = "redeploy" ]
         then
             git pull
-            python supervisor/supervisor.py redeploy
+            python supervisor/supervisor.py redeploy "$virtual_dir"
         elif [ "$cmd" = "quit" ]
         then
             running=
