@@ -33,7 +33,7 @@ def _fmt_channel(ch):
 		if ch.type == discord.ChannelType.text or ch.type == discord.ChannelType.voice:
 			return str(ch.guild.id) + "/" + repr(ch.guild.name) + " #" + ch.name
 		elif ch.type == discord.ChannelType.private:
-			other = ch.recipients[0]
+			other = ch.recipient
 			return "DM " + str(other.id) + "/" + other.name + "#" + other.discriminator
 		else:
 			return "Unknown ChannelType"
@@ -109,7 +109,7 @@ class BotContext(object):
 		Gets a mention of the author that created the message.
 		:return: The author
 		"""
-		return "<@!" + self.author.id + ">"
+		return "<@!" + str(self.author.id) + ">"
 
 	def author_name(self):
 		return self.author.name + "#" + self.author.discriminator
@@ -156,6 +156,29 @@ class BotContext(object):
 			if ch_match is None:
 				raise ValueError(str(ch_id) + " is not a channel in this context")
 			return ch_match.name
+
+	async def to_dm_context(self):
+		"""
+		Create a copy of this context for sending DMs to the author.
+		:return: The DM context.
+		"""
+		dm_context = BotContext(None)
+		dm_context.author = self.author
+		dm_context.source = await self.author.create_dm()
+		dm_context.is_pm = True
+		return dm_context
+
+	def is_nsfw(self):
+		"""
+		Return whether the context allows nsfw content. This will always be true in a dm context.
+
+		:rtype: bool
+		:return: Whether NSFW content is allowed.
+		"""
+		if self.is_pm:
+			return True
+		else:
+			return self.source.is_nsfw()
 
 
 class MasaBot(object):
@@ -249,8 +272,8 @@ class MasaBot(object):
 				# assume that we did not come from on_message
 				_log.exception("Exception in startup")
 				if not self._setup_complete:
-					with open('.supervisor/restart-command', 'w') as fp:
-						fp.write("quit")
+					with open('.supervisor/restart-command', 'w') as restart_command_file:
+						restart_command_file.write("quit")
 					await self._client.close()
 			else:
 				message = args[0]
@@ -270,18 +293,6 @@ class MasaBot(object):
 				_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		self._load_modules(state_dict, conf['modules'])
-
-	async def create_dm_context(self, context):
-		"""
-		Create a copy of this context for sending DMs to the author.
-		:return: The DM context.
-		"""
-		chan = await self._client.start_private_message(context.author)
-		dm_context = BotContext(None)
-		dm_context.author = context.author
-		dm_context.source = chan
-		dm_context.is_pm = True
-		return dm_context
 
 	def run(self):
 		"""
@@ -305,21 +316,6 @@ class MasaBot(object):
 				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
 					await ch.send(message)
 					_log.debug(_fmt_send(ch, message))
-
-	async def reply_typing(self, context):
-		"""
-		Send to the correct reply context that MasaBot has started typing.
-
-		:type context: BotContext
-		:param context: The context to reply with.
-		"""
-
-		if context.is_pm:
-			dest = context.author
-		else:
-			dest = context.source
-		await self._client.send_typing(dest)
-		_log.debug("[" + _fmt_channel(dest) + "]: sent <TYPING>")
 
 	async def confirm(self, context, message):
 		"""
@@ -479,7 +475,7 @@ class MasaBot(object):
 		else:
 			dest = context.source
 
-		await self._client.send_file(dest, fp, filename=filename, content=message)
+		await dest.send(discord.File(fp, filename=filename), content=message)
 		_log.debug("[" + _fmt_channel(context.source) + "]: sent <FILE>")
 
 	async def show_help(self, context, help_module=None):

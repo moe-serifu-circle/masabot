@@ -141,8 +141,8 @@ class KarmaModule(BotBehaviorModule):
 		:type args: str
 		""" 
 		server = None
-		if hasattr(context.source, "server"): 
-			server = context.source.server.id
+		if not context.is_pm:
+			server = context.source.guild.id
 		else:
 			await self.bot_api.reply(context, "There are no leaderboards in private messages, baka!")
 			return
@@ -226,9 +226,9 @@ class KarmaModule(BotBehaviorModule):
 				amt = self._karma[uuid].get(server_id, 0)
 
 		if global_karma:
-			msg = "<@" + uuid + ">'s global karma is at " + str(amt) + "."
+			msg = "<@" + str(uuid) + ">'s global karma is at " + str(amt) + "."
 		else:
-			msg = "<@" + uuid + ">'s karma is at " + str(amt) + "."
+			msg = "<@" + str(uuid) + ">'s karma is at " + str(amt) + "."
 		return msg
 
 	def add_user_karma(self, uuid, server_id, amount):
@@ -251,10 +251,10 @@ class KarmaModule(BotBehaviorModule):
 		_log.debug("Modified karma of user " + uuid + " by " + str(amount) + "; new total " + str(self._karma[uuid][server_id]))
 
 		if random.random() < self._tsundere_chance and amount > 0:
-			msg = "F-fine, <@" + uuid + ">'s karma is now " + str(self._karma[uuid][server_id]) + ". B-b-but it's not like I like"
+			msg = "F-fine, <@" + str(uuid) + ">'s karma is now " + str(self._karma[uuid][server_id]) + ". B-b-but it's not like I like"
 			msg += " them or anything weird like that. So don't get the wrong idea! B-baka..."
 		else:
-			msg = "Okay! <@" + uuid + ">'s karma is now " + str(self._karma[uuid][server_id])
+			msg = "Okay! <@" + str(uuid) + ">'s karma is now " + str(self._karma[uuid][server_id])
 		return msg
 
 	

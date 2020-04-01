@@ -89,31 +89,30 @@ class TranslationModule(BotBehaviorModule):
 		if len(args) > 2:
 			dest = args[2]
 
-		await self.bot_api.reply_typing(context)
+		async with context.source.typing():
+			try:
+				if source is not None:
+					trans = self._translator.translate(text, src=source, dest=dest)
+				else:
+					trans = self._translator.translate(text, dest=dest)
+			except ValueError:
+				raise BotSyntaxError("Your source or destination language was not valid!")
 
-		try:
-			if source is not None:
-				trans = self._translator.translate(text, src=source, dest=dest)
+			msg = "Sure, I'll translate that"
+			if source is None:
+				if trans.src in self._langs:
+					msg += "! I think it's in " + self._langs[trans.src].capitalize() + ", right?"
+				else:
+					msg += "! I think it's in " + trans.src + ", but I'm not sure what language that is!"
+					msg += " But you can ask my operators to add it."
 			else:
-				trans = self._translator.translate(text, dest=dest)
-		except ValueError as e:
-			raise BotSyntaxError("Your source or destination language was not valid!")
+				msg += " from " + self._langs.get(source, source).capitalize() + "."
 
-		msg = "Sure, I'll translate that"
-		if source is None:
-			if trans.src in self._langs:
-				msg += "! I think it's in " + self._langs[trans.src].capitalize() + ", right?"
-			else:
-				msg += "! I think it's in " + trans.src + ", but I'm not sure what language that is!"
-				msg += " But you can ask my operators to add it."
-		else:
-			msg += " from " + self._langs.get(source, source).capitalize() + "."
+			msg += "\nIn " + self._langs.get(dest, dest).capitalize() + ", it would be:\n```\n"
+			msg += trans.text + "\n```"
 
-		msg += "\nIn " + self._langs.get(dest, dest).capitalize() + ", it would be:\n```\n"
-		msg += trans.text + "\n```"
-
-		if trans.pronunciation is not None and trans.pronunciation != trans.text:
-			msg += "Oh, and the reading is:\n```\n" + trans.pronunciation + "\n```"
+			if trans.pronunciation is not None and trans.pronunciation != trans.text:
+				msg += "Oh, and the reading is:\n```\n" + trans.pronunciation + "\n```"
 
 		await self.bot_api.reply(context, msg)
 
