@@ -34,19 +34,23 @@ def parse_user(mention_text):
 
 	:type mention_text: str
 	:param mention_text: The mention text.
-	:rtype: str
-	:return: The user ID.
+	:rtype: str, bool
+	:return: The user ID, and whether the user is a bot
 	"""
+	is_bot = False
 	mention_text = mention_text.strip()
 	if not mention_text.startswith('<@') or not mention_text.endswith('>'):
 		raise BotSyntaxError(repr(str(mention_text)) + " is not a user mention")
 	parsed = mention_text[2:-1]
 	if parsed.startswith('!'):
 		parsed = parsed[1:]
+	if parsed.startswith('&'):
+		parsed = parsed[1:]
+		is_bot = True
 	if not parsed.isdigit():
 		raise BotSyntaxError(repr(str(mention_text)) + " is not a user mention")
 
-	return parsed
+	return int(parsed), is_bot
 
 
 def parse_channel(mention_text):
@@ -206,39 +210,20 @@ def str_to_float(str_value, min=None, max=None, name="value"):
 	return value
 
 
-class Attachment(object):
+class AttachmentData(object):
 	"""
 	A data file that is attached to an existing message. This file is hosted on Discord and can be accessed either via a
 	direct link or a proxy link.
 	"""
 
-	def __init__(self, att_id, filename, size, url, proxy_url, width=None, height=None):
+	def __init__(self, att):
 		"""
 		Create a new attachment.
 
-		:type att_id: str
-		:param att_id: The ID of the attachment.
-		:type filename: str
-		:param filename: The name of the file.
-		:type size: int
-		:param size: The size, in bytes, of the uploaded file.
-		:type url: str
-		:param url: The URL for accessing the file directly.
-		:type proxy_url: str
-		:param proxy_url: The URL for accessing the file via the Discord proxy. This is used for generating previews,
-		but can be the same as the direct link when a preview is not generated.
-		:type width: int
-		:param width: The width of the uploaded file. Only used if the attachment is an image or movie.
-		:type height: int
-		:param height: The height of the uploaded file. Only used if the attachment is an image or movie.
+		:type att: discord.Attachment
+		:param att: The attachment.
 		"""
-		self.id = att_id
-		self.filename = filename
-		self.size = size
-		self.url = url
-		self.proxy_url = proxy_url
-		self.width = width
-		self.height = height
+		self.attachment = att
 
 	def is_image(self):
 		"""
@@ -250,15 +235,15 @@ class Attachment(object):
 		if not self.has_dimensions():
 			return False
 
-		if self.filename.lower().endswith('.png'):
+		if self.attachment.filename.lower().endswith('.png'):
 			return True
-		elif self.filename.lower().endswith('.jpg'):
+		elif self.attachment.filename.lower().endswith('.jpg'):
 			return True
-		elif self.filename.lower().endswith('.jpeg'):
+		elif self.attachment.filename.lower().endswith('.jpeg'):
 			return True
-		elif self.filename.lower().endswith('.gif'):
+		elif self.attachment.filename.lower().endswith('.gif'):
 			return True
-		elif self.filename.lower().endswith('.webp'):
+		elif self.attachment.filename.lower().endswith('.webp'):
 			return True
 
 		return False
@@ -273,9 +258,9 @@ class Attachment(object):
 		if not self.has_dimensions():
 			return False
 
-		if self.filename.lower().endswith('.mp4'):
+		if self.attachment.filename.lower().endswith('.mp4'):
 			return True
-		elif self.filename.lower().endswith('.webm'):
+		elif self.attachment.filename.lower().endswith('.webm'):
 			return True
 
 		return False
@@ -287,7 +272,7 @@ class Attachment(object):
 		:rtype: bool
 		:return: Whether the `height` and `width` are non-None values.
 		"""
-		return self.width is not None and self.height is not None
+		return self.attachment.width is not None and self.attachment.height is not None
 
 	def download(self):
 		"""
@@ -297,7 +282,7 @@ class Attachment(object):
 		:return: The bytes that make up the attachment.
 		"""
 
-		parsed_url = urllib.parse.urlparse(self.url)
+		parsed_url = urllib.parse.urlparse(self.attachment.url)
 		ssl = False
 		if parsed_url.scheme.lower() == 'https':
 			ssl = True
@@ -305,26 +290,6 @@ class Attachment(object):
 		agent = http.HttpAgent(parsed_url.netloc, response_payload='binary', ssl=ssl)
 		_, data = agent.request('GET', parsed_url.path)
 		return data
-
-	@staticmethod
-	def from_dict(att_dict):
-		"""
-		Create a new Attachment by reading the properties in a dict that came from the discord.py API.
-
-		:type att_dict: dict[str, Any]
-		:param att_dict: The dictionary containing the attributes of the attachment.
-
-		:rtype: Attachment
-		:return: The new attachment.
-		"""
-		att_id = att_dict['id']
-		filename = att_dict['filename']
-		size = att_dict['size']
-		url = att_dict['url']
-		proxy_url = att_dict['proxy_url']
-		w = att_dict.get('width', None)
-		h = att_dict.get('height', None)
-		return Attachment(att_id, filename, size, url, proxy_url, w, h)
 
 
 class MessageMetadata(object):
@@ -365,8 +330,8 @@ class MessageMetadata(object):
 		"""
 
 		attachments = []
-		for att_dict in message.attachments:
-			a = Attachment.from_dict(att_dict)
+		for att in message.attachments:
+			a = AttachmentData(att)
 			attachments.append(a)
 
 		meta = MessageMetadata(attachments)
