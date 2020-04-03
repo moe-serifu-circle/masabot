@@ -10,6 +10,7 @@ import time
 import re
 import shlex
 from . import configfile, commands, util
+from typing import Optional
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
 
 
@@ -750,6 +751,16 @@ class MasaBot(object):
 			user = self._client.get_user(m)
 			await user.send(message)
 
+	def get_user(self, snowflake_id) -> Optional[discord.User]:
+		"""
+		Get a user from a snowflake ID.
+
+		:type snowflake_id: int
+		:param snowflake_id: The ID.
+		:return: The user.
+		"""
+		return self._client.get_user(snowflake_id)
+
 	async def _run_timer(self):
 		await self._client.wait_until_ready()
 		_log.debug("Master timer started")
@@ -1100,7 +1111,7 @@ class MasaBot(object):
 					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
 					handled_already.append(h.name)
 
-		if '<@' + self._client.user.id + '>' in mentions or '<@!' + self._client.user.id + '>' in mentions:
+		if '<@' + str(self._client.user.id) + '>' in mentions or '<@!' + str(self._client.user.id) + '>' in mentions:
 			for h in self._self_mention_handlers:
 				if h.name not in handled_already:
 					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
