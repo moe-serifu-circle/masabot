@@ -10,7 +10,11 @@ import time
 import re
 import shlex
 from . import configfile, commands, util
+from typing import Optional
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
+
+
+VERSION = "1.0.0"
 
 
 _log = logging.getLogger(__name__)
@@ -21,7 +25,7 @@ def _fmt_channel(ch):
 	"""
 	Print a channel in human-readable format.
 
-	:type ch: discord.Channel | discord.PrivateChannel | discord.User
+	:type ch: discord.TextChannel | discord.PrivateChannel | discord.User
 	:param ch: The channel.
 	:rtype: str
 	:return: A string with the channel details
@@ -31,10 +35,10 @@ def _fmt_channel(ch):
 		return "DM " + str(ch.id) + "/" + str(ch.name) + "#" + str(ch.discriminator)
 	except AttributeError:
 		if ch.type == discord.ChannelType.text or ch.type == discord.ChannelType.voice:
-			return ch.server.id + "/" + repr(ch.server.name) + " #" + ch.name
+			return str(ch.guild.id) + "/" + repr(ch.guild.name) + " #" + ch.name
 		elif ch.type == discord.ChannelType.private:
-			other = ch.recipients[0]
-			return "DM " + other.id + "/" + other.name + "#" + other.discriminator
+			other = ch.recipient
+			return "DM " + str(other.id) + "/" + other.name + "#" + other.discriminator
 		else:
 			return "Unknown ChannelType"
 
@@ -98,7 +102,7 @@ class BotContext(object):
 		if message is not None:
 			self.source = message.channel
 			self.author = message.author
-			self.is_pm = self.source.is_private and len(self.source.recipients) == 1
+			self.is_pm = isinstance(message, discord.abc.PrivateChannel) and len(self.source.recipients) == 1
 		else:
 			self.source = None
 			self.author = None
@@ -109,7 +113,7 @@ class BotContext(object):
 		Gets a mention of the author that created the message.
 		:return: The author
 		"""
-		return "<@!" + self.author.id + ">"
+		return "<@!" + str(self.author.id) + ">"
 
 	def author_name(self):
 		return self.author.name + "#" + self.author.discriminator
@@ -157,6 +161,29 @@ class BotContext(object):
 				raise ValueError(str(ch_id) + " is not a channel in this context")
 			return ch_match.name
 
+	async def to_dm_context(self):
+		"""
+		Create a copy of this context for sending DMs to the author.
+		:return: The DM context.
+		"""
+		dm_context = BotContext(None)
+		dm_context.author = self.author
+		dm_context.source = await self.author.create_dm()
+		dm_context.is_pm = True
+		return dm_context
+
+	def is_nsfw(self):
+		"""
+		Return whether the context allows nsfw content. This will always be true in a dm context.
+
+		:rtype: bool
+		:return: Whether NSFW content is allowed.
+		"""
+		if self.is_pm:
+			return True
+		else:
+			return self.source.is_nsfw()
+
 
 class MasaBot(object):
 
@@ -174,9 +201,9 @@ class MasaBot(object):
 		self._any_mention_handlers = []
 		self._regex_handlers = {}
 		self._operators = {}
-		self._nsfw_channels = {}
 		self._timers = []
 		""":type : list[Timer]"""
+		self._setup_complete = False
 		self._master_timer_task = None
 
 		# default replacements; will be overridden if present in state file
@@ -204,22 +231,22 @@ class MasaBot(object):
 		self._prefix = conf['prefix']
 		self._announce_channels = conf['announce-channels']
 
-		self._client = discord.Client()
+		self._client = discord.Client(status="being cute with discord.py 1.0+")
 
 		@self._client.event
 		async def on_ready():
 			_log.info("Logged in as " + self._client.user.name)
-			_log.info("ID: " + self._client.user.id)
+			_log.info("ID: " + str(self._client.user.id))
 
 			if self._client.user.avatar_url == '':
 				_log.info("Avatar not yet set; uploading...")
 				with open('avatar.png', 'rb') as avatar_fp:
 					avatar_data = avatar_fp.read()
-				await self._client.edit_profile(avatar=avatar_data)
+				await self._client.user.edit(avatar=avatar_data)
 
 			_log.info("Connected to servers:")
-			for c in self._client.servers:
-				_log.info("* " + str(c))
+			for g in self._client.guilds:
+				_log.info("* " + str(g))
 			_log.info("Bot is now online")
 			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
 			if clean_shutdown:
@@ -227,6 +254,7 @@ class MasaBot(object):
 			else:
 				_log.info("Back from unclean shutdown caused by: " + repr(reason))
 			await self._check_supervisor_files()
+			self._setup_complete = True
 
 		@self._client.event
 		async def on_message(message):
@@ -244,68 +272,40 @@ class MasaBot(object):
 
 		@self._client.event
 		async def on_error(event, *args, **kwargs):
-			pager = DiscordPager("_(error continued)_")
-			message = args[0]
-			e = traceback.format_exc()
-			logging.exception("Exception in main loop")
-			msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
-			pager.add_line(msg_start)
-			pager.add_line()
-			pager.start_code_block()
-			for line in e.splitlines():
-				pager.add_line(line)
-			pager.end_code_block()
-			pages = pager.get_pages()
-			for p in pages:
-				await self._client.send_message(message.channel, p)
-			_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
+			if len(args) < 1:
+				# assume that we did not come from on_message
+				_log.exception("Exception in startup")
+				if not self._setup_complete:
+					with open('.supervisor/restart-command', 'w') as restart_command_file:
+						restart_command_file.write("quit")
+					await self._client.close()
+			else:
+				message = args[0]
+				pager = DiscordPager("_(error continued)_")
+				e = traceback.format_exc()
+				logging.exception("Exception in main loop")
+				msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
+				pager.add_line(msg_start)
+				pager.add_line()
+				pager.start_code_block()
+				for line in e.splitlines():
+					pager.add_line(line)
+				pager.end_code_block()
+				pages = pager.get_pages()
+				for p in pages:
+					await message.channel.send(p)
+				_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		self._load_modules(state_dict, conf['modules'])
-
-	async def create_dm_context(self, context):
-		"""
-		Create a copy of this context for sending DMs to the author.
-		:return: The DM context.
-		"""
-		chan = await self._client.start_private_message(context.author)
-		dm_context = BotContext(None)
-		dm_context.author = context.author
-		dm_context.source = chan
-		dm_context.is_pm = True
-		return dm_context
 
 	def run(self):
 		"""
 		Begin execution of bot. Blocks until complete.
 		"""
 		_log.info("Connecting...")
-		try:
-			self._master_timer_task = self._client.loop.create_task(self._run_timer())
-			self._client.run(self._api_key)
-		finally:
-			self._client.close()
-
-	def is_nsfw_channel(self, ch_context):
-		"""
-		Check if the given context contains an NSFW channel. Does not actually use the Discord API; uses supplementary
-		info given to MasaBot in mark nsfw and unmark nsfw commands.
-
-		:type ch_context: BotContext | discord.Channel
-		:param ch_context: The BotContext or Channel to check if is NSFW.
-		:rtype: bool
-		:return: Whether the channel is NSFW or not.
-		"""
-		try:
-			ch_id = ch_context.id
-		except AttributeError:
-			if ch_context.is_pm:
-				return True
-			ch_id = ch_context.source.id
-
-		if ch_id not in self._nsfw_channels:
-			return False
-
-		return self._nsfw_channels[ch_id]
+		# WARNING! WE REMOVED client.close() HERE.
+		self._master_timer_task = self._client.loop.create_task(self._run_timer())
+		self._client.run(self._api_key)
 
 	async def announce(self, message):
 		"""
@@ -315,26 +315,11 @@ class MasaBot(object):
 		:type message: str
 		:param message: The message to send.
 		"""
-		for c in self._client.servers:
-			for ch in c.channels:
+		for g in self._client.guilds:
+			for ch in g.channels:
 				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
-					await self._client.send_message(ch, message)
+					await ch.send(message)
 					_log.debug(_fmt_send(ch, message))
-
-	async def reply_typing(self, context):
-		"""
-		Send to the correct reply context that MasaBot has started typing.
-
-		:type context: BotContext
-		:param context: The context to reply with.
-		"""
-
-		if context.is_pm:
-			dest = context.author
-		else:
-			dest = context.source
-		await self._client.send_typing(dest)
-		_log.debug("[" + _fmt_channel(dest) + "]: sent <TYPING>")
 
 	async def confirm(self, context, message):
 		"""
@@ -398,9 +383,14 @@ class MasaBot(object):
 		_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " started")
 
 		def check_option(msg):
+			if msg.author != context.author:
+				return False
 			return msg.content in all_options
 
-		message = await self._client.wait_for_message(timeout=60, author=context.author, check=check_option)
+		try:
+			message = await self._client.wait_for('message', timeout=60, check=check_option)
+		except asyncio.TimeoutError:
+			message = None
 		if message is None:
 			_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " timed out")
 			return None
@@ -431,6 +421,8 @@ class MasaBot(object):
 		_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " started")
 
 		def check_option(msg):
+			if msg.author != context.author:
+				return False
 			if not msg.content.startswith(self._prefix * 2):
 				return False
 			# noinspection PyBroadException
@@ -440,7 +432,10 @@ class MasaBot(object):
 				return False
 			return True
 
-		message = await self._client.wait_for_message(timeout=timeout, author=context.author, check=check_option)
+		try:
+			message = await self._client.wait_for('message', timeout=timeout, check=check_option)
+		except asyncio.TimeoutError:
+			message = None
 		if message is None:
 			_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " timed out")
 			return None
@@ -463,7 +458,7 @@ class MasaBot(object):
 			dest = context.author
 		else:
 			dest = context.source
-		await self._client.send_message(dest, message)
+		await dest.send(message)
 		_log.debug(_fmt_send(dest, message))
 
 	async def reply_with_file(self, context, fp, filename=None, message=None):
@@ -484,7 +479,7 @@ class MasaBot(object):
 		else:
 			dest = context.source
 
-		await self._client.send_file(dest, fp, filename=filename, content=message)
+		await dest.send(content=message, file=discord.File(fp, filename=filename))
 		_log.debug("[" + _fmt_channel(context.source) + "]: sent <FILE>")
 
 	async def show_help(self, context, help_module=None):
@@ -501,14 +496,13 @@ class MasaBot(object):
 			msg = "Sure! I'll tell you how to use my interface!\n\n"
 			msg += "Here are my special commands:\n"
 			msg += "* `" + pre + "help` - Shows this help.\n"
+			msg += "* `" + pre + "version` - Shows the current version.\n"
 			msg += "* `" + pre + "redeploy` - Pulls in the latest changes.\n"
 			msg += "* `" + pre + "quit` - Immediately stops me from running.\n"
 			msg += "* `" + pre + "op` - Gives a user operator permissions.\n"
 			msg += "* `" + pre + "deop` - Takes away operator permissions from a user.\n"
 			msg += "* `" + pre + "showops` - Shows all of my operators and masters.\n"
 			msg += "* `" + pre + "replchars` - Shows/sets characters that are replaced before parsing.\n"
-			msg += "* `" + pre + "nsfw` - Marks a channel as NSFW.\n"
-			msg += "* `" + pre + "sfw` - Marks a channel as SFW.\n"
 			msg += "\nHere are the modules that I'm running:\n"
 			for m_name in self._bot_modules:
 				m = self._bot_modules[m_name]
@@ -526,6 +520,8 @@ class MasaBot(object):
 				msg += " run it by itself, `" + pre + "help`, to just show the list of all commands and modules, or you"
 				msg += " can you put a module name after it to find out about that module! But I guess you already know"
 				msg += " that, eheheh ^_^"
+			if help_module == "version":
+				msg = "Oh, that's the command that tells you what version I am!"
 			elif help_module == "quit":
 				msg = "Mmm, `quit` is the command that will make me leave the server right away. It shuts me down"
 				msg += " instantly, which is really really sad! It's a really powerful command, so only my masters and"
@@ -559,24 +555,9 @@ class MasaBot(object):
 				msg += " the space character can only be replaced in conjuction with other characters, and never by"
 				msg += " itself. **Even if you're a master user or an operator.** I'm really sorry to restrict it like"
 				msg += " that, but I have to in order to make sure I can keep running properly!"
-			elif help_module == "nsfw":
-				msg = "The `nsfw` command marks a channel as not-safe-for-work! It lets me know that there is NSFW or"
-				msg += " potentially r-18 content in a channel so I can use commands that could output that sort of"
-				msg += " content in that channel. Only operators are allowed to tell me which channels are NSFW.\n\n"
-				msg += "To mark a channel as NSFW: `nsfw #channel-name`.\n\nYou can also list all channels I have marked"
-				msg += " as NSFW by using `nsfw` by itself without giving the name of a channel. Anybody can do that!"
-				msg += " you don't even have to be an operator!"
-			elif help_module == "sfw":
-				msg = "The `sfw` command marks a channel as safe-for-work, which means I won't show any output in it"
-				msg += " that is r-18. If a channel isn't marked by this system, I'll assume that it's SFW, so don't"
-				msg += " worry! I'll only show that r-18 sort of stuff in channels that you tell me I can. Oh!"
-				msg += " Only my operators are allowed to tell me which channels should be sfw!\n\nTo mark a channel as"
-				msg += " SFW: `sfw #channel-name`.\n\nYou can also list all channels that I have marked as SFW by using"
-				msg += " `sfw` by itself without giving the name of a channel. And it's even totally fine if you're not"
-				msg += " an operator for that one!"
 			else:
 				if help_module not in self._invocations and help_module not in self._bot_modules:
-					msg = "Oh no! I'm sorry, <@!" + context.author.id + ">, but I don't have any module or command"
+					msg = "Oh no! I'm sorry, <@!" + str(context.author.id) + ">, but I don't have any module or command"
 					msg += " called '" + help_module + "'. P-please don't be mad! I'll really do my best at everything"
 					msg += " else, okay?"
 				else:
@@ -590,10 +571,13 @@ class MasaBot(object):
 		self.require_op(context, "quit", None)
 		with open('.supervisor/restart-command', 'w') as fp:
 			fp.write(restart_command)
-		await self.reply(context, "Right away, <@!" + context.author.id + ">! See you later!")
+		await self.reply(context, "Right away, <@!" + str(context.author.id) + ">! See you later!")
 		_log.info("Shutting down...")
 		self._master_timer_task.cancel()
 		await self._client.logout()
+
+	async def show_version(self, context):
+		await self.reply(context, "I am Masabot v" + str(VERSION) + "!")
 
 	async def run_replchars_command(self, context, action=None, search=None, replacement=None):
 		"""
@@ -650,6 +634,9 @@ class MasaBot(object):
 			cur_repl = ''
 			if search in self._invocation_replacements:
 				cur_repl = self._invocation_replacements[search]
+				if cur_repl == replacement:
+					await self.reply(context, "Well, I'm already replacing `" + search + "` with `" + cur_repl + "`.")
+					return
 				prompt_msg = "Right now, I'm replacing `" + search + "` with `" + cur_repl + "`. Do you want me to"
 				prompt_msg += " start replacing it with `" + replacement + "` instead?"
 			else:
@@ -731,7 +718,7 @@ class MasaBot(object):
 		automatically handles setting up a sentence and apologizing to the user.
 		:return:
 		"""
-		msg = "Um, oh no, I'm sorry <@!" + context.author.id + ">, but I really have no idea what you mean..."
+		msg = "Um, oh no, I'm sorry <@!" + str(context.author.id) + ">, but I really have no idea what you mean..."
 		if message is not None:
 			msg += " " + message
 		msg += "\n\nBut, oh! I know!"
@@ -762,92 +749,26 @@ class MasaBot(object):
 	async def show_ops(self, context):
 		msg = "Okay, sure! Here's a list of all of my operators:\n\n"
 		for u in self._operators:
-			all_info = await self._client.get_user_info(u)
+			all_info = self._client.get_user(u)
 			op_info = self._operators[u]
 			msg += "* " + all_info.name + "#" + all_info.discriminator + " _(" + op_info['role'] + ")_\n"
 		await self.reply(context, msg)
 
-	async def mark_nsfw(self, context, channel_mention=None):
-		if channel_mention is None:
-			if context.source.server is None:
-				msg = "Well, this isn't a server, so I don't have anything here marked as NSFW!"
-			else:
-				msg = "Sure!"
-				marked = []
-				for ch in context.source.server.channels:
-					if ch.type == discord.ChannelType.text and ch.id in self._nsfw_channels:
-						marked.append("<#" + ch.id + ">")
-				if len(marked) < 1:
-					msg += " On this server, I don't have any channels marked as NSFW right now."
-				else:
-					msg += " Here's the channels on this server where I can post NSFW content:\n"
-					for m in marked:
-						msg += "\n* " + str(m)
-			await self.reply(context, msg)
-		else:
-			self.require_op(context, 'nsfw <channel>', None)
-			ch_id = util.parse_channel(channel_mention)
-			if not context.channel_exists(ch_id):
-				raise BotSyntaxError("That's not a channel on this server!")
-			if ch_id in self._nsfw_channels:
-				msg = "I already have <#" + ch_id + "> marked as NSFW, so that's all good!"
-				await self.reply(context, msg)
-				return
-
-			pmsg = "That will let me post NSFW content to <#" + ch_id + ">; are you sure you're okay with that?"
-			answer = await self.confirm(context, pmsg)
-			if answer:
-				self._nsfw_channels[ch_id] = True
-				_log.debug("Set channel " + str(ch_id) + " / " + context.get_channel_name(ch_id) + " as NSFW")
-				self._save_all()
-				msg = "Okay, got it! I'll stop restricting what I can post in <#" + ch_id + ">!"
-			else:
-				msg = "Okay, sure! I'll make sure my posts in <#" + ch_id + "> stay safe-for-work!"
-			await self.reply(context, msg)
-
-	async def mark_sfw(self, context, channel_mention=None):
-		if channel_mention is None:
-			if context.source.server is None:
-				msg = "Well, this isn't a server, so I don't have anything here marked as SFW!"
-			else:
-				msg = "Sure!"
-				marked = []
-				for ch in context.source.server.channels:
-					if ch.type == discord.ChannelType.text and ch.id not in self._nsfw_channels:
-						marked.append("<#" + ch.id + ">")
-				if len(marked) < 1:
-					msg += " On this server, I don't have any channels marked as SFW right now."
-				else:
-					msg += " Here's the channels on this server where I'm keeping my posts SFW:\n"
-					for m in marked:
-						msg += "\n* " + str(m)
-			await self.reply(context, msg)
-		else:
-			self.require_op(context, 'sfw <channel>', None)
-			ch_id = util.parse_channel(channel_mention)
-			if not context.channel_exists(ch_id):
-				raise BotSyntaxError("That's not a channel on this server!")
-			if ch_id not in self._nsfw_channels:
-				msg = "I already have <#" + ch_id + "> marked as SFW, so that's all good!"
-				await self.reply(context, msg)
-				return
-
-			pmsg = "That will stop me from posting NSFW content to <#" + ch_id + ">; does that sound okay?"
-			answer = await self.confirm(context, pmsg)
-			if answer:
-				del self._nsfw_channels[ch_id]
-				_log.debug("Set channel " + str(ch_id) + " / " + context.get_channel_name(ch_id) + " as SFW")
-				self._save_all()
-				msg = "Okay, got it! I'll make sure everything I post in <#" + ch_id + "> is okay for all ages!"
-			else:
-				msg = "You got it! I'll keep r-18 content enabled for <#" + ch_id + ">!"
-			await self.reply(context, msg)
-
 	async def pm_master_users(self, message):
 		masters = [x for x in self._operators.keys() if self._operators[x]['role'] == 'master']
 		for m in masters:
-			user = await self._client.get_user_info(m)
-			await self._client.send_message(user, message)
+			user = self._client.get_user(m)
+			await user.send(message)
+
+	def get_user(self, snowflake_id) -> Optional[discord.User]:
+		"""
+		Get a user from a snowflake ID.
+
+		:type snowflake_id: int
+		:param snowflake_id: The ID.
+		:return: The user.
+		"""
+		return self._client.get_user(snowflake_id)
 
 	async def _run_timer(self):
 		await self._client.wait_until_ready()
@@ -867,15 +788,21 @@ class MasaBot(object):
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to turn into an op")
 
-		user = util.parse_user(args[0])
+		user, is_bot = util.parse_user(args[0])
+
+		if is_bot:
+			msg = "Well, the thing is, <@&" + str(user) + "> is *also* a bot and I'm really afraid of having another bot"
+			msg += " control me. It could be unsafe, and, Deka-nee told me I shouldn't do that!"
+			await self.reply(context, msg)
+			return
 		if user in self._operators:
-			await self.reply(context, "Oh! <@!" + user + "> is already an op! So yay!")
+			await self.reply(context, "Oh! <@!" + str(user) + "> is already an op! So yay!")
 			return
 		else:
 			self._operators[user] = {'role': 'operator'}
-			_log.debug("Added new operator (UID " + user + ")")
+			_log.debug("Added new operator (UID " + str(user) + ")")
 			self._save_all()
-			await self.reply(context, "<@!" + user + "> is now an op! Hooray!")
+			await self.reply(context, "<@!" + str(user) + "> is now an op! Hooray!")
 
 	async def _make_nonop(self, context, args):
 		self.require_op(context, "deop", None)
@@ -883,20 +810,20 @@ class MasaBot(object):
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to deop")
 
-		user = util.parse_user(args[0])
+		user, is_bot = util.parse_user(args[0])
 		if user not in self._operators:
-			await self.reply(context, "It looks like <@!" + user + "> is already not an op.")
+			await self.reply(context, "It looks like <@!" + str(user) + "> is already not an op.")
 			return
 		else:
 			if self._operators[user]['role'] == 'master':
-				msg = "Sorry, but <@!" + user + "> is one of my masters, and I could never remove their operator"
+				msg = "Sorry, but <@!" + str(user) + "> is one of my masters, and I could never remove their operator"
 				msg += " status!"
 				await self.reply(context, msg)
 			else:
 				del self._operators[user]
-				_log.debug("Removed operator (UID " + user + ")")
+				_log.debug("Removed operator (UID " + str(user) + ")")
 				self._save_all()
-				await self.reply(context, "Okay. <@!" + user + "> is no longer an op.")
+				await self.reply(context, "Okay. <@!" + str(user) + "> is no longer an op.")
 
 	async def _redeploy(self, context, reason=None):
 		self.require_op(context, "redeploy", None)
@@ -1130,7 +1057,7 @@ class MasaBot(object):
 		meta = MessageMetadata.from_message(message)
 
 		log_msg = "[" + _fmt_channel(context.source) + "]: received invocation " + repr(message.content)
-		log_msg += " from " + context.author.id + "/" + context.author_name()
+		log_msg += " from " + str(context.author.id) + "/" + context.author_name()
 		_log.debug(log_msg)
 
 		try:
@@ -1154,6 +1081,8 @@ class MasaBot(object):
 			await self._execute_action(context, self._make_nonop(context, args))
 		elif cmd == 'showops':
 			await self._execute_action(context, self.show_ops(context))
+		elif cmd == 'version':
+			await self._execute_action(context, self.show_version(context))
 		elif cmd == 'redeploy':
 			if len(args) > 0:
 				reason = args[0]
@@ -1171,16 +1100,6 @@ class MasaBot(object):
 			if len(args) > 2:
 				repl = args[2]
 			await self._execute_action(context, self.run_replchars_command(context, action, search, repl))
-		elif cmd == 'nsfw':
-			ch_name = None
-			if len(args) > 0:
-				ch_name = args[0]
-			await self._execute_action(context, self.mark_nsfw(context, ch_name))
-		elif cmd == 'sfw':
-			ch_name = None
-			if len(args) > 0:
-				ch_name = args[0]
-			await self._execute_action(context, self.mark_sfw(context, ch_name))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				await self._execute_action(context, handler.on_invocation(context, meta, cmd, *args), handler)
@@ -1194,7 +1113,7 @@ class MasaBot(object):
 		meta = MessageMetadata.from_message(message)
 
 		log_msg = "[" + _fmt_channel(context.source) + "]: received mentions (" + ", ".join(repr(x) for x in mentions)
-		log_msg += ") " + repr(message.content) + " from " + context.author.id + "/" + context.author_name()
+		log_msg += ") " + repr(message.content) + " from " + str(context.author.id) + "/" + context.author_name()
 		_log.debug(log_msg)
 
 		if len(self._any_mention_handlers) > 0:
@@ -1203,7 +1122,7 @@ class MasaBot(object):
 					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
 					handled_already.append(h.name)
 
-		if '<@' + self._client.user.id + '>' in mentions or '<@!' + self._client.user.id + '>' in mentions:
+		if '<@' + str(self._client.user.id) + '>' in mentions or '<@!' + str(self._client.user.id) + '>' in mentions:
 			for h in self._self_mention_handlers:
 				if h.name not in handled_already:
 					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
@@ -1225,7 +1144,7 @@ class MasaBot(object):
 			m = regex.search(message.content)
 			if m is not None:
 				log_msg = "[" + _fmt_channel(context.source) + "]: received regex match (" + repr(regex.pattern) + ") "
-				log_msg += repr(message.content) + " from " + context.author.id + "/" + context.author_name()
+				log_msg += repr(message.content) + " from " + str(context.author.id) + "/" + context.author_name()
 				_log.debug(log_msg)
 				match_groups = []
 				for i in range(regex.groups+1):
@@ -1239,13 +1158,13 @@ class MasaBot(object):
 			_log.debug("Executing registered action in " + mod_name + " module...")
 			await action
 		except BotPermissionError as e:
-			msg = "User " + e.author.name + "#" + e.author.discriminator + " (ID: " + e.author.id + ") was denied"
+			msg = "User " + e.author.name + "#" + e.author.discriminator + " (ID: " + str(e.author.id) + ") was denied"
 			msg += " permission to execute privileged command " + repr(e.command)
 			if e.module is not None:
 				msg += " in module " + repr(e.module)
 			msg += "."
 			_log.error(msg)
-			msg = "Sorry, <@!" + e.author.id + ">, but only my masters and operators can do that."
+			msg = "Sorry, <@!" + str(e.author.id) + ">, but only my masters and operators can do that."
 			ctx = context
 			if e.context is not None:
 				ctx = e.context
@@ -1258,7 +1177,7 @@ class MasaBot(object):
 			await self.show_syntax_error(ctx, str(e))
 		except BotModuleError as e:
 			_log.exception("Module error")
-			msg = "Oh no, <@!" + context.author.id + ">-samaaaaa! I can't quite do that! "
+			msg = "Oh no, <@!" + str(context.author.id) + ">-samaaaaa! I can't quite do that! "
 			ctx = context
 			if e.context is not None:
 				ctx = e.context
@@ -1300,19 +1219,15 @@ class MasaBot(object):
 		if 'operators' in builtin_state:
 			for op in builtin_state['operators']:
 				# master roles will be loaded later during config reading
-				self._operators[op] = {'role': 'operator'}
+				self._operators[int(op)] = {'role': 'operator'}
 
 		if 'invocation_replacements' in builtin_state:
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
-
-		if 'nsfw_channels' in builtin_state:
-			self._nsfw_channels = dict(builtin_state['nsfw_channels'])
 
 	def _save_all(self):
 		state_dict = {'__BOT__': {
 			'operators': list(self._operators.keys()),
 			'invocation_replacements': dict(self._invocation_replacements),
-			'nsfw_channels': dict(self._nsfw_channels),
 		}}
 
 		for m_name in self._bot_modules:

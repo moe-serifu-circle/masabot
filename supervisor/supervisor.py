@@ -24,14 +24,21 @@ def cmd_end():
 		return ';'
 
 
-def get_activation_command():
-	if os.path.exists('venv') and os.path.isdir('venv'):
-		virtualenv_dir = 'venv'
-	elif os.path.exists('.venv') and os.path.isdir('.venv'):
-		virtualenv_dir = '.venv'
+def get_activation_command(virtualenv_dir=None):
+	if virtualenv_dir is not None:
+		while virtualenv_dir.endswith('/') or virtualenv_dir.endswith('\\'):
+			virtualenv_dir = virtualenv_dir[:-1]
+		if not os.path.exists(virtualenv_dir) or not os.path.isdir(virtualenv_dir):
+			msg = "Virtual environment path '" + str(virtualenv_dir) + "' not found"
+			raise ValueError(msg)
 	else:
-		msg = "Virtual environment not found in '.venv' or 'venv';\nplease create one for masabot before executing"
-		raise ValueError(msg)
+		if os.path.exists('venv') and os.path.isdir('venv'):
+			virtualenv_dir = 'venv'
+		elif os.path.exists('.venv') and os.path.isdir('.venv'):
+			virtualenv_dir = '.venv'
+		else:
+			msg = "Virtual environment not found in '.venv' or 'venv';\nplease create one for masabot before executing"
+			raise ValueError(msg)
 
 	if os.name == 'nt':
 		exec_dir = 'Scripts'
@@ -59,10 +66,11 @@ def get_activation_command():
 		return '. ' + full_path
 
 
-def run_venv_shell(exe):
+def run_venv_shell(exe, path=None):
 	lines = []
-	cmd = get_activation_command() + ' ' + cmd_end() + ' ' + exe + ' >' + os.path.join('.supervisor', 'temp')
+	cmd = get_activation_command(path) + ' ' + cmd_end() + ' ' + exe + ' >' + os.path.join('.supervisor', 'temp')
 	cmd += ' 2>&1'
+
 	try:
 		subprocess.check_output(cmd, shell=True, universal_newlines=True)
 	except subprocess.CalledProcessError as e:
@@ -79,7 +87,7 @@ def run_venv_shell(exe):
 	return lines
 
 
-def deploy(is_redeploy=False):
+def deploy(is_redeploy=False, virtual_environment_path=None):
 	installed = []
 	if os.path.exists(os.path.join('.supervisor', 'installed-packages')):
 		with open(os.path.join('.supervisor', 'installed-packages'), 'r') as fp:
@@ -91,7 +99,7 @@ def deploy(is_redeploy=False):
 	}
 
 	try:
-		required = run_venv_shell("python setup.py get_required_packages")
+		required = run_venv_shell("python setup.py get_required_packages", path=virtual_environment_path)
 	except subprocess.CalledProcessError:
 		output_dict['success'] = False
 		output_dict['message'] = "Checking required packages failed"
@@ -114,7 +122,7 @@ def deploy(is_redeploy=False):
 		if req not in installed:
 			install_count += 1
 			try:
-				run_venv_shell("pip install " + req)
+				run_venv_shell("pip install " + req, path=virtual_environment_path)
 			except subprocess.CalledProcessError as e:
 				install_fail_count += 1
 				package_statuses[req] = {'success': False, 'action': "install", 'message': e.output}
@@ -127,7 +135,7 @@ def deploy(is_redeploy=False):
 		if inst not in required:
 			remove_count += 1
 			try:
-				run_venv_shell("pip uninstall -y " + inst)
+				run_venv_shell("pip uninstall -y " + inst, path=virtual_environment_path)
 			except subprocess.CalledProcessError as e:
 				remove_fail_count += 1
 				package_statuses[inst] = {'success': False, 'action': "uninstall", 'message': e.output}
@@ -167,10 +175,16 @@ if __name__ == "__main__":
 
 	if sys.argv[1] == 'redeploy':
 		print("Running redeploy...")
-		output = deploy(is_redeploy=True)
+		venv_dir=None
+		if len(sys.argv) >= 3:
+			venv_dir = sys.argv[2]
+		output = deploy(is_redeploy=True, virtual_environment_path=venv_dir)
 	elif sys.argv[1] == 'initial-deploy':
 		print("Running deploy...")
-		output = deploy()
+		venv_dir=None
+		if len(sys.argv) >= 3:
+			venv_dir = sys.argv[2]
+		output = deploy(virtual_environment_path=venv_dir)
 	else:
 		print("Unknown subcommand '" + sys.argv[1] + "'", file=sys.stderr)
 		sys.exit(3)

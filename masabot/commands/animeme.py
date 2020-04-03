@@ -237,11 +237,11 @@ class AnimemeModule(BotBehaviorModule):
 		else:
 			template_id = self._validate_template_id(args[0])
 			if template_id in self.template_ids:
-				await self.bot_api.reply_typing(context)
-				file = self._template_filename(template_id)
-				with self.open_resource('templates/' + file) as res:
-					msg = "Oh! But I already have this template for ID " + str(template_id) + ":"
-					await self.bot_api.reply_with_file(context, res, file, msg)
+				async with context.source.typing():
+					file = self._template_filename(template_id)
+					with self.open_resource('templates/' + file) as res:
+						msg = "Oh! But I already have this template for ID " + str(template_id) + ":"
+						await self.bot_api.reply_with_file(context, res, file, msg)
 
 				replace = await self.bot_api.confirm(context, "Do you want to replace it with the new image?")
 				if not replace:
@@ -254,22 +254,23 @@ class AnimemeModule(BotBehaviorModule):
 			else:
 				new_template = True
 
-		await self.bot_api.reply_typing(context)
-		template_data = metadata.attachments[0].download()
+		async with context.source.typing():
+			template_data = metadata.attachments[0].download()
 
-		template_data = self._normalize_template(template_data)
+			template_data = self._normalize_template(template_data)
 
-		res_fp = self.open_resource('templates/' + self._template_filename(template_id), for_writing=True)
-		res_fp.write(template_data)
-		res_fp.flush()
-		res_fp.close()
+			res_fp = self.open_resource('templates/' + self._template_filename(template_id), for_writing=True)
+			res_fp.write(template_data)
+			res_fp.flush()
+			res_fp.close()
 
-		self.template_ids.add(template_id)
+			self.template_ids.add(template_id)
 
-		if new_template:
-			self._last_new_template = template_id
+			if new_template:
+				self._last_new_template = template_id
 
-		_log.debug("Added animeme template " + str(template_id))
+			_log.debug("Added animeme template " + str(template_id))
+
 		await self.bot_api.reply(context, "Okay! I'll start using that new template to generate animemes ^_^")
 
 	async def remove_animeme(self, context, args):
@@ -280,13 +281,13 @@ class AnimemeModule(BotBehaviorModule):
 
 		template_id = self._validate_template_id(args[0])
 
-		await self.bot_api.reply_typing(context)
 		if template_id in self.template_ids:
-			file = self._template_filename(template_id)
+			async with context.source.typing():
+				file = self._template_filename(template_id)
 
-			with self.open_resource('templates/' + file) as res:
-				msg_text = "Oh, " + str(template_id) + ", huh? Let's see, that would be this template:"
-				await self.bot_api.reply_with_file(context, res, file, msg_text)
+				with self.open_resource('templates/' + file) as res:
+					msg_text = "Oh, " + str(template_id) + ", huh? Let's see, that would be this template:"
+					await self.bot_api.reply_with_file(context, res, file, msg_text)
 
 			stop_using_it = await self.bot_api.confirm(context, "Want me to stop using it?")
 			if not stop_using_it:
@@ -326,20 +327,20 @@ class AnimemeModule(BotBehaviorModule):
 			msg += " first."
 			raise BotModuleError(msg)
 
-		await self.bot_api.reply_typing(context)
-		template_id = random.sample(self.template_ids, 1)[0]
+		async with context.source.typing():
+			template_id = random.sample(self.template_ids, 1)[0]
 
-		_log.debug("Creating animeme for template ID " + str(template_id))
+			_log.debug("Creating animeme for template ID " + str(template_id))
 
-		padded_id = str(template_id).zfill(self._template_digits)
-		im = Image.open(self.open_resource('templates/' + self._template_filename(template_id)))
-		":type : Image.Image"
+			padded_id = str(template_id).zfill(self._template_digits)
+			im = Image.open(self.open_resource('templates/' + self._template_filename(template_id)))
+			":type : Image.Image"
 
-		self._draw_meme_text(im, meme_line_1, meme_line_2)
+			self._draw_meme_text(im, meme_line_1, meme_line_2)
 
-		buf = io.BytesIO()
-		im.save(buf, format='PNG')
-		buf.seek(0)
+			buf = io.BytesIO()
+			im.save(buf, format='PNG')
+			buf.seek(0)
 
 		await self.bot_api.reply_with_file(context, buf, str(template_id) + "-generated.png", "_(" + padded_id + ")_")
 

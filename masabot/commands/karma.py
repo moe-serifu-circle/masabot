@@ -26,7 +26,8 @@ class KarmaModule(BotBehaviorModule):
 		help_text += " another user's global karma). \n\nIn order to prevent huge karma changes, there is a buzzkill mode," 
 		help_text += " which limits the amount that karma can change by. The `karma-buzzkill` command with no arguments"
 		help_text += " will give what the current buzzkill limit is, and ops are able to give an argument to set the limit."
-		help_text += " Setting the limit to anything less than 1 disables buzzkill mode entirely, allowing any amount of karma change."
+		help_text += " Setting the limit to anything less than 1 disables buzzkill mode entirely, allowing any amount of"
+		help_text += " karma change."
 
 		super().__init__(
 			bot_api,
@@ -34,7 +35,7 @@ class KarmaModule(BotBehaviorModule):
 			desc="Tracks user reputation",
 			help_text=help_text,
 			triggers=[
-				RegexTrigger(r'<@!?(\d+)>\s*(\+\++|--+)$'),
+				RegexTrigger(r'<@([!&#]?)(\d+)>\s*(\+\++|--+)$'),
 				InvocationTrigger('karma'),
 				InvocationTrigger('karma-buzzkill'),
 				InvocationTrigger('karma-top')
@@ -55,7 +56,9 @@ class KarmaModule(BotBehaviorModule):
 		}
 
 	def set_state(self, state):
-		self._karma = state['karma']
+		loaded_dict = state.get('karma', {})
+		for idx in loaded_dict:
+			self._karma[int(idx)] = loaded_dict[idx]
 		self._buzzkill_limit = state['buzzkill']
 		if 'tsundere-chance' in state:
 			self._tsundere_chance = state['tsundere-chance']
@@ -72,7 +75,7 @@ class KarmaModule(BotBehaviorModule):
 		elif command == "karma-buzzkill":
 			await self.configure_buzzkill(context, args)
 		elif command == "karma-top":
-			await self.show_toplist_karma(context, args)
+			await self.show_toplist_karma(context)
 
 	async def on_regex_match(self, context, metadata, *match_groups):
 		"""
@@ -82,8 +85,13 @@ class KarmaModule(BotBehaviorModule):
 		"""
 		msg = None
 
-		user = match_groups[1]
-		amount_str = match_groups[2]
+		mention_class = match_groups[1]
+		if mention_class == '&':
+			raise BotSyntaxError("That's a role, not a user, and I'm not really comfortable giving an entire role karma!")
+		elif mention_class == '#':
+			raise BotSyntaxError("That's sort of a channel so I don't think I can really give that karma!")
+		user = int(match_groups[2])
+		amount_str = match_groups[3]
 		amount = len(amount_str) - 1
 
 		if amount_str.startswith('-'):
@@ -97,23 +105,23 @@ class KarmaModule(BotBehaviorModule):
 				msg = "Buzzkill mode enabled;"
 				msg += " karma change greater than " + str(self._buzzkill_limit) + " not allowed"
 			else:
-				if context.source.is_private: 
+				if context.is_pm:
 					msg = self.add_user_karma(user, 0, amount)
 				else:
-					msg = self.add_user_karma(user, context.source.server.id, amount)
+					msg = self.add_user_karma(user, context.source.guild.id, amount)
 		if msg is not None:
 			await self.bot_api.reply(context, msg)
 
 	async def show_karma(self, context, args):
 		"""
-		replys with given user's karma, by default displays the local karma 
+		replys with given user's karma, by default displays the local karma
 		(karma only from current server)
 		:type context: masabot.bot.BotContext
 		:type args: str
 		"""
-		server = None
-		if hasattr(context.source, "server"): 
-			server = context.source.server.id
+
+		if not context.is_pm:
+			server = context.source.guild.id
 		else:
 			server = 0
 
@@ -122,38 +130,42 @@ class KarmaModule(BotBehaviorModule):
 			global_karma = True
 
 		if len(args) >= 1:
-			m = re.search(r'<@!?(\d+)>$', args[0], re.DOTALL)
+			m = re.search(r'<@([!&#])?(\d+)>$', args[0], re.DOTALL)
 			if m is None:
 				if args[0].lower() == "global":
 					msg = self.get_user_karma(context.author.id, server_id=server, global_karma=True)
 				else:
 					raise BotSyntaxError(str(args[0]) + " is not something that can have karma")
 			else:
-				msg = self.get_user_karma(m.group(1), server_id=server, global_karma=global_karma)
+				if m.group(1) == '&':
+					raise BotSyntaxError(str(args[0]) + " is a role, so it can't have karma")
+				elif m.group(1) == '#':
+					raise BotSyntaxError(str(args[0]) + " is a channel, so it can't have karma")
+				msg = self.get_user_karma(m.group(2), server_id=server, global_karma=global_karma)
 		else:
 			msg = self.get_user_karma(context.author.id, server_id=server, global_karma=global_karma)
 		await self.bot_api.reply(context, msg)
 	
-	async def show_toplist_karma(self, context, args):
+	async def show_toplist_karma(self, context):
 		"""
 		replies with the karma of the top users as well as the caller's place in the leaderboard
 		:type context: masabot.bot.BotContext
-		:type args: str
 		""" 
 		server = None
-		if hasattr(context.source, "server"): 
-			server = context.source.server.id
+		if not context.is_pm:
+			server = context.source.guild.id
 		else:
 			await self.bot_api.reply(context, "There are no leaderboards in private messages, baka!")
 			return
 
-		# temp_karma_sorted = [("232323", {"5345" : 41, "23423" : 12}), ("userid", {"serverid1" : karma1, "serverid2" : karma2}, ...]
-		temp_karma_sorted = sorted(self._karma.items(), key=lambda usv: usv[1][server], reverse=True)	# List has format as above
+		# temp_karma_sorted = [("232323", {"5345" : 41, "23423" : 12}),
+		# ("userid", {"serverid1" : karma1, "serverid2" : karma2}, ...]
+		temp_karma_sorted = sorted(self._karma.items(), key=lambda usv: usv[1][server], reverse=True)  # List has format as above
 		
 		tkslen = len(temp_karma_sorted)		# Number of users in karma list
 
-		usridx = 0	# Index of author in list before loop
-		for x in temp_karma_sorted:	# Loops to calculate ranking of author
+		usridx = 0  # Index of author in list before loop
+		for x in temp_karma_sorted:  # Loops to calculate ranking of author
 			if not x[0] == context.author.id:
 				usridx += 1
 			else:
@@ -161,14 +173,20 @@ class KarmaModule(BotBehaviorModule):
 
 		msg = "Sure! Here is a list of the top karma earners in this server.\n\n"
 		if usridx == tkslen:		# Checks if user is in the karma list
-			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(context.author.name, "-", 0, 				"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(context.author.name, "-", 0, "━"*49)
 		else:
-			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(context.source.server.get_member(temp_karma_sorted[usridx][0]).name, 
-									usridx + 1, temp_karma_sorted[usridx][1][server], 					"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+			member_name = context.source.guild.get_member(temp_karma_sorted[usridx][0]).name
+			member_amount = temp_karma_sorted[usridx][1][server]
+			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(member_name, usridx + 1, member_amount, "━" * 49)
 		
 		for i in range(0, 5):		# Appends top 5 karma values in server if applicable
 			if tkslen > i:
-				struserid = context.source.server.get_member(temp_karma_sorted[i][0]).name
+				snowflake_id = temp_karma_sorted[i][0]
+				user_obj = self.bot_api.get_user(snowflake_id)
+				if user_obj is None:
+					struserid = "User " + str(type(snowflake_id))
+				else:
+					struserid = user_obj.name
 				karmaval = temp_karma_sorted[i][1][server]
 				msg += "{:^32.32} {:^1} | {} karma\n".format(struserid, i + 1, karmaval)
 		msg += "```"
@@ -206,15 +224,16 @@ class KarmaModule(BotBehaviorModule):
 		"""
 		returns given user's karma
 		:type uuid: str
-		:type global_karma: boolean
+		:type global_karma: bool
 		:param global_karma: set to true for user's global karma
 		:type server_id: int
 		:param server_id: server id for local karma
 		"""
 
 		amt = 0
+
 		if uuid in self._karma:
-			#convert old karma format to new karma format
+			# convert old karma format to new karma format
 			if isinstance(self._karma[uuid], int):
 				self._karma[uuid] = {server_id: self._karma[uuid]}
 
@@ -226,13 +245,12 @@ class KarmaModule(BotBehaviorModule):
 				amt = self._karma[uuid].get(server_id, 0)
 
 		if global_karma:
-			msg = "<@" + uuid + ">'s global karma is at " + str(amt) + "."
+			msg = "<@" + str(uuid) + ">'s global karma is at " + str(amt) + "."
 		else:
-			msg = "<@" + uuid + ">'s karma is at " + str(amt) + "."
+			msg = "<@" + str(uuid) + ">'s karma is at " + str(amt) + "."
 		return msg
 
 	def add_user_karma(self, uuid, server_id, amount):
-
 		# fix for user's still in old karma format, gives current karma
 		# to the first server that requests it
 		if uuid in self._karma:
@@ -241,23 +259,21 @@ class KarmaModule(BotBehaviorModule):
 
 		if uuid not in self._karma:
 			self._karma[uuid] = {}
-		if server_id == None:
+		if server_id == 0:
 			self._karma[uuid][0] = 0
 		elif server_id not in self._karma[uuid]:
 			self._karma[uuid][server_id] = 0
 
 		self._karma[uuid][server_id] += amount
 
-		_log.debug("Modified karma of user " + uuid + " by " + str(amount) + "; new total " + str(self._karma[uuid][server_id]))
+		_log.debug("Modified karma of user " + str(uuid) + " by " + str(amount) + "; new total " + str(self._karma[uuid][server_id]))
 
 		if random.random() < self._tsundere_chance and amount > 0:
-			msg = "F-fine, <@" + uuid + ">'s karma is now " + str(self._karma[uuid][server_id]) + ". B-b-but it's not like I like"
+			msg = "F-fine, <@" + str(uuid) + ">'s karma is now " + str(self._karma[uuid][server_id]) + ". B-b-but it's not like I like"
 			msg += " them or anything weird like that. So don't get the wrong idea! B-baka..."
 		else:
-			msg = "Okay! <@" + uuid + ">'s karma is now " + str(self._karma[uuid][server_id])
+			msg = "Okay! <@" + str(uuid) + ">'s karma is now " + str(self._karma[uuid][server_id])
 		return msg
-
-	
 
 
 BOT_MODULE_CLASS = KarmaModule
