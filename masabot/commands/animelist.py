@@ -189,7 +189,7 @@ class WatchListModule(BotBehaviorModule):
 		async with context.source.typing():
 			anime_list = self.get_user_anime_list(uid, include_nsfw=context.is_nsfw())
 			pager = util.DiscordPager("_(" + context.mention() + "'s Anilist, continued)_")
-			pager.add_line("Okay! Here is <@!" + context.author.id + ">'s Anilist:")
+			pager.add_line("Okay! Here is " + context.mention() + "'s Anilist:")
 			pager.add_line()
 			self.format_anime_list(anime_list, pager)
 		for page in pager.get_pages():
@@ -428,7 +428,7 @@ class WatchListModule(BotBehaviorModule):
 
 	def _require_auth(self, uid):
 		if uid not in self._anilist_users:
-			msg = "I haven't been given permission to access <@!" + uid + ">'s Anilist profile yet! But they can"
+			msg = "I haven't been given permission to access <@" + str(uid) + ">'s Anilist profile yet! But they can"
 			msg += " authorize me with the `anilist-auth` command."
 			raise BotModuleError(msg)
 
