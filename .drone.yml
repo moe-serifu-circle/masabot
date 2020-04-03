@@ -3,6 +3,7 @@ pipeline:
   integration-tests:
     image: python:3.6
     commands:
+      - "printenv"
       - "python3 -m venv .venv"
       - "./run-masabot.sh &"
       - "sleep 20"
