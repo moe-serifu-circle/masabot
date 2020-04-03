@@ -476,7 +476,7 @@ class MasaBot(object):
 		else:
 			dest = context.source
 
-		await dest.send(discord.File(fp, filename=filename), content=message)
+		await dest.send(content=message, file=discord.File(fp, filename=filename))
 		_log.debug("[" + _fmt_channel(context.source) + "]: sent <FILE>")
 
 	async def show_help(self, context, help_module=None):
