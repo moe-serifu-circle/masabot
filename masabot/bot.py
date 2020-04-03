@@ -14,6 +14,9 @@ from typing import Optional
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
 
 
+VERSION = "1.0.0"
+
+
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
@@ -493,6 +496,7 @@ class MasaBot(object):
 			msg = "Sure! I'll tell you how to use my interface!\n\n"
 			msg += "Here are my special commands:\n"
 			msg += "* `" + pre + "help` - Shows this help.\n"
+			msg += "* `" + pre + "version` - Shows the current version.\n"
 			msg += "* `" + pre + "redeploy` - Pulls in the latest changes.\n"
 			msg += "* `" + pre + "quit` - Immediately stops me from running.\n"
 			msg += "* `" + pre + "op` - Gives a user operator permissions.\n"
@@ -516,6 +520,8 @@ class MasaBot(object):
 				msg += " run it by itself, `" + pre + "help`, to just show the list of all commands and modules, or you"
 				msg += " can you put a module name after it to find out about that module! But I guess you already know"
 				msg += " that, eheheh ^_^"
+			if help_module == "version":
+				msg = "Oh, that's the command that tells you what version I am!"
 			elif help_module == "quit":
 				msg = "Mmm, `quit` is the command that will make me leave the server right away. It shuts me down"
 				msg += " instantly, which is really really sad! It's a really powerful command, so only my masters and"
@@ -569,6 +575,9 @@ class MasaBot(object):
 		_log.info("Shutting down...")
 		self._master_timer_task.cancel()
 		await self._client.logout()
+
+	async def show_version(self, context):
+		await self.reply(context, "I am Masabot v" + str(VERSION) + "!")
 
 	async def run_replchars_command(self, context, action=None, search=None, replacement=None):
 		"""
@@ -1072,6 +1081,8 @@ class MasaBot(object):
 			await self._execute_action(context, self._make_nonop(context, args))
 		elif cmd == 'showops':
 			await self._execute_action(context, self.show_ops(context))
+		elif cmd == 'version':
+			await self._execute_action(context, self.show_version(context))
 		elif cmd == 'redeploy':
 			if len(args) > 0:
 				reason = args[0]
