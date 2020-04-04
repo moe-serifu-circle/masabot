@@ -61,7 +61,7 @@ class WatchListModule(BotBehaviorModule):
 
 	def set_state(self, state):
 		if 'anilist-users' in state:
-			self._anilist_users = state['anilist-users']
+			self._anilist_users = {int(k): v for k, v in state['anilist-users'].items()}
 		for uid in self._anilist_users:
 			self._anilist_clients[uid] = self._create_anilist_client(uid)
 
