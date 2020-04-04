@@ -1124,7 +1124,9 @@ class MasaBot(object):
 
 	async def _handle_mention(self, message: discord.Message):
 		handled_already = []
-		mentions = [util.parse_mention(i) for i in message.raw_mentions + message.raw_channel_mentions + message.raw_role_mentions]
+		mentions = [util.Mention(util.MentionType.USER, mid, False) for mid in message.raw_mentions]
+		mentions += [util.Mention(util.MentionType.CHANNEL, mid, False) for mid in message.raw_channel_mentions]
+		mentions += [util.Mention(util.MentionType.ROLE, mid, False) for mid in message.raw_role_mentions]
 		context = BotContext(message)
 		meta = MessageMetadata.from_message(message)
 
