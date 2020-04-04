@@ -193,6 +193,7 @@ class MasaBot(object):
 		:type config_file: str
 		:param config_file: The path to the configuration file for the bot.
 		"""
+		_log.debug("Initializing MasaBot")
 		self._bot_modules = {}
 		""":type : dict[str, commands.BotBehaviorModule]"""
 		self._invocations = {}
@@ -252,7 +253,7 @@ class MasaBot(object):
 			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
 			if clean_shutdown and not self._sent_announcement:
 				await self.announce("Hello! I'm now online ^_^")
-				self._sent_announcment = True
+				self._sent_announcement = True
 			else:
 				_log.info("Back from unclean shutdown caused by: " + repr(reason))
 			await self._check_supervisor_files()
