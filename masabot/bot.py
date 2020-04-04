@@ -9,12 +9,9 @@ import asyncio
 import time
 import re
 import shlex
-from . import configfile, commands, util
+from . import configfile, commands, util, version
 from typing import Optional
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
-
-
-VERSION = "1.0.2"
 
 
 _log = logging.getLogger(__name__)
@@ -197,7 +194,7 @@ class MasaBot(object):
 		self._bot_modules = {}
 		""":type : dict[str, commands.BotBehaviorModule]"""
 		self._invocations = {}
-		self._mention_handlers = {}
+		self._mention_handlers = {'users': {}, 'channels': {}, 'roles': {}}
 		self._self_mention_handlers = []
 		self._any_mention_handlers = []
 		self._regex_handlers = {}
@@ -580,7 +577,7 @@ class MasaBot(object):
 		await self._client.logout()
 
 	async def show_version(self, context):
-		await self.reply(context, "I am Masabot v" + str(VERSION) + "!")
+		await self.reply(context, "I am Masabot v" + str(version.get_version()) + "!")
 
 	async def run_replchars_command(self, context, action=None, search=None, replacement=None):
 		"""
@@ -791,21 +788,21 @@ class MasaBot(object):
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to turn into an op")
 
-		user, is_bot = util.parse_user(args[0])
+		mention = util.parse_mention(args[0])
 
-		if is_bot:
-			msg = "Well, the thing is, <@&" + str(user) + "> is *also* a bot and I'm really afraid of having another bot"
+		if not mention.is_user():
+			msg = "Well, the thing is, " + str(mention) + " is not a user and I'm really afraid of having non-users"
 			msg += " control me. It could be unsafe, and, Deka-nee told me I shouldn't do that!"
 			await self.reply(context, msg)
 			return
-		if user in self._operators:
-			await self.reply(context, "Oh! <@!" + str(user) + "> is already an op! So yay!")
+		if mention.id in self._operators:
+			await self.reply(context, "Oh! " + str(mention) + " is already an op! So yay!")
 			return
 		else:
-			self._operators[user] = {'role': 'operator'}
-			_log.debug("Added new operator (UID " + str(user) + ")")
+			self._operators[mention.id] = {'role': 'operator'}
+			_log.debug("Added new operator (UID " + str(mention.id) + ")")
 			self._save_all()
-			await self.reply(context, "<@!" + str(user) + "> is now an op! Hooray!")
+			await self.reply(context, str(mention) + " is now an op! Hooray!")
 
 	async def _make_nonop(self, context, args):
 		self.require_op(context, "deop", None)
@@ -813,20 +810,24 @@ class MasaBot(object):
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to deop")
 
-		user, is_bot = util.parse_user(args[0])
-		if user not in self._operators:
-			await self.reply(context, "It looks like <@!" + str(user) + "> is already not an op.")
+		mention = util.parse_mention(args[0])
+
+		if not mention.is_user():
+			raise BotSyntaxError(args[0] + " just isn't something that can be an operator.")
+
+		if mention.id not in self._operators:
+			await self.reply(context, "It looks like " + str(mention) + " is already not an op.")
 			return
 		else:
-			if self._operators[user]['role'] == 'master':
-				msg = "Sorry, but <@!" + str(user) + "> is one of my masters, and I could never remove their operator"
+			if self._operators[mention.id]['role'] == 'master':
+				msg = "Sorry, but " + str(mention) + " is one of my masters, and I could never remove their operator"
 				msg += " status!"
 				await self.reply(context, msg)
 			else:
-				del self._operators[user]
-				_log.debug("Removed operator (UID " + str(user) + ")")
+				del self._operators[mention.id]
+				_log.debug("Removed operator (UID " + str(mention.id) + ")")
 				self._save_all()
-				await self.reply(context, "Okay. <@!" + str(user) + "> is no longer an op.")
+				await self.reply(context, "Okay. " + str(mention) + " is no longer an op.")
 
 	async def _redeploy(self, context, reason=None):
 		self.require_op(context, "redeploy", None)
@@ -1022,15 +1023,27 @@ class MasaBot(object):
 		elif mts['target_type'] == 'self':
 			current_handlers['self'].append(bot_module)
 		elif mts['target_type'] == 'specific':
-			for name in mts['names']:
-				if name in current_handlers['specific']:
-					err_msg = "Duplicate mention handler '" + name + "' in module '" + bot_module.name
-					err_msg += "'; already defined in '" + current_handlers['specific'][name][-1].name + "'"
-					err_msg += " module"
-					_log.warning(err_msg)
+			err_msg = "Duplicate mention handler for {0:s} ID {1:d} in module {2!r}; last defined in {3!r} module"
+			for sid in mts['users']:
+				if sid in current_handlers['specific']['users']:
+					_log.warning(err_msg.format('user', sid, bot_module.name, current_handlers['specific']['users'][-1].name))
 				else:
-					current_handlers['specific'][name] = []
-				current_handlers['specific'][name].append(bot_module)
+					current_handlers['specific']['users'][sid] = []
+				current_handlers['specific']['users'][sid].append(bot_module)
+
+			for sid in mts['channels']:
+				if sid in current_handlers['specific']['channels']:
+					_log.warning(err_msg.format('channel', sid, bot_module.name, current_handlers['specific']['channels'][-1].name))
+				else:
+					current_handlers['specific']['channels'][sid] = []
+				current_handlers['specific']['channels'][sid].append(bot_module)
+
+			for sid in mts['roles']:
+				if sid in current_handlers['specific']['roles']:
+					_log.warning(err_msg.format('role', sid, bot_module.name, current_handlers['specific']['roles'][-1].name))
+				else:
+					current_handlers['specific']['roles'][sid] = []
+				current_handlers['specific']['roles'][sid].append(bot_module)
 
 	# noinspection PyMethodMayBeStatic
 	def _add_new_regex_handler(self, bot_module, trig, current_handlers):
@@ -1109,33 +1122,46 @@ class MasaBot(object):
 		else:
 			_log.debug("Ignoring unknown command " + repr(cmd))
 
-	async def _handle_mention(self, message):
+	async def _handle_mention(self, message: discord.Message):
 		handled_already = []
-		mentions = message.raw_mentions
+		mentions = [util.Mention(util.MentionType.USER, mid, False) for mid in message.raw_mentions]
+		mentions += [util.Mention(util.MentionType.CHANNEL, mid, False) for mid in message.raw_channel_mentions]
+		mentions += [util.Mention(util.MentionType.ROLE, mid, False) for mid in message.raw_role_mentions]
 		context = BotContext(message)
 		meta = MessageMetadata.from_message(message)
 
-		log_msg = "[" + _fmt_channel(context.source) + "]: received mentions (" + ", ".join(repr(x) for x in mentions)
-		log_msg += ") " + repr(message.content) + " from " + str(context.author.id) + "/" + context.author_name()
-		_log.debug(log_msg)
+		log_msg = "[" + _fmt_channel(context.source) + "]: received mentions from " + str(context.author.id) + "/" + context.author_name()
+		# don't actually log this yet unless we do something with the message
 
-		if len(self._any_mention_handlers) > 0:
-			for h in self._any_mention_handlers:
-				if h.name not in handled_already:
-					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
-					handled_already.append(h.name)
+		valid_mention_handlers = [i for i in self._any_mention_handlers if i.name not in handled_already]
+		if len(valid_mention_handlers) > 0:
+			_log.debug(log_msg + ": passing to generic mention handlers")
+			for h in valid_mention_handlers:
+				await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
+				handled_already.append(h.name)
 
-		if '<@' + str(self._client.user.id) + '>' in mentions or '<@!' + str(self._client.user.id) + '>' in mentions:
+		if self._client.user.id in [m.id for m in mentions if m.is_user()]:
 			for h in self._self_mention_handlers:
 				if h.name not in handled_already:
+					_log.debug(log_msg + ": passing to self-mention handler " + repr(h.name))
 					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
 					handled_already.append(h.name)
 
 		for m in mentions:
-			if m in self._mention_handlers:
-				for h in self._mention_handlers[m]:
+			if m.is_user():
+				subidx = 'users'
+			elif m.is_channel():
+				subidx = 'channels'
+			elif m.is_role():
+				subidx = 'roles'
+			else:
+				raise BotSyntaxError("Mention not of type users, channels, or roles: " + repr(m))
+
+			if m.id in self._mention_handlers[subidx]:
+				for h in self._mention_handlers[subidx][m]:
 					if h.name not in handled_already:
-						await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
+						_log.debug(log_msg + ": passing to " + str(m) + " mention handler " + repr(h.name))
+						await self._execute_action(context, h.on_mention(context, meta, message.content, list(mentions)), h)
 						handled_already.append(h.name)
 
 	async def _handle_regex_scan(self, message):
@@ -1263,6 +1289,8 @@ def _copy_handler_dict(dict_to_copy):
 		v = dict_to_copy[k]
 		if type(v) == list:
 			new_dict[k] = list(v)
+		if type(v) == dict:
+			new_dict[k] = _copy_handler_dict(v)
 		else:
 			new_dict[k] = v
 	return new_dict

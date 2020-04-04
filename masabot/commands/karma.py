@@ -1,5 +1,6 @@
 from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
 from ..util import BotSyntaxError
+from .. import util
 
 import re
 import logging
@@ -35,7 +36,7 @@ class KarmaModule(BotBehaviorModule):
 			desc="Tracks user reputation",
 			help_text=help_text,
 			triggers=[
-				RegexTrigger(r'<@([!&#]?)(\d+)>\s*(\+\++|--+)$'),
+				RegexTrigger(r'<([#@])([!&]?)(\d+)>\s*(\+\++|--+)$'),
 				InvocationTrigger('karma'),
 				InvocationTrigger('karma-buzzkill'),
 				InvocationTrigger('karma-top')
@@ -85,13 +86,14 @@ class KarmaModule(BotBehaviorModule):
 		"""
 		msg = None
 
-		mention_class = match_groups[1]
-		if mention_class == '&':
+		is_channel = match_groups[1] == '#'
+		is_role = match_groups[2] == '&'
+		if is_role:
 			raise BotSyntaxError("That's a role, not a user, and I'm not really comfortable giving an entire role karma!")
-		elif mention_class == '#':
+		elif is_channel:
 			raise BotSyntaxError("That's sort of a channel so I don't think I can really give that karma!")
-		user = int(match_groups[2])
-		amount_str = match_groups[3]
+		user = int(match_groups[3])
+		amount_str = match_groups[4]
 		amount = len(amount_str) - 1
 
 		if amount_str.startswith('-'):
@@ -130,18 +132,21 @@ class KarmaModule(BotBehaviorModule):
 			global_karma = True
 
 		if len(args) >= 1:
-			m = re.search(r'<@([!&#])?(\d+)>$', args[0], re.DOTALL)
-			if m is None:
+			try:
+				mention = util.parse_mention(args[0])
+			except BotSyntaxError:
 				if args[0].lower() == "global":
 					msg = self.get_user_karma(context.author.id, server_id=server, global_karma=True)
 				else:
 					raise BotSyntaxError(str(args[0]) + " is not something that can have karma")
 			else:
-				if m.group(1) == '&':
-					raise BotSyntaxError(str(args[0]) + " is a role, so it can't have karma")
-				elif m.group(1) == '#':
-					raise BotSyntaxError(str(args[0]) + " is a channel, so it can't have karma")
-				msg = self.get_user_karma(int(m.group(2)), server_id=server, global_karma=global_karma)
+				if mention.is_role():
+					raise BotSyntaxError(str(mention) + " is a role, so it can't have karma")
+				elif mention.is_channel():
+					raise BotSyntaxError(str(mention) + " is a channel, so it can't have karma")
+				# no idea why pycharm is complaining on the next line; thinking it's a glitch in the static analysis?
+				# remove these two comments when the next line doesn't trigger a warning in pycharm:
+				msg = self.get_user_karma(mention.id, server_id=server, global_karma=global_karma)
 		else:
 			msg = self.get_user_karma(context.author.id, server_id=server, global_karma=global_karma)
 		await self.bot_api.reply(context, msg)
@@ -220,13 +225,11 @@ class KarmaModule(BotBehaviorModule):
 				msg = "Hmm... It looks like there is currently no limit to how much karma can change by. Hooray!"
 			await self.bot_api.reply(context, msg)
 
-	def get_user_karma(self, uuid, global_karma=False, server_id=None):
+	def get_user_karma(self, uuid: int, global_karma: bool = False, server_id: int = 0):
 		"""
 		returns given user's karma
-		:type uuid: int
-		:type global_karma: bool
-		:param global_karma: set to true for user's global karma
-		:type server_id: int
+		:param uuid: The ID of the user to get the karma for.
+		:param global_karma: set to true for user's global karma.
 		:param server_id: server id for local karma
 		"""
 

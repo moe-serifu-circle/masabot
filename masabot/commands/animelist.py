@@ -6,7 +6,6 @@ from .. import util
 
 import urllib.parse
 import requests
-import re
 import logging
 import json.decoder
 
@@ -61,7 +60,7 @@ class WatchListModule(BotBehaviorModule):
 
 	def set_state(self, state):
 		if 'anilist-users' in state:
-			self._anilist_users = state['anilist-users']
+			self._anilist_users = {int(k): v for k, v in state['anilist-users'].items()}
 		for uid in self._anilist_users:
 			self._anilist_clients[uid] = self._create_anilist_client(uid)
 
@@ -181,11 +180,12 @@ class WatchListModule(BotBehaviorModule):
 	async def _show_anilist(self, context, args):
 		uid = context.author.id
 		if len(args) > 0:
-			m = re.search(r'<@!?(\d+)>$', args[0], re.DOTALL)
-			if m is None:
+			try:
+				mention = util.parse_mention(args[0], require_type=util.MentionType.USER)
+			except BotSyntaxError as e:
 				msg = "I can only look up the anime lists of users, and " + repr(str(args[0])) + " is not a user!"
-				raise BotSyntaxError(msg)
-			uid = m.group(1)
+				raise BotSyntaxError(msg) from e
+			uid = mention.id
 		async with context.source.typing():
 			anime_list = self.get_user_anime_list(uid, include_nsfw=context.is_nsfw())
 			pager = util.DiscordPager("_(" + context.mention() + "'s Anilist, continued)_")

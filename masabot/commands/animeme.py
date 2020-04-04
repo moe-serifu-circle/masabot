@@ -594,24 +594,51 @@ class Pen(object):
 			cur_x += ch_width
 
 	def _wrap_text(self, text, width):
+		if len(text) == 0:
+			return [""]
+
 		# first try to fit the whole thing on one line:
 		fit_text, more_text_remains, remaining, f_size = self._fit_to_line(
 			text, width, self.max_font_size, self.min_font_size
 		)
 
-		lines = [fit_text]
+		while len(fit_text) == 0 and len(text) != 0:
+			# uh-oh, looks like the line is too big to fit on the line! so modify the text and start subdividing the
+			# first word until it works
+			first_word_end = text.find(' ')
+			if first_word_end == -1:
+				first_word_end = len(text)
+			split_idx = first_word_end // 2
+			text = text[:split_idx] + '- -' + text[split_idx:]
 
+			fit_text, more_text_remains, remaining, f_size = self._fit_to_line(
+				text, width, self.max_font_size, self.min_font_size
+			)
+
+		lines = [fit_text]
 		# then it didn't fit, so repeat for all remaining lines
 		while more_text_remains:
 			size = self.min_font_size
 			fit_text, more_text_remains, remaining, f_size = self._fit_to_line(remaining, width, size, size)
+
+			while len(fit_text) == 0 and more_text_remains:
+				# uh-oh, looks like the line is too big to fit on the line! so modify the text and start subdividing the
+				# first word until it works
+				first_word_end = remaining.find(' ')
+				if first_word_end == -1:
+					first_word_end = len(remaining)
+				split_idx = first_word_end // 2
+				remaining = remaining[:split_idx] + '- -' + remaining[split_idx:]
+
+				fit_text, more_text_remains, remaining, f_size = self._fit_to_line(remaining, width, size, size)
+
 			lines.append(fit_text)
 
 		return lines, f_size
 
 	def _fit_to_line(self, text, max_width, max_font_size, min_font_size):
 		"""
-		Fits the given text to a line.
+		Fits the given text to a line. Breaks words too large to fit on to the next line.
 		:param text: The text to fit.
 		:param max_width: The maximum width of a line.
 		:param max_font_size: The maximum size the font can be.
