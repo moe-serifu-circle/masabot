@@ -14,7 +14,7 @@ from typing import Optional
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
 
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 
 _log = logging.getLogger(__name__)
