@@ -3,6 +3,9 @@ import os.path
 import logging
 import pathlib
 
+from typing import Optional, Sequence, Tuple
+from .. import util
+
 __all__ = [
 	'karma',
 	'animeme',
@@ -20,8 +23,11 @@ def mention_target_any():
 	return {'target_type': 'any'}
 
 
-def mention_target_specific(*names):
-	return {'target_type': 'specific', 'names': names}
+def mention_target_specific(
+		*user_ids: Tuple[int, ...],
+		role_ids: Optional[Sequence[int]] = None,
+		channel_ids: Optional[Sequence[int]] = None):
+	return {'target_type': 'specific', 'users': user_ids, 'roles': role_ids, 'channels': channel_ids}
 
 
 def mention_target_self():
@@ -171,12 +177,12 @@ class BotBehaviorModule(object):
 		"""
 		pass
 
-	async def on_mention(self, context, metadata, message, mention_names):
+	async def on_mention(self, context, metadata, message, mentions: Sequence[util.Mention]):
 		"""
 		:type context: masabot.bot.BotContext
 		:type metadata: masabot.util.MessageMetadata
 		:type message: str
-		:type mention_names: list[str]
+		:param mentions: The mentions, not necessarily in order.
 		"""
 		pass
 

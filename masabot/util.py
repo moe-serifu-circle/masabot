@@ -1,5 +1,7 @@
 from . import http
 import urllib.parse
+import enum
+from typing import Optional
 
 
 discord_char_limit = 2000
@@ -28,48 +30,85 @@ class BotModuleError(RuntimeError):
 		self.context = context
 
 
-def parse_user(mention_text):
+class MentionType(enum.IntEnum):
+	USER = enum.auto()
+	CHANNEL = enum.auto()
+	ROLE = enum.auto()
+
+
+class Mention:
+	def __init__(self, m_type: MentionType, id: int, has_nick: bool):
+		self.resource_type = m_type
+		self.id = id
+		self._has_nick = has_nick
+
+	def has_nick(self) -> bool:
+		return self._has_nick
+
+	def is_user(self) -> bool:
+		return self.resource_type == MentionType.USER
+
+	def is_channel(self) -> bool:
+		return self.resource_type == MentionType.CHANNEL
+
+	def is_role(self) -> bool:
+		return self.resource_type == MentionType.ROLE
+
+	def __str__(self) -> str:
+		return "<" + ('#' if self.is_channel() else '@') + ('!' if self.is_role() else '') + str(self.id) + ">"
+
+	def __repr__(self) -> str:
+		return "Mention(" + repr(self.resource_type) + ", " + repr(self.id) + ", " + repr(self.has_nick()) + ")"
+
+	def __eq__(self, other):
+		if not isinstance(other, Mention):
+			return False
+		return (self.resource_type, self.id, self._has_nick) == (other.resource_type, other.id, other._has_nick)
+
+	def __hash__(self):
+		return hash((self.resource_type, self.id, self._has_nick))
+
+
+def parse_mention(mention_text: str, require_type: Optional[MentionType] = None) -> Mention:
 	"""
 	Parse a user identifier from a user mention.
 
 	:type mention_text: str
 	:param mention_text: The mention text.
-	:rtype: str, bool
-	:return: The user ID, and whether the user is a bot
-	"""
-	is_bot = False
-	mention_text = mention_text.strip()
-	if not mention_text.startswith('<@') or not mention_text.endswith('>'):
-		raise BotSyntaxError(repr(str(mention_text)) + " is not a user mention")
-	parsed = mention_text[2:-1]
-	if parsed.startswith('!'):
-		parsed = parsed[1:]
-	if parsed.startswith('&'):
-		parsed = parsed[1:]
-		is_bot = True
-	if not parsed.isdigit():
-		raise BotSyntaxError(repr(str(mention_text)) + " is not a user mention")
-
-	return int(parsed), is_bot
-
-
-def parse_channel(mention_text):
-	"""
-	Parse a channel identifier from a channel mention.
-
-	:type mention_text: str
-	:param mention_text: The mention text.
-	:rtype: str
-	:return: The channel ID.
+	:param require_type: The type that the mention is expected to be; a BotSyntaxError will be raised if the parsed
+	mention is not of that type.
+	:rtype: Mention
+	:return: The parsed mention.
 	"""
 	mention_text = mention_text.strip()
-	if not mention_text.startswith('<#') or not mention_text.endswith('>'):
-		raise BotSyntaxError(repr(str(mention_text)) + " is not a channel mention")
-	parsed = mention_text[2:-1]
-	if not parsed.isdigit():
-		raise BotSyntaxError(repr(str(mention_text)) + " is not a channel mention")
+	if not mention_text.startswith('<') or not mention_text.endswith('>'):
+		raise BotSyntaxError(repr(str(mention_text)) + " is not a mention")
 
-	return parsed
+	parsed = mention_text[1:-1]
+
+	has_nick = False
+	if parsed.startswith('#'):
+		mention_type = MentionType.CHANNEL
+		parsed = parsed[1:]
+	elif parsed.startswith('@'):
+		parsed = parsed[1:]
+		if parsed.startswith('&'):
+			parsed = parsed[1:]
+			mention_type = MentionType.ROLE
+		else:
+			mention_type = MentionType.USER
+			if parsed.startswith('!'):
+				has_nick = True
+				parsed = parsed[1:]
+	else:
+		raise BotSyntaxError(repr(str(mention_text)) + " is not a mention")
+	if not parsed.isdigit():
+		raise BotSyntaxError(repr(str(mention_text)) + " is not a mention")
+
+	if require_type is not None and require_type != mention_type:
+		raise BotSyntaxError(repr(str(mention_text)) + " is not a " + require_type.name.lower() + " mention")
+
+	return Mention(mention_type, int(parsed), has_nick)
 
 
 class DiscordPager(object):
