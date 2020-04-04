@@ -7,6 +7,7 @@ import traceback
 import os
 import asyncio
 import time
+import random
 import re
 import shlex
 from . import configfile, commands, util, version
@@ -232,6 +233,13 @@ class MasaBot(object):
 		self._client = discord.Client(status="being cute with discord.py 1.0+")
 
 		self._sent_announcement = False
+
+		random_status_list = [
+			"with her internal systems",
+			"looking at the world!",
+			"with the new Discord API"
+		]
+
 		@self._client.event
 		async def on_ready():
 			_log.info("Logged in as " + self._client.user.name)
@@ -242,6 +250,8 @@ class MasaBot(object):
 				with open('avatar.png', 'rb') as avatar_fp:
 					avatar_data = avatar_fp.read()
 				await self._client.user.edit(avatar=avatar_data)
+
+			await self._client.change_presence(activity=discord.Game(name=random.choice(random_status_list)))
 
 			_log.info("Connected to servers:")
 			for g in self._client.guilds:
