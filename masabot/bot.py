@@ -14,7 +14,7 @@ from typing import Optional
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
 
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 
 _log = logging.getLogger(__name__)
@@ -233,6 +233,7 @@ class MasaBot(object):
 
 		self._client = discord.Client(status="being cute with discord.py 1.0+")
 
+		self._sent_announcement = False
 		@self._client.event
 		async def on_ready():
 			_log.info("Logged in as " + self._client.user.name)
@@ -249,8 +250,9 @@ class MasaBot(object):
 				_log.info("* " + str(g))
 			_log.info("Bot is now online")
 			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
-			if clean_shutdown:
+			if clean_shutdown and not self._sent_announcement:
 				await self.announce("Hello! I'm now online ^_^")
+				self._sent_announcment = True
 			else:
 				_log.info("Back from unclean shutdown caused by: " + repr(reason))
 			await self._check_supervisor_files()
