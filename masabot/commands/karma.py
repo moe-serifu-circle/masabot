@@ -141,7 +141,7 @@ class KarmaModule(BotBehaviorModule):
 					raise BotSyntaxError(str(args[0]) + " is a role, so it can't have karma")
 				elif m.group(1) == '#':
 					raise BotSyntaxError(str(args[0]) + " is a channel, so it can't have karma")
-				msg = self.get_user_karma(m.group(2), server_id=server, global_karma=global_karma)
+				msg = self.get_user_karma(int(m.group(2)), server_id=server, global_karma=global_karma)
 		else:
 			msg = self.get_user_karma(context.author.id, server_id=server, global_karma=global_karma)
 		await self.bot_api.reply(context, msg)
@@ -223,7 +223,7 @@ class KarmaModule(BotBehaviorModule):
 	def get_user_karma(self, uuid, global_karma=False, server_id=None):
 		"""
 		returns given user's karma
-		:type uuid: str
+		:type uuid: int
 		:type global_karma: bool
 		:param global_karma: set to true for user's global karma
 		:type server_id: int
