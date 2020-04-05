@@ -281,6 +281,11 @@ class MasaBot(object):
 				await self._handle_regex_scan(message)
 
 		@self._client.event
+		async def on_reaction_add(reaction, user):
+			if random.random() > 0.80:
+				reaction.mes
+
+		@self._client.event
 		async def on_error(event, *args, **kwargs):
 			if len(args) < 1:
 				# assume that we did not come from on_message
