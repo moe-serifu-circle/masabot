@@ -287,7 +287,7 @@ class MasaBot(object):
 			if reaction.me:
 				return  # don't mimic own reactions
 
-			if random.random() > self._settings.get('mimic-reaction-chance'):
+			if random.random() < self._settings.get('mimic-reaction-chance'):
 				await reaction.message.add_reaction(reaction)
 
 		@self._client.event
@@ -541,16 +541,16 @@ class MasaBot(object):
 				msg += " run it by itself, `" + pre + "help`, to just show the list of all commands and modules, or you"
 				msg += " can you put a module name after it to find out about that module! But I guess you already know"
 				msg += " that, eheheh ^_^"
-			if help_module == "settings":
+			elif help_module == "settings":
 				msg = "Ara! That's the command that controls the settings of various features in my core system! There"
 				msg += " are three different ways to use this command:\n\n"
-				msg += " * `" + pre + "settings` by itself will list all of the current settings.\n\n"
+				msg += " * `" + pre + "settings` by itself will list all of the current settings.\n"
 				msg += " * `" + pre + "settings name-of-setting` will show what that setting in particular is set to "
-				msg += " right now.\n\n"
+				msg += " right now.\n"
 				msg += " * Finally, `" + pre + "settings name-of-setting new-value` will set that setting to a new"
 				msg += " value! But you do gotta be an operator to do that one, because otherwise someone could"
 				msg += " accidentally set it to values that don't work very well, which is really scary!"
-			if help_module == "version":
+			elif help_module == "version":
 				msg = "Oh, that's the command that tells you what version I am!"
 			elif help_module == "quit":
 				msg = "Mmm, `quit` is the command that will make me leave the server right away. It shuts me down"
@@ -660,6 +660,10 @@ class MasaBot(object):
 					self._settings.set(setting, new_value)
 				except ValueError as e:
 					raise BotSyntaxError(str(e))
+				log_message = "User " + str(context.author.id) + "/" + str(context.author.name) + " updated setting"
+				log_message += " " + repr(setting) + " to new value " + repr(new_value)
+				_log.debug(log_message)
+				self._save_all()
 				msg = "Certainly! `" + setting + "` has been updated to " + repr(self._settings.get(setting)) + "!"
 			await self.reply(context, msg)
 
