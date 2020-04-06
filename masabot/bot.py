@@ -836,10 +836,16 @@ class MasaBot(object):
 
 	async def show_ops(self, context):
 		msg = "Okay, sure! Here's a list of all of my operators:\n\n"
-		for u in self._operators:
-			all_info = self._client.get_user(u)
-			op_info = self._operators[u]
-			msg += "* `" + all_info.name + "#" + all_info.discriminator + "` _(" + op_info['role'] + ")_\n"
+		with context.source.typing():
+			for u in self._operators:
+				all_info = self._client.get_user(u)
+				if all_info is None:
+					all_info = await self._client.fetch_user(u)
+				op_info = self._operators[u]
+				op_name = '(UID ' + str(u) + ')'
+				if all_info is not None:
+					op_name = "`" + all_info.name + "#" + all_info.discriminator + "`"
+				msg += "* " + op_name + " _(" + op_info['role'] + ")_\n"
 		await self.reply(context, msg)
 
 	async def pm_master_users(self, message):
