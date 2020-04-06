@@ -288,6 +288,9 @@ class MasaBot(object):
 				return  # don't mimic own reactions
 
 			if random.random() < self._settings.get('mimic-reaction-chance'):
+				# give a slight delay
+				delay = 1 + (random.random() * 3)  # random amount from 1 to 4 seconds
+				await asyncio.sleep(delay)
 				await reaction.message.add_reaction(reaction)
 
 		@self._client.event
