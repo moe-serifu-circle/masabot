@@ -165,7 +165,8 @@ class KarmaModule(BotBehaviorModule):
 
 		# temp_karma_sorted = [("232323", {"5345" : 41, "23423" : 12}),
 		# ("userid", {"serverid1" : karma1, "serverid2" : karma2}, ...]
-		temp_karma_sorted = sorted(self._karma.items(), key=lambda usv: usv[1][server], reverse=True)  # List has format as above
+		candidates = [x for x in self._karma.items() if server in x[1]]  # filter out those that aren't in this server
+		temp_karma_sorted = sorted(candidates, key=lambda usv: usv[1][server], reverse=True)  # List has format as above
 		
 		tkslen = len(temp_karma_sorted)		# Number of users in karma list
 
