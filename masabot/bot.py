@@ -839,7 +839,7 @@ class MasaBot(object):
 		for u in self._operators:
 			all_info = self._client.get_user(u)
 			op_info = self._operators[u]
-			msg += "* " + all_info.name + "#" + all_info.discriminator + " _(" + op_info['role'] + ")_\n"
+			msg += "* `" + all_info.name + "#" + all_info.discriminator + "` _(" + op_info['role'] + ")_\n"
 		await self.reply(context, msg)
 
 	async def pm_master_users(self, message):
