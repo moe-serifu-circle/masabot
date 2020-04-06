@@ -10,7 +10,7 @@ import time
 import random
 import re
 import shlex
-from . import configfile, commands, util, version
+from . import configfile, commands, util, version, settings
 from typing import Optional
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
 
@@ -200,6 +200,8 @@ class MasaBot(object):
 		self._any_mention_handlers = []
 		self._regex_handlers = {}
 		self._operators = {}
+		self._settings = settings.SettingsStore()
+		self._settings.create_percent_key('mimic-reaction-chance', 0.05)
 		self._timers = []
 		""":type : list[Timer]"""
 		self._setup_complete = False
@@ -279,6 +281,14 @@ class MasaBot(object):
 					await self._handle_mention(message)
 
 				await self._handle_regex_scan(message)
+
+		@self._client.event
+		async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
+			if reaction.me:
+				return  # don't mimic own reactions
+
+			if random.random() < self._settings.get('mimic-reaction-chance'):
+				await reaction.message.add_reaction(reaction)
 
 		@self._client.event
 		async def on_error(event, *args, **kwargs):
@@ -513,6 +523,7 @@ class MasaBot(object):
 			msg += "* `" + pre + "deop` - Takes away operator permissions from a user.\n"
 			msg += "* `" + pre + "showops` - Shows all of my operators and masters.\n"
 			msg += "* `" + pre + "replchars` - Shows/sets characters that are replaced before parsing.\n"
+			msg += "* `" + pre + "settings` - Shows and sets core module settings.\n"
 			msg += "\nHere are the modules that I'm running:\n"
 			for m_name in self._bot_modules:
 				m = self._bot_modules[m_name]
@@ -530,7 +541,16 @@ class MasaBot(object):
 				msg += " run it by itself, `" + pre + "help`, to just show the list of all commands and modules, or you"
 				msg += " can you put a module name after it to find out about that module! But I guess you already know"
 				msg += " that, eheheh ^_^"
-			if help_module == "version":
+			elif help_module == "settings":
+				msg = "Ara! That's the command that controls the settings of various features in my core system! There"
+				msg += " are three different ways to use this command:\n\n"
+				msg += " * `" + pre + "settings` by itself will list all of the current settings.\n"
+				msg += " * `" + pre + "settings name-of-setting` will show what that setting in particular is set to "
+				msg += " right now.\n"
+				msg += " * Finally, `" + pre + "settings name-of-setting new-value` will set that setting to a new"
+				msg += " value! But you do gotta be an operator to do that one, because otherwise someone could"
+				msg += " accidentally set it to values that don't work very well, which is really scary!"
+			elif help_module == "version":
 				msg = "Oh, that's the command that tells you what version I am!"
 			elif help_module == "quit":
 				msg = "Mmm, `quit` is the command that will make me leave the server right away. It shuts me down"
@@ -589,7 +609,65 @@ class MasaBot(object):
 	async def show_version(self, context):
 		await self.reply(context, "I am Masabot v" + str(version.get_version()) + "!")
 
-	async def run_replchars_command(self, context, action=None, search=None, replacement=None):
+	async def _run_settings_command(
+			self,
+			context: BotContext,
+			action: Optional[str] = None,
+			setting: Optional[str] = None,
+			new_value: Optional[str] = None):
+		"""
+		Execute the settings command. Depending on the action, this will either be to list all existing keys, to get
+		the value of a particular key, or to set the value of the key. Setting the value requires op permissions.
+
+		:param context: The context of the command.
+		:param action: The action to perform. Leave as None to just list the replacements. Set to "get" to get the value
+		of a current key, in which case setting must also be set. Set to "set" to set the value, in which case both
+		setting and new_value must be set.
+		:param setting: The setting to get or set. This is only used if action is set to "get" or "set".
+		:param new_value: The new value to assign to the setting. This is only used if action is set to "set". This is
+		accepted as a string but will be converted to the proper type while it is being set.
+		"""
+		if action is None:
+			# we are doing a list, no need for privileges
+			pager = DiscordPager("_(settings continued)_")
+			pager.add_line("Okay, you got it! Here's a list of settings in my core module:")
+			pager.add_line()
+			if len(self._settings) < 1:
+				pager.add_line("...oh no. This doesn't seem right at all! I can't seem to see any settings at all!")
+			else:
+				for k in self._settings:
+					pager.add_line("`" + str(k) + "`, with type `" + self._settings.get_key_type(k) + "`")
+
+			for p in pager.get_pages():
+				await self.reply(context, p)
+		elif action == 'get':
+			if setting not in self._settings:
+				msg = "Let me take a look... Uh-oh! `" + setting + "` isn't a setting I have on file! Um, really quick,"
+				msg += " just in case you forgot, you can check which settings I have by using the `" + self._prefix
+				msg += "settings` command by itself, if you need to."
+			else:
+				val = self._settings.get(setting)
+				msg = "Let me take a look... Okay, it looks like `" + setting + "` is currently set to " + repr(val) + "."
+			await self.reply(context, msg)
+		elif action == 'set':
+			self.require_op(context, "settings set " + repr(setting), None)
+			if setting not in self._settings:
+				msg = "Uh-oh! `" + setting + "` isn't a setting I have on file! Um, really quick,"
+				msg += " just in case you forgot, you can check which settings I have by using the `" + self._prefix
+				msg += "settings` command by itself, if you need to."
+			else:
+				try:
+					self._settings.set(setting, new_value)
+				except ValueError as e:
+					raise BotSyntaxError(str(e))
+				log_message = "User " + str(context.author.id) + "/" + str(context.author.name) + " updated setting"
+				log_message += " " + repr(setting) + " to new value " + repr(new_value)
+				_log.debug(log_message)
+				self._save_all()
+				msg = "Certainly! `" + setting + "` has been updated to " + repr(self._settings.get(setting)) + "!"
+			await self.reply(context, msg)
+
+	async def _run_replchars_command(self, context, action=None, search=None, replacement=None):
 		"""
 		Execute the replchars command. Depending on the action, this will either print out the info on current
 		replacements, add a new replacement, or remove an existing replacement. Adding and removing require operator
@@ -1125,7 +1203,18 @@ class MasaBot(object):
 				search = args[1]
 			if len(args) > 2:
 				repl = args[2]
-			await self._execute_action(context, self.run_replchars_command(context, action, search, repl))
+			await self._execute_action(context, self._run_replchars_command(context, action, search, repl))
+		elif cmd == 'settings':
+			action = None
+			setting = None
+			new_value = None
+			if len(args) > 0:
+				action = 'get'
+				setting = args[0]
+			if len(args) > 1:
+				action = 'set'
+				new_value = args[1]
+			await self._execute_action(context, self._run_settings_command(context, action, setting, new_value))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				await self._execute_action(context, handler.on_invocation(context, meta, cmd, *args), handler)
@@ -1140,7 +1229,8 @@ class MasaBot(object):
 		context = BotContext(message)
 		meta = MessageMetadata.from_message(message)
 
-		log_msg = "[" + _fmt_channel(context.source) + "]: received mentions from " + str(context.author.id) + "/" + context.author_name()
+		log_msg = "[" + _fmt_channel(context.source) + "]: received mentions from " + str(context.author.id) + "/"
+		log_msg += context.author_name()
 		# don't actually log this yet unless we do something with the message
 
 		valid_mention_handlers = [i for i in self._any_mention_handlers if i.name not in handled_already]
@@ -1263,10 +1353,14 @@ class MasaBot(object):
 		if 'invocation_replacements' in builtin_state:
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
 
+		if 'settings' in builtin_state:
+			self._settings.set_state(builtin_state['settings'])
+
 	def _save_all(self):
 		state_dict = {'__BOT__': {
 			'operators': list(self._operators.keys()),
 			'invocation_replacements': dict(self._invocation_replacements),
+			'settings': self._settings.get_state()
 		}}
 
 		for m_name in self._bot_modules:
