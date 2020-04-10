@@ -2,7 +2,6 @@ from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
 from ..util import BotSyntaxError
 from .. import util
 
-import re
 import logging
 import random
 
@@ -24,7 +23,7 @@ class KarmaModule(BotBehaviorModule):
 		help_text += " invoking `karma-top` with no arguments.\n\n"
 		help_text += "If you would like to see a user's global karma (or your own global karma), simply add a `global`"
 		help_text += " to the end of the command (e.g. `karma global` to see your own, `karma @user global` to see"
-		help_text += " another user's global karma). \n\nIn order to prevent huge karma changes, there is a buzzkill mode," 
+		help_text += " another user's global karma). \n\nIn order to prevent huge karma changes, there is a buzzkill mode,"
 		help_text += " which limits the amount that karma can change by. The `karma-buzzkill` command with no arguments"
 		help_text += " will give what the current buzzkill limit is, and ops are able to give an argument to set the limit."
 		help_text += " Setting the limit to anything less than 1 disables buzzkill mode entirely, allowing any amount of"
@@ -150,12 +149,12 @@ class KarmaModule(BotBehaviorModule):
 		else:
 			msg = self.get_user_karma(context.author.id, server_id=server, global_karma=global_karma)
 		await self.bot_api.reply(context, msg)
-	
+
 	async def show_toplist_karma(self, context):
 		"""
 		replies with the karma of the top users as well as the caller's place in the leaderboard
 		:type context: masabot.bot.BotContext
-		""" 
+		"""
 		server = None
 		if not context.is_pm:
 			server = context.source.guild.id
@@ -167,7 +166,7 @@ class KarmaModule(BotBehaviorModule):
 		# ("userid", {"serverid1" : karma1, "serverid2" : karma2}, ...]
 		candidates = [x for x in self._karma.items() if server in x[1]]  # filter out those that aren't in this server
 		temp_karma_sorted = sorted(candidates, key=lambda usv: usv[1][server], reverse=True)  # List has format as above
-		
+
 		tkslen = len(temp_karma_sorted)		# Number of users in karma list
 
 		usridx = 0  # Index of author in list before loop
@@ -184,7 +183,7 @@ class KarmaModule(BotBehaviorModule):
 			member_name = context.source.guild.get_member(temp_karma_sorted[usridx][0]).name
 			member_amount = temp_karma_sorted[usridx][1][server]
 			msg += "```{:^32.32} {:^1} | {} karma\n{:^53.49}\n".format(member_name, usridx + 1, member_amount, "━" * 49)
-		
+
 		for i in range(0, 5):		# Appends top 5 karma values in server if applicable
 			if tkslen > i:
 				snowflake_id = temp_karma_sorted[i][0]
