@@ -59,6 +59,7 @@ class AnimemeModule(BotBehaviorModule):
 		self._default_pen.set_color(fg="white", bg="black")
 		self._pens = {}
 		""":type: Dict[int, Pen]"""
+		self._dm_pen = self._default_pen.copy()
 
 	def load_config(self, config):
 		if 'username' not in config:
@@ -86,6 +87,9 @@ class AnimemeModule(BotBehaviorModule):
 			return {
 				'font-layout': self._default_pen.get_state_dict()
 			}
+		return {
+			'font-layout': self._pens[server].get_state_dict()
+		}
 
 	def get_global_state(self):
 		new_state = {
@@ -151,17 +155,22 @@ class AnimemeModule(BotBehaviorModule):
 			await self.get_layout_param(context, param)
 
 	async def set_layout_param(self, context, param, value):
-		server_id = await self.bot_api.require_server(context)
-		self.bot_api.require_op(context, server_id, "animeme-layout " + str(param) + " <value>", self.name)
-		if server_id not in self._pens:
-			self._pens[server_id] = self._default_pen.copy()
+		if not context.is_pm:
+			server_id = await self.bot_api.require_server(context)
+			self.bot_api.require_op(context, server_id, "animeme-layout " + str(param) + " <value>", self.name)
+			if server_id not in self._pens:
+				self._pens[server_id] = self._default_pen.copy()
+			pen = self._pens[server_id]
+		else:
+			self.bot_api.require_master(context, "animeme-layout " + str(param) + " <value>", self.name)
+			pen = self._dm_pen
 
 		if param == 'kerning':
 			value = util.str_to_int(value, min=0, name="kerning")
-			if self._pens[server_id].kerning == value:
+			if pen.kerning == value:
 				msg = "Haha, the kerning is already set to " + str(value) + ", so yay!"
 			else:
-				self._pens[server_id].kerning = value
+				pen.kerning = value
 				_log.debug("Set animeme kerning to " + str(value))
 				msg = "Okay, I'll set the kerning to " + str(value) + " pixels!"
 		elif param == 'template-width':
@@ -186,34 +195,34 @@ class AnimemeModule(BotBehaviorModule):
 					msg = "Okay! I'll leave my templates alone, then."
 		elif param == 'spacing':
 			value = util.str_to_float(value, min=0, name="word spacing")
-			if self._pens[server_id].word_spacing_factor == value:
+			if pen.word_spacing_factor == value:
 				msg = "Mmm, the word spacing is already set to " + str(value) + "..."
 			else:
-				self._pens[server_id].word_spacing_factor = value
+				pen.word_spacing_factor = value
 				_log.debug("Set animeme word spacing factor to " + str(value))
 				msg = "Okay, I'll set the word spacing to " + str(value) + "x the width of a single space!"
 		elif param == 'border':
 			value = util.str_to_int(value, min=0, name="border width")
-			if self._pens[server_id].border_width == value:
+			if pen.border_width == value:
 				msg = "Oh, the border width is already set to " + str(value) + "."
 			else:
-				self._pens[server_id].border_width = value
+				pen.border_width = value
 				_log.debug("Set animeme border width to " + str(value))
 				msg = "Okay, I'll set the border width to " + str(value) + " pixels!"
 		elif param == 'minfont':
 			value = util.str_to_int(value, min=2, name="minimum font size")
-			if self._pens[server_id].min_font_size == value:
+			if pen.min_font_size == value:
 				msg = "Oh, the minimum font size is already set to " + str(value) + "."
 			else:
-				self._pens[server_id].min_font_size = value
+				pen.min_font_size = value
 				_log.debug("Set animeme minimum font size to " + str(value))
 				msg = "Okay, I'll set the minimum font size to " + str(value) + " points!"
 		elif param == 'maxfont':
 			value = util.str_to_int(value, min=2, name="maximum font size")
-			if self._pens[server_id].max_font_size == value:
+			if pen.max_font_size == value:
 				msg = "Oh, the maximum font size is already set to " + str(value) + "."
 			else:
-				self._pens[server_id].max_font_size = value
+				pen.max_font_size = value
 				_log.debug("Set animeme maximum font size to " + str(value))
 				msg = "Okay, I'll set the maximum font size to " + str(value) + " points!"
 		else:
@@ -222,23 +231,27 @@ class AnimemeModule(BotBehaviorModule):
 		await self.bot_api.reply(context, msg)
 
 	async def get_layout_param(self, context, param):
-		server_id = await self.bot_api.require_server(context)
-		if server_id not in self._pens:
-			self._pens[server_id] = self._default_pen.copy()
+		if not context.is_pm:
+			server_id = await self.bot_api.require_server(context)
+			if server_id not in self._pens:
+				self._pens[server_id] = self._default_pen.copy()
+			pen = self._pens[server_id]
+		else:
+			pen = self._dm_pen
 
 		if param == 'kerning':
-			msg = "Sure! I've got the kerning set to " + str(self._pens[server_id].kerning) + " pixels right now."
+			msg = "Sure! I've got the kerning set to " + str(pen.kerning) + " pixels right now."
 		elif param == 'template-width':
 			msg = "Sure! I've got the template width set to " + str(self._template_width) + " pixels right now."
 		elif param == 'spacing':
-			msg = "Sure! I've got the word spacing set to " + str(self._pens[server_id].word_spacing_factor) + " times the width of"
+			msg = "Sure! I've got the word spacing set to " + str(pen.word_spacing_factor) + " times the width of"
 			msg += " a regular space."
 		elif param == 'border':
-			msg = "Sure! I'm currently setting a " + str(self._pens[server_id].border_width) + " pixel border on the text."
+			msg = "Sure! I'm currently setting a " + str(pen.border_width) + " pixel border on the text."
 		elif param == 'minfont':
-			msg = "Sure! The minimum size of the font is set to " + str(self._pens[server_id].min_font_size) + " points."
+			msg = "Sure! The minimum size of the font is set to " + str(pen.min_font_size) + " points."
 		elif param == 'maxfont':
-			msg = "Sure! The maximum size of the font is set to " + str(self._pens[server_id].max_font_size) + " points."
+			msg = "Sure! The maximum size of the font is set to " + str(pen.max_font_size) + " points."
 		else:
 			raise BotSyntaxError("I don't know anything about the `" + param + "` layout parameter... what is that?")
 
@@ -356,9 +369,9 @@ class AnimemeModule(BotBehaviorModule):
 			":type : Image.Image"
 
 			if context.is_pm:
-				self._default_pen.copy().draw_meme_text(im, meme_line_1, meme_line_2)
+				self._dm_pen.draw_meme_text(im, meme_line_1, meme_line_2)
 			else:
-				server_id = context.source.id
+				server_id = context.source.guild.id
 				if server_id not in self._pens:
 					self._pens[server_id] = self._default_pen.copy()
 				self._pens[server_id].draw_meme_text(im, meme_line_1, meme_line_2)
@@ -503,6 +516,8 @@ class Pen(object):
 		state = self.get_state_dict()
 		p = Pen(self.max_font_size, self.min_font_size, self._default_font)
 		p.set_from_state_dict(state)
+		p._fg_color = self._fg_color
+		p._bg_color = self._bg_color
 		return p
 
 	# noinspection PyMethodMayBeStatic

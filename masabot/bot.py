@@ -956,9 +956,7 @@ class MasaBot(object):
 			matching_ops = []
 
 			for u in self._operators:
-				import pprint
 				op_profile = self._operators[u]
-				_log.debug("PROFILE:" + pprint.pformat(op_profile))
 				if op_profile['role'] == 'master':
 					matching_ops.append(u)
 				elif op_profile['role'] == 'operator':
@@ -1519,8 +1517,6 @@ class MasaBot(object):
 		builtin_state = state_dict['__BOT__']
 
 		if 'operators' in builtin_state:
-			import pprint
-			_log.debug(pprint.pformat(builtin_state['operators']))
 			for op in builtin_state['operators']:
 
 				# START legacy update format; remove in future release
