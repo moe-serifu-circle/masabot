@@ -1,7 +1,7 @@
 from . import http
 import urllib.parse
 import enum
-from typing import Optional
+from typing import Optional, Sequence, Tuple, Iterable, Union
 
 
 discord_char_limit = 2000
@@ -40,6 +40,7 @@ class Mention:
 	def __init__(self, m_type: MentionType, id: int, has_nick: bool):
 		self.resource_type = m_type
 		self.id = id
+		":type: int"
 		self._has_nick = has_nick
 
 	def has_nick(self) -> bool:
@@ -67,6 +68,89 @@ class Mention:
 
 	def __hash__(self):
 		return hash((self.resource_type, self.id, self._has_nick))
+
+
+class MentionMatch:
+	"""
+	Holds information on the position of a Mention found in a call to find_mentions().
+
+	pos - has the start index (inclusive) and end index (exclusive) of where in the search string the match was found.
+	start - the start index (inclusive) of where in the search string the match was found.
+	end - the end index (exclusive) of where in the search string the match was found.
+
+	This makes it such that message_text[start:end] is valid.
+	"""
+	def __init__(self, mention: Mention, start_index: int, end_index: int):
+		self.mention = mention
+		self.pos = (start_index, end_index)
+
+	@property
+	def end(self) -> int:
+		return self.pos[1]
+
+	@property
+	def start(self) -> int:
+		return self.pos[0]
+
+
+def find_mentions(
+		message_text: str,
+		include_types: Optional[Union[Iterable[MentionType], MentionType]] = None,
+		include_ids: Optional[Union[Iterable[int], int]] = None,
+		limit: int = 0
+) -> Sequence[MentionMatch]:
+	"""
+	Find the starting and ending position of all mentions within the message. With no other keyword arguments present,
+	return all match locations found.
+	:param message_text: The text to search for mentions in.
+	:param include_types: If set to an iterable of types, only mentions who are of a type contained in the iterable will
+	be returned. If set to a single type, only mentions of that type will be returned.
+	:param include_ids: If set to an iterable of IDs, only mentions whose ID is contained in the iterable will be
+	returned. If set to a single ID, only mentions of that ID will be returned.
+	:param limit: If set to a positive value, stops parsing for mentions after limit mentions that match the conditions
+	of include_types and include_ids if they are specified. If neither are specified, stops parsing after limit mentions
+	are found.
+	:return: A sequence of MentionMatch objects in the order that they were encountered.
+	"""
+	matches = list()
+	for left_idx, ch in enumerate(message_text):
+		if left_idx + 1 >= len(message_text):
+			# don't check on last character because then we can always assume that we have idx+1 later on in loop, and
+			# it will never be a match if we are on the last char.
+			continue
+		if ch == '<':
+			right_idx = message_text.find('>', left_idx+1)
+			if right_idx == -1:
+				# no more mentions are possible
+				break
+			try:
+				men = parse_mention(message_text[left_idx:right_idx+1])
+			except BotSyntaxError:
+				# not a valid match; discard this left_index
+				continue
+			else:
+				if include_ids is not None:
+					if isinstance(include_ids, int):
+						include_ids = [include_ids]
+					if men.id not in include_ids:
+						# valid match, but not an included ID; discard this left_index
+						continue
+				if include_types is not None:
+					if isinstance(include_types, MentionType):
+						include_types = [include_types]
+					if men.resource_type not in include_types:
+						# valid match, but not an included type; discard this left_index
+						continue
+
+				# everything else passed, if we are at this point, it is a valid mention
+				matches.append(MentionMatch(men, left_idx, right_idx+1))
+
+				# limit is only enforced if it is set to a positive number
+				if limit > 0:
+					if len(matches) >= limit:
+						break
+	return matches
+
 
 
 def parse_mention(mention_text: str, require_type: Optional[MentionType] = None) -> Mention:

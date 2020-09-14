@@ -48,14 +48,14 @@ class KarmaModule(BotBehaviorModule):
 		self._buzzkill_limit = 5
 		self._tsundere_chance = 0.1
 
-	def get_state(self):
+	def get_global_state(self):
 		return {
 			'karma': self._karma,
 			'buzzkill': self._buzzkill_limit,
 			'tsundere-chance': self._tsundere_chance
 		}
 
-	def set_state(self, state):
+	def set_global_state(self, state):
 		loaded_dict = state.get('karma', {})
 		for idx in loaded_dict:
 			self._karma[int(idx)] = loaded_dict[idx]

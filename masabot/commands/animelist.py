@@ -1,3 +1,5 @@
+from typing import Dict
+
 from . import BotBehaviorModule, InvocationTrigger
 from ..util import BotModuleError, BotSyntaxError
 from ..http import HttpAgent
@@ -58,13 +60,13 @@ class WatchListModule(BotBehaviorModule):
 		self._anilist_secret = config['anilist-client-secret']
 		self._anilist_id = config['anilist-client-id']
 
-	def set_state(self, state):
+	def set_global_state(self, state: Dict):
 		if 'anilist-users' in state:
 			self._anilist_users = {int(k): v for k, v in state['anilist-users'].items()}
 		for uid in self._anilist_users:
 			self._anilist_clients[uid] = self._create_anilist_client(uid)
 
-	def get_state(self):
+	def get_global_state(self):
 		return {
 			'anilist-users': self._anilist_users,
 		}

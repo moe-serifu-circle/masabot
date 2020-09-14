@@ -3,7 +3,7 @@ import os.path
 import logging
 import pathlib
 
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple, Dict
 from .. import util
 
 __all__ = [
@@ -11,7 +11,8 @@ __all__ = [
 	'animeme',
 	'translate',
 	'roll',
-	'animelist'
+	'animelist',
+	'noticeme',
 ]
 
 
@@ -162,10 +163,21 @@ class BotBehaviorModule(object):
 	def load_config(self, config):
 		pass
 
-	def get_state(self):
+	def get_state(self, server: int) -> Dict:
+		"""
+		If server is not a server that the module has a state for, return a default state.
+		:param server:
+		:return:
+		"""
 		pass
 
-	def set_state(self, state):
+	def set_state(self, server: int, state: Dict):
+		pass
+
+	def get_global_state(self) -> Dict:
+		pass
+
+	def set_global_state(self, state: Dict):
 		pass
 
 	async def on_invocation(self, context, metadata, command, *args):
@@ -177,7 +189,7 @@ class BotBehaviorModule(object):
 		"""
 		pass
 
-	async def on_mention(self, context, metadata, message, mentions: Sequence[util.Mention]):
+	async def on_mention(self, context, metadata, message: str, mentions: Sequence[util.Mention]):
 		"""
 		:type context: masabot.bot.BotContext
 		:type metadata: masabot.util.MessageMetadata

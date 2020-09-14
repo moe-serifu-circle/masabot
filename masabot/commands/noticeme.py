@@ -1,32 +1,12 @@
-from . import BotBehaviorModule, RegexTrigger, InvocationTrigger, MentionTrigger, mention_target_self
-from ..util import BotSyntaxError
-from .. import util
+from . import BotBehaviorModule, RegexTrigger, MentionTrigger, mention_target_self, noticeme_analysis
 from .. import bot
 import discord
 
-import re
 import logging
 import random
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
-
-positive_words = [
-	"thanks",
-	"thank you",
-	"good bot",
-	"good girl",
-	"good job",
-	"thank",
-]
-
-negative_words = [
-	"fuck you",
-	"fuck off",
-	"bad bot",
-	"thanks for nothing",
-	"broken",
-]
 
 positive_responses = [
 	"Oh, thanks!",
@@ -43,7 +23,7 @@ positive_responses = [
 
 negative_responses = [
 	"I'm sorry!",
-	"Oh, oh no... I didn't mean to!",
+	"Oh, oh no... I didn't mean to be a bother :c",
 	"Fuwawawaaaaaa @_@",
 	":("
 	"P-please, I didn't mean to be bad.",
@@ -52,11 +32,20 @@ negative_responses = [
 	"Did you have to do that?"
 ]
 
+positive_thanks_responses = [
+	"Of course!",
+	"You're very welcome, I'm glad I could help!",
+	"A good bot does what she can to help out!",
+	"You don't have to thank me!",
+	"I'm just happy to help make you happy!"
+]
+
 
 class NoticeMeSenpaiModule(BotBehaviorModule):
 
 	def __init__(self, bot_api, resource_root):
-		help_text = "The \"Notice me, Senpai\" module makes masabot react to messages that mention her."
+		help_text = "The \"Notice me, Senpai\" module makes me react to messages that mention me. It doesn't"
+		help_text += " really have any settings yet; just talk about me and sometimes I will answer!"
 
 		super().__init__(
 			bot_api,
@@ -79,41 +68,22 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 		"""
 		await self._handle_mention(context, match_groups[0])
 
-	async def on_mention(self, context, metadata, message: discord.Message, mentions):
-		await self._handle_mention(context, message.content)
+	async def on_mention(self, context, metadata, message: str, mentions):
+		await self._handle_mention(context, message)
 
 	async def _handle_mention(self, context: bot.BotContext, message_text: str):
-		sentiment = analyze_sentiment(message_text)
+		sentiment = noticeme_analysis.analyze_sentiment(message_text)
+		_log.debug("got a mention; sentiment score is {:d}".format(sentiment))
 		if sentiment > 0:
-			await self.bot_api.reply(context, random.choice(positive_responses))
+			if noticeme_analysis.contains_thanks(message_text, self.bot_api.get_id(), "masabot"):
+				reply_text = random.choice(positive_thanks_responses)
+			else:
+				reply_text = random.choice(positive_responses)
+			await self.bot_api.reply(context, reply_text)
 		elif sentiment < 0:
 			await self.bot_api.reply(context, random.choice(negative_responses))
-
-
-def analyze_sentiment(message_text):
-	"""
-	Returns 1 for positive, 0 for neutral, -1 for negative.
-	:param message_text:
-	:return:
-	"""
-	all_words = {k.lower(): True for k in positive_words}
-	all_words.update({k.lower(): False for k in negative_words})
-	all_word_patterns = list(all_words.keys())
-	all_word_patterns.sort()
-
-	found = False
-	positive = False
-	for p in all_word_patterns:
-		m = re.search(r"\b" + p + "\b", message_text, re.IGNORECASE | re.MULTILINE)
-		if m:
-			found = True
-			positive = all_words[p]
-			break
-	if not found:
-		return 0
-	if positive:
-		return 1
-	return -1
+		else:
+			await context.message.add_reaction("👋")
 
 
 BOT_MODULE_CLASS = NoticeMeSenpaiModule

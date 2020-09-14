@@ -11,7 +11,7 @@ import random
 import re
 import shlex
 from . import configfile, commands, util, version, settings
-from typing import Optional
+from typing import Optional, Dict, Any
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
 
 
@@ -96,15 +96,16 @@ class Timer(object):
 
 class BotContext(object):
 
-	def __init__(self, message):
+	def __init__(self, message: discord.Message):
 		if message is not None:
 			self.source = message.channel
 			self.author = message.author
-			self.is_pm = isinstance(message, discord.abc.PrivateChannel) and len(self.source.recipients) == 1
+			self.is_pm = isinstance(message.channel, discord.DMChannel)
 		else:
 			self.source = None
 			self.author = None
 			self.is_pm = False
+		self.message = message
 
 	def mention(self):
 		"""
@@ -192,6 +193,7 @@ class MasaBot(object):
 		:param config_file: The path to the configuration file for the bot.
 		"""
 		_log.debug("Initializing MasaBot")
+		self._ops_need_update = False # TODO: REMOVE THIS AFTER UPDATE
 		self._bot_modules = {}
 		""":type : dict[str, commands.BotBehaviorModule]"""
 		self._invocations = {}
@@ -199,11 +201,13 @@ class MasaBot(object):
 		self._self_mention_handlers = []
 		self._any_mention_handlers = []
 		self._regex_handlers = {}
-		self._operators = {}
+		self._operators: Dict[int, Dict[str, Any]] = {}
 		self._settings = settings.SettingsStore()
 		self._settings.create_percent_key('mimic-reaction-chance', 0.05)
 		self._timers = []
 		""":type : list[Timer]"""
+		self._joined_guilds = {}
+		""":type : Dict[int, discord.Guild]"""
 		self._setup_complete = False
 		self._master_timer_task = None
 
@@ -232,14 +236,20 @@ class MasaBot(object):
 		self._prefix = conf['prefix']
 		self._announce_channels = conf['announce-channels']
 
-		self._client = discord.Client(status="being cute with discord.py 1.0+")
+		self._client = discord.Client(status="being cute with discord.py 1.x")
 
 		self._sent_announcement = False
 
 		random_status_list = [
 			"with her internal systems",
 			"looking at the world!",
-			"with the new Discord API"
+			"with the new Discord API",
+			"Turing test practice",
+			"with YouTube",
+			"Epic Bot Adventure!",
+			"Botting About",
+			"My blood type is B!",
+			"World domination planning",
 		]
 
 		@self._client.event
@@ -258,6 +268,16 @@ class MasaBot(object):
 			_log.info("Connected to servers:")
 			for g in self._client.guilds:
 				_log.info("* " + str(g))
+				self._joined_guilds[g.id] = g
+
+			# TODO: delete after update push
+			if self._ops_need_update:
+				for op in self._operators:
+					op_info = self._operators[op]
+					if op_info['role'] == 'operator':
+						for g in self._client.guilds:
+							op_info['servers'].append(g.id)
+
 			_log.info("Bot is now online")
 			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
 			if clean_shutdown and not self._sent_announcement:
@@ -267,6 +287,7 @@ class MasaBot(object):
 				_log.info("Back from unclean shutdown caused by: " + repr(reason))
 			await self._check_supervisor_files()
 			self._setup_complete = True
+
 
 		@self._client.event
 		async def on_message(message):
@@ -283,11 +304,27 @@ class MasaBot(object):
 				await self._handle_regex_scan(message)
 
 		@self._client.event
+		async def on_guild_join(guild: discord.Guild):
+			self._joined_guilds[guild.id] = guild
+			_log.info("joined guild {:s} (ID {:d})".format(guild.name, guild.id))
+			self._save_all()
+
+		@self._client.event
+		async def on_guild_remove(guild: discord.Guild):
+			del self._joined_guilds[guild.id]
+			_log.info("left guild {:s} (ID {:d})".format(guild.name, guild.id))
+			self._save_all()
+
+		@self._client.event
 		async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
+			ctx = BotContext(reaction.message)
+			if ctx.is_pm:
+				return
+
 			if reaction.me:
 				return  # don't mimic own reactions
 
-			if random.random() < self._settings.get('mimic-reaction-chance'):
+			if random.random() < self._settings.get(ctx.source.id, 'mimic-reaction-chance'):
 				# give a slight delay
 				delay = 1 + (random.random() * 3)  # random amount from 1 to 4 seconds
 				await asyncio.sleep(delay)
@@ -343,6 +380,50 @@ class MasaBot(object):
 				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
 					await ch.send(message)
 					_log.debug(_fmt_send(ch, message))
+
+	async def require_server(self, context: BotContext) -> int:
+		"""
+		Prompt the user to give a server ID only if the context does not already contain one.
+		:param context:
+		:return:
+		"""
+		if context.is_pm:
+			got_valid_server = False
+			server_id = -1
+			while not got_valid_server:
+				resp = await self.prompt(context, "Ok, really quick, what server should I do that for?")
+				if resp is None:
+					break
+				try:
+					server_id = int(resp)
+				except ValueError:
+					resp = ' '.join(shlex.split(resp))
+					found_guild = None
+					for g in self._client.guilds:
+						g = g
+						""":type: discord.Guild"""
+						norm_guild_name = ' '.join(shlex.split(g.name))
+						if norm_guild_name.lower().find(resp.lower()) > -1:
+							found_guild = g
+							break
+					if found_guild:
+						conf_msg = "Just to make sure, I should do that for {:s}, right?"
+						if not await self.confirm(context, conf_msg.format(found_guild.name)):
+							await self.reply(context, "Sorry; it looked really similar >.<")
+							continue
+						server_id = found_guild.id
+					else:
+						await self.reply(context, "Oh no! I'm not in any servers that match that @_@")
+						continue
+				if server_id not in self._joined_guilds:
+					await self.reply(context, "I'm not in a guild that matches that.")
+					continue
+				got_valid_server = True
+			if not got_valid_server:
+				raise BotModuleError("Sorry, but I can't do that without a server!")
+			return server_id
+		else:
+			return context.source.guild.id
 
 	async def confirm(self, context, message):
 		"""
@@ -422,6 +503,9 @@ class MasaBot(object):
 			log_msg += repr(message.content)
 			_log.debug(log_msg)
 			return all_options[message.content]
+
+	def get_id(self):
+		return self._client.user.id
 
 	async def prompt(self, context, message, timeout=60, type_conv=str):
 		"""
@@ -601,7 +685,7 @@ class MasaBot(object):
 		await self.reply(context, msg)
 
 	async def quit(self, context, restart_command="quit"):
-		self.require_op(context, "quit", None)
+		self.require_master(context, "quit", None)
 		with open('.supervisor/restart-command', 'w') as fp:
 			fp.write(restart_command)
 		await self.reply(context, "Right away, <@!" + str(context.author.id) + ">! See you later!")
@@ -649,25 +733,31 @@ class MasaBot(object):
 				msg += " just in case you forgot, you can check which settings I have by using the `" + self._prefix
 				msg += "settings` command by itself, if you need to."
 			else:
-				val = self._settings.get(setting)
+				server_id = await self.require_server(context)
+				val = self._settings.get(server_id, setting)
 				msg = "Let me take a look... Okay, it looks like `" + setting + "` is currently set to " + repr(val) + "."
 			await self.reply(context, msg)
 		elif action == 'set':
-			self.require_op(context, "settings set " + repr(setting), None)
+			server_id = await self.require_server(context)
+			if server_id is None:
+				msg = "I can't look that up without a server, sorry!"
+				await self.reply(context, msg)
+				return
+			self.require_op(context, server_id, "settings set " + repr(setting), None)
 			if setting not in self._settings:
 				msg = "Uh-oh! `" + setting + "` isn't a setting I have on file! Um, really quick,"
 				msg += " just in case you forgot, you can check which settings I have by using the `" + self._prefix
 				msg += "settings` command by itself, if you need to."
 			else:
 				try:
-					self._settings.set(setting, new_value)
+					self._settings.set(server_id, setting, new_value)
 				except ValueError as e:
 					raise BotSyntaxError(str(e))
 				log_message = "User " + str(context.author.id) + "/" + str(context.author.name) + " updated setting"
 				log_message += " " + repr(setting) + " to new value " + repr(new_value)
 				_log.debug(log_message)
 				self._save_all()
-				msg = "Certainly! `" + setting + "` has been updated to " + repr(self._settings.get(setting)) + "!"
+				msg = "Certainly! `" + setting + "` has been updated to " + repr(self._settings.get(server_id, setting)) + "!"
 			await self.reply(context, msg)
 
 	async def _run_replchars_command(self, context, action=None, search=None, replacement=None):
@@ -704,7 +794,7 @@ class MasaBot(object):
 
 			await self.reply(context, msg)
 		elif action == "add":
-			self.require_op(context, "replchars add", None)
+			self.require_master(context, "replchars add", None)
 			if search is None:
 				msg = "I need to know the characters you want me to replace, and what you want to replace them with."
 				raise BotSyntaxError(msg)
@@ -764,7 +854,7 @@ class MasaBot(object):
 			await self.reply(context, msg)
 
 		elif action == "remove":
-			self.require_op(context, "replchars remove", None)
+			self.require_master(context, "replchars remove", None)
 			if search is None:
 				msg = "I need to know the string you want me to stop replacing."
 				raise BotSyntaxError(msg)
@@ -816,9 +906,9 @@ class MasaBot(object):
 		msg += " If you're having trouble, maybe the command `" + self._prefix + "help` can help you!"
 		await self.reply(context, msg)
 
-	def require_op(self, context, command, module, message="Operation requires operator status"):
+	def require_master(self, context, command, module, message="Operation requires master status"):
 		"""
-		Ensure that the user that invoked a command has operator permission. If the user does not have operator
+		Ensure that the user that invoked a command has master permission. If the user does not have master
 		permission, a BotPermissionError is raised.
 
 		:type context: BotContext
@@ -834,13 +924,48 @@ class MasaBot(object):
 		the default, as a suitable error message will be generated from the other properties if this method is called
 		from within a core command function or from within one of a module's on_X methods().
 		"""
-		if context.author.id not in self._operators:
+		if not self._is_master(context.author.id):
+			raise BotPermissionError(context, command, module, message=message)
+
+	def require_op(self, context, for_server: int, command, module, message="Operation requires operator status"):
+		"""
+		Ensure that the user that invoked a command has operator permission. If the user does not have operator
+		permission, a BotPermissionError is raised.
+
+		:type context: BotContext
+		:param context: The context of the command. Must contain the author that invoked it.
+		:type command: str
+		:param for_server: the server that OP is needed on.
+		:param command: A string representing the command that is attempting to be executed. This should include enough
+		of the invocation to distinguish it from other potential invocations of the same command.
+		:type module:  str | None
+		:param module: The module that is requiring operator permissions. This can be set to None if it is a built-in
+		command that is requiring op.
+		:type message: str
+		:param message: The message to put in the bot permission error if the check for op fails. This can be left as
+		the default, as a suitable error message will be generated from the other properties if this method is called
+		from within a core command function or from within one of a module's on_X methods().
+		"""
+		if not self._is_op(context.author.id, for_server):
 			raise BotPermissionError(context, command, module, message=message)
 
 	async def show_ops(self, context):
+		server_id = await self.require_server(context)
 		msg = "Okay, sure! Here's a list of all of my operators:\n\n"
 		with context.source.typing():
+			matching_ops = []
+
 			for u in self._operators:
+				import pprint
+				op_profile = self._operators[u]
+				_log.debug("PROFILE:" + pprint.pformat(op_profile))
+				if op_profile['role'] == 'master':
+					matching_ops.append(u)
+				elif op_profile['role'] == 'operator':
+					if server_id in op_profile['servers']:
+						matching_ops.append(u)
+
+			for u in matching_ops:
 				all_info = self._client.get_user(u)
 				if all_info is None:
 					all_info = await self._client.fetch_user(u)
@@ -879,8 +1004,25 @@ class MasaBot(object):
 
 			await asyncio.sleep(tick_span)
 
+	def _is_op(self, uid: int, in_server: int) -> bool:
+		if uid not in self._operators:
+			return False
+		if self._operators[uid]['role'] == 'master':
+			return True
+		if self._operators[uid]['role'] == 'operator':
+			if in_server in self._operators[uid]['servers']:
+				return True
+		return False
+
+	def _is_master(self, uid: int) -> bool:
+		if uid not in self._operators:
+			return False
+		return self._operators[uid]['role'] == 'master'
+
 	async def _make_op(self, context, args):
-		self.require_op(context, "op", None)
+		server_id = await self.require_server(context)
+		server = self._client.get_guild(server_id).name
+		self.require_op(context, server_id, "op", None)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to turn into an op")
@@ -892,17 +1034,21 @@ class MasaBot(object):
 			msg += " control me. It could be unsafe, and, Deka-nee told me I shouldn't do that!"
 			await self.reply(context, msg)
 			return
-		if mention.id in self._operators:
+		if self._is_op(mention.id, server_id):
 			await self.reply(context, "Oh! " + str(mention) + " is already an op! So yay!")
 			return
 		else:
-			self._operators[mention.id] = {'role': 'operator'}
-			_log.debug("Added new operator (UID " + str(mention.id) + ")")
+			if mention.id not in self._operators:
+				self._operators[mention.id] = {'role': 'operator', 'servers': []}
+			self._operators[mention.id]['servers'].append(server_id)
+			_log.debug("Added new operator (UID " + str(mention.id) + ") in server " + server + " (ID " + str(server_id) + ")")
 			self._save_all()
 			await self.reply(context, str(mention) + " is now an op! Hooray!")
 
 	async def _make_nonop(self, context, args):
-		self.require_op(context, "deop", None)
+		server_id = await self.require_server(context)
+		server = self._client.get_guild(server_id).name
+		self.require_op(context, server_id, "deop", None)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to deop")
@@ -912,7 +1058,7 @@ class MasaBot(object):
 		if not mention.is_user():
 			raise BotSyntaxError(args[0] + " just isn't something that can be an operator.")
 
-		if mention.id not in self._operators:
+		if not self._is_op(mention.id, server_id):
 			await self.reply(context, "It looks like " + str(mention) + " is already not an op.")
 			return
 		else:
@@ -921,13 +1067,15 @@ class MasaBot(object):
 				msg += " status!"
 				await self.reply(context, msg)
 			else:
-				del self._operators[mention.id]
-				_log.debug("Removed operator (UID " + str(mention.id) + ")")
+				self._operators[mention.id]['servers'].remove(server_id)
+				if len(self._operators[mention.id]['servers']) == 0:
+					del self._operators[mention.id]
+				_log.debug("Removed operator (UID " + str(mention.id) + ") from server " + server + " (ID " + str(server_id) + ")")
 				self._save_all()
 				await self.reply(context, "Okay. " + str(mention) + " is no longer an op.")
 
 	async def _redeploy(self, context, reason=None):
-		self.require_op(context, "redeploy", None)
+		self.require_master(context, "redeploy", None)
 		if reason is not None:
 			with open('.supervisor/reason', 'w') as fp:
 				fp.write(reason)
@@ -1049,7 +1197,23 @@ class MasaBot(object):
 					self._add_new_timer_handler(bot_module, t, new_timer_handlers)
 			if bot_module.has_state and bot_module.name in state_dict:
 				if state_dict[bot_module.name] is not None:
-					bot_module.set_state(state_dict[bot_module.name])
+					mod_state = state_dict[bot_module.name]
+
+					# legacy update code; delete later
+					if 'global' not in mod_state:
+						old_global = dict(mod_state)
+						mod_state = {
+							'global': old_global,
+							'servers': {}
+						}
+						for g in self._joined_guilds:
+							mod_state['servers'][g] = dict(old_global)
+
+					bot_module.set_global_state(mod_state['global'])
+					for server_id in mod_state['servers']:
+						mod_server_state = mod_state['servers'][server_id]
+						if mod_server_state is not None:
+							bot_module.set_state(server_id, mod_server_state)
 
 			bot_module.load_config(module_configs.get(bot_module.name, {}))
 
@@ -1355,27 +1519,61 @@ class MasaBot(object):
 		builtin_state = state_dict['__BOT__']
 
 		if 'operators' in builtin_state:
+			import pprint
+			_log.debug(pprint.pformat(builtin_state['operators']))
 			for op in builtin_state['operators']:
+
+				# START legacy update format; remove in future release
+				if not isinstance(op, dict):
+					full_op = {
+						'role': 'operator',
+						'servers': []
+					}
+					self._ops_need_update = True
+				# END legacy update format
+				else:
+					full_op = {
+						'role': op['role']
+					}
+					if op['role'] == 'operator':
+						full_op['servers'] = op['servers']
 				# master roles will be loaded later during config reading
-				self._operators[int(op)] = {'role': 'operator'}
+				self._operators[op] = full_op
 
 		if 'invocation_replacements' in builtin_state:
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
 
 		if 'settings' in builtin_state:
-			self._settings.set_state(builtin_state['settings'])
+			# if check is for legacy formats
+			if 'mimic-reaction-chance' not in builtin_state['settings']:
+				self._settings.set_global_state(builtin_state['settings']['keys'])
+				for server in builtin_state['settings']['values']:
+					server_settings = builtin_state['settings']['values'][server]
+					self._settings.set_state(server, server_settings)
 
 	def _save_all(self):
 		state_dict = {'__BOT__': {
-			'operators': list(self._operators.keys()),
+			'operators': {op: self._operators[op] for op in self._operators if self._operators[op]['role'] != 'master'},
 			'invocation_replacements': dict(self._invocation_replacements),
-			'settings': self._settings.get_state()
+			'settings': {
+				'keys': self._settings.get_global_state(),
+				'values': {server: self._settings.get_state(server) for server in self._joined_guilds},
+			}
 		}}
 
 		for m_name in self._bot_modules:
 			mod = self._bot_modules[m_name]
 			if mod.has_state:
-				state_dict[mod.name] = mod.get_state()
+				state_dict[mod.name] = {
+					'global': mod.get_global_state(),
+					'servers': {}
+				}
+				servers_dict = state_dict[mod.name]['servers']
+				""":type: Dict[int, Dict]"""
+				for g in self._joined_guilds:
+					mod_state = mod.get_state(g)
+					if mod_state is not None:
+						servers_dict[g] = mod_state
 
 		with open("state.p", "wb") as fp:
 			pickle.dump(state_dict, fp)
