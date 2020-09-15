@@ -25,17 +25,21 @@ negative_words = [
 ]
 
 
-def pattern_for_mention(uid: int, name: str) -> str:
+def pattern_for_mention(uid: int, name: str, *more_names) -> str:
 	patt = r"(?:<@!?" + str(uid) + r">|"
 	for ch in name:
 		patt += "[" + re.escape(ch.lower()) + re.escape(ch.upper()) + "]"
+	for additional_name in more_names:
+		patt += "|"
+		for ch in additional_name:
+			patt += "[" + re.escape(ch.lower()) + re.escape(ch.upper()) + "]"
 	patt += ")"
 	return patt
 
 
-def contains_thanks(text: str, to_user_id: int, to_user_name: str) -> bool:
+def contains_thanks(text: str, to_user_id: int, to_user_name: str, *more_user_names) -> bool:
 	thank_you_pattern = r"(?:thank|thanks|thank\s+you|thx)"
-	mention_pattern = pattern_for_mention(to_user_id, to_user_name)
+	mention_pattern = pattern_for_mention(to_user_id, to_user_name, *more_user_names)
 	left_pattern = re.compile(thank_you_pattern + r"[\s,]+" + mention_pattern, re.IGNORECASE)
 	right_pattern = re.compile(mention_pattern + r"[\s,]+" + thank_you_pattern, re.IGNORECASE)
 

@@ -1,14 +1,84 @@
 # Handles settings registration and getting.
 from typing import Dict, Any, Union
+import logging
+
+_log = logging.getLogger(__name__)
+_log.setLevel(logging.DEBUG)
 
 
-def _get_default(type: str):
-	if type == 'percent':
-		return 0.0
-	elif type == 'int:':
-		return 0
-	else:
-		return None
+class _KeyType:
+	def __init__(self, name: str, default_default: Union[int, str, bool, float]):
+		self.name = name
+		self.default_default = default_default
+
+	# noinspection PyMethodMayBeStatic
+	def parse(self, value: str) -> Any:
+		return NotImplementedError("do not use _KeyType directly")
+
+
+class _IntKeyType(_KeyType):
+	def __init__(self):
+		super().__init__(name='int', default_default=0)
+
+	def parse(self, value: str) -> int:
+		try:
+			int_val = int(value)
+		except ValueError:
+			raise ValueError("That setting is int-valued, and has to be set to a whole number")
+		return int_val
+
+
+class _PercentKeyType(_KeyType):
+	def __init__(self):
+		super().__init__(name='percent', default_default=0.0)
+
+	def parse(self, value: str) -> float:
+		try:
+			float_val = float(value)
+		except ValueError:
+			raise ValueError("That setting is a percentage, and has to be set to a number between 0 and 1")
+		if float_val < 0.0 or float_val > 1.0:
+			raise ValueError("That setting is a percentage, and has to be set to a number between 0 and 1")
+		return float_val
+
+
+# set up some singletons here; using oo so we can get parse() polymorphism
+_int_key_type = _IntKeyType()
+_percent_key_type = _PercentKeyType()
+
+
+class _Key:
+	def __init__(self, key_type: _KeyType, name: str, **kwargs):
+		self.name = name
+		self.type = key_type
+		if 'default' in kwargs:
+			self.default = kwargs['default']
+		else:
+			self.default = self.type.default_default
+
+	def parse(self, value: str) -> Any:
+		return self.type.parse(value)
+
+	def to_state_dict(self) -> Dict[str, Union[int, str, bool, float]]:
+		state_dict = {
+			'name': self.name,
+			'type': self.type.name,
+			'default': self.default
+		}
+		return state_dict
+
+	def set_from_state_dict(self, state_dict: Dict[str, Any]):
+		type_name = state_dict['type']
+		if type_name == _int_key_type.name:
+			kt = _int_key_type
+		elif type_name == _percent_key_type.name:
+			kt = _percent_key_type
+		else:
+			raise ValueError("unknown key type {:s}".format(type_name))
+		self.type = kt
+		self.name = state_dict['name']
+		self.default = state_dict.get('default', self.type.default_default)
+
 
 class SettingsStore:
 	"""
@@ -18,58 +88,53 @@ class SettingsStore:
 
 	def __init__(self):
 		self._registered_keys = {}
-		""":type: Dict[str, str]"""
+		""":type: Dict[str, _Key]"""
 
 		self._settings = {}
 		""":type: Dict[int, Dict[str, Union[int, str, bool, float]]]"""
 
-	def set_state(self, server: int, state_dict: Dict[str, Any]):
-		self._settings[server] = dict(state_dict)
+		self._global_settings = {}
+		""":type: Dict[str, Union[int, str, bool, float]]"""
 
 	def set_global_state(self, state_dict: Dict[str, Any]):
-		for k in state_dict:
-			v = state_dict[k]
-			self._registered_keys[k] = str(v)
+		self._global_settings = {k: v for k, v in state_dict.items() if k in self._registered_keys}
 
-	def get_global_state(self) -> Dict[str, str]:
-		return dict(self._registered_keys)
+	def set_state(self, server: int, state_dict: Dict[str, Any]):
+		import pprint
+		_log.debug(pprint.pformat(state_dict))
+		self._settings[server] = {k: v for k, v in state_dict.items() if k in self._registered_keys}
 
 	def get_state(self, server: int) -> Dict[str, Any]:
 		if server not in self._settings:
 			self._settings[server] = {}
 			for k in self._registered_keys:
-				key_type = self._registered_keys[k]
-				default = _get_default(key_type)
-				self._settings[server][k] = default
+				key = self._registered_keys[k]
+				self._settings[server][k] = key.default
 		return dict(self._settings[server])
 
-	def create_percent_key(self, key: str, initial_value: float = 0.0):
+	def get_global_state(self) -> Dict[str, Any]:
+		return dict(self._global_settings)
+
+	def create_percent_key(self, key: str, default_value: float = 0.0):
 		"""
 		Create a new key with a value type of 'percent'. This will be a float that allows values between 0 and 1.
 		:param key: The name of the new key.
-		:param initial_value: The initial value of the new key. This will default to 0.0.
+		:param default_value: The initial value of the new key. This will default to 0.0.
 		"""
 		if key in self._registered_keys:
 			raise KeyError("key already exists in settings: " + repr(key))
 
-		self._registered_keys[key] = 'percent'
+		self._registered_keys[key] = _Key(_percent_key_type, key, default=default_value)
+		self.set_all(key, default_value)
 
-		for server in self._settings:
-			self.set(server, key, initial_value)
-
-	def create_int_key(self, key: str, initial_value: int = 0):
+	def create_int_key(self, key: str, default_value: int = 0):
 		"""
 		Create a new key with a value type of 'int'.
 		:param key: The name of the new key.
-		:param initial_value: The initial value of the new key. This will default to 0.
+		:param default_value: The initial value of the new key. This will default to 0.
 		"""
-		if key in self._registered_keys:
-			raise KeyError("key already exists in settings: " + repr(key))
-
-		self._registered_keys[key] = 'int'
-
-		for server in self._settings:
-			self.set(server, key, initial_value)
+		self._registered_keys[key] = _Key(_int_key_type, key, default=default_value)
+		self.set_all(key, default_value)
 
 	def get_key_type(self, key: str) -> str:
 		"""
@@ -80,7 +145,7 @@ class SettingsStore:
 		if key not in self._registered_keys:
 			raise KeyError("key does not exist in settings: " + repr(key))
 
-		return self._registered_keys[key]
+		return self._registered_keys[key].type.name
 
 	def get(self, server: int, key: str) -> Any:
 		"""
@@ -96,11 +161,20 @@ class SettingsStore:
 		if server not in self._settings:
 			self._settings[server] = {}
 			for k in self._registered_keys:
-				key_type = self._registered_keys[k]
-				default = _get_default(key_type)
-				self._settings[server][k] = default
+				key_obj = self._registered_keys[k]
+				self._settings[server][k] = key_obj.default
 
-		return self._settings[key]
+		return self._settings[server][key]
+
+	def get_global(self, key: str) -> Any:
+		"""
+		Get the current value of the given key in the global store. If the key does not currently exist, a KeyError is raised.
+		:param key: The key whose value to get.
+		:return: The value.
+		"""
+		if key not in self._registered_keys:
+			raise KeyError("key does not exist in settings: " + repr(key))
+		return self._global_settings[key]
 
 	def set(self, server: int, key: str, value: Any):
 		"""
@@ -114,32 +188,25 @@ class SettingsStore:
 		if key not in self._registered_keys:
 			raise KeyError("key does not exist in settings: " + repr(key))
 
-		setting_type = self._registered_keys[key]
+		key_obj = self._registered_keys[key]
+		self._settings[server][key] = key_obj.parse(value)
 
-		if setting_type == 'percent':
-			self._set_percent(server, key, value)
-		elif setting_type == 'int':
-			self._set_int(server, key, value)
-		else:
-			raise KeyError("key " + repr(key) + " has unknown type: " + repr(setting_type))
+	def set_global(self, key: str, value: Any):
+		if key not in self._registered_keys:
+			raise KeyError("key does not exist in settings: " + repr(key))
 
-	def _set_percent(self, server: int, key: str, value: Any):
-		try:
-			float_val = float(value)
-		except ValueError:
-			raise ValueError("That setting is a percentage, and has to be set to a number between 0 and 1")
-		if float_val < 0.0 or float_val > 1.0:
-			raise ValueError("That setting is a percentage, and has to be set to a number between 0 and 1")
+		key_obj = self._registered_keys[key]
+		self._global_settings[key] = key_obj.parse(value)
 
-		self._settings[server][key] = float_val
-
-	def _set_int(self, server: int, key: str, value: Any):
-		try:
-			int_val = int(value)
-		except ValueError:
-			raise ValueError("That setting is int-valued, and has to be set to a whole number")
-
-		self._settings[server][key] = int_val
+	def set_all(self, key: str, value: Any):
+		"""
+		Set the value in all severs and in the global settings.
+		:param key: The key to write to.
+		:param value: The new value to write.
+		"""
+		for server in self._settings:
+			self.set(server, key, value)
+		self.set_global(key, value)
 
 	def __len__(self):
 		return len(self._registered_keys)

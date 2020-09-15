@@ -107,6 +107,18 @@ class BotContext(object):
 			self.is_pm = False
 		self.message = message
 
+	def get_setting(self, store: settings.SettingsStore, key: str) -> Any:
+		if self.is_pm:
+			return store.get_global(key)
+		else:
+			return store.get(self.source.guild.id, key)
+
+	def set_setting(self, store: settings.SettingsStore, key: str, value: Any):
+		if self.is_pm:
+			store.set_global(key, value)
+		else:
+			store.set(self.source.guild.id, key, value)
+
 	def mention(self):
 		"""
 		Gets a mention of the author that created the message.
@@ -288,7 +300,6 @@ class MasaBot(object):
 			await self._check_supervisor_files()
 			self._setup_complete = True
 
-
 		@self._client.event
 		async def on_message(message):
 			if message.author.id == self._client.user.id:
@@ -324,7 +335,7 @@ class MasaBot(object):
 			if reaction.me:
 				return  # don't mimic own reactions
 
-			if random.random() < self._settings.get(ctx.source.id, 'mimic-reaction-chance'):
+			if random.random() < self._settings.get(ctx.source.guild.id, 'mimic-reaction-chance'):
 				# give a slight delay
 				delay = 1 + (random.random() * 3)  # random amount from 1 to 4 seconds
 				await asyncio.sleep(delay)
@@ -552,6 +563,7 @@ class MasaBot(object):
 			_log.debug(log_msg)
 			return type_conv(message.content[len(self._prefix * 2):])
 
+	# noinspection PyMethodMayBeStatic
 	async def reply(self, context, message):
 		"""
 		Send a message in the same context as the message that caused the action to start.
@@ -568,6 +580,7 @@ class MasaBot(object):
 		await dest.send(message)
 		_log.debug(_fmt_send(dest, message))
 
+	# noinspection PyMethodMayBeStatic
 	async def reply_with_file(self, context, fp, filename=None, message=None):
 		"""
 		Send a file in the same context as the message that caused the action to start.
@@ -1540,19 +1553,18 @@ class MasaBot(object):
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
 
 		if 'settings' in builtin_state:
-			# if check is for legacy formats
-			if 'mimic-reaction-chance' not in builtin_state['settings']:
-				self._settings.set_global_state(builtin_state['settings']['keys'])
-				for server in builtin_state['settings']['values']:
-					server_settings = builtin_state['settings']['values'][server]
-					self._settings.set_state(server, server_settings)
+			if 'global' in builtin_state['settings']:
+				self._settings.set_global_state(builtin_state['settings']['global'])
+			for server in builtin_state['settings']['values']:
+				server_settings = builtin_state['settings']['values'][server]
+				self._settings.set_state(server, server_settings)
 
 	def _save_all(self):
 		state_dict = {'__BOT__': {
 			'operators': {op: self._operators[op] for op in self._operators if self._operators[op]['role'] != 'master'},
 			'invocation_replacements': dict(self._invocation_replacements),
 			'settings': {
-				'keys': self._settings.get_global_state(),
+				'global': self._settings.get_global_state(),
 				'values': {server: self._settings.get_state(server) for server in self._joined_guilds},
 			}
 		}}
