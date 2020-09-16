@@ -13,6 +13,7 @@ __all__ = [
 	'roll',
 	'animelist',
 	'noticeme',
+	'ratewaifu'
 ]
 
 

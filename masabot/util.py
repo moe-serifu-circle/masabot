@@ -1,7 +1,7 @@
 from . import http
 import urllib.parse
 import enum
-from typing import Optional, Sequence, Tuple, Iterable, Union
+from typing import Optional, Sequence, Iterable, Union
 
 
 discord_char_limit = 2000
@@ -14,13 +14,14 @@ class BotSyntaxError(Exception):
 
 
 class BotPermissionError(Exception):
-	def __init__(self, context, command, module=None, message=None):
+	def __init__(self, context, command, required_role: str, module=None, message=None):
 		if message is None:
 			message = "Operation requires operator permission"
 		self.author = context.author
 		self.command = command
 		self.module = module
 		self.context = context
+		self.required_role = required_role
 		super().__init__(message)
 
 
@@ -152,7 +153,6 @@ def find_mentions(
 	return matches
 
 
-
 def parse_mention(mention_text: str, require_type: Optional[MentionType] = None) -> Mention:
 	"""
 	Parse a user identifier from a user mention.
@@ -263,6 +263,7 @@ class DiscordPager(object):
 		return complete_pages
 
 
+# TODO: find out who is using this; convert them to SettingsStore usage
 def str_to_int(str_value, min=None, max=None, name="value"):
 	"""
 	Convert a string value to an int. If the conversion fails, instead of a ValueError, a BotSyntaxError is

@@ -1,6 +1,8 @@
 # Handles settings registration and getting.
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Callable, Optional
 import logging
+
+from masabot.util import DiscordPager
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
@@ -100,8 +102,6 @@ class SettingsStore:
 		self._global_settings = {k: v for k, v in state_dict.items() if k in self._registered_keys}
 
 	def set_state(self, server: int, state_dict: Dict[str, Any]):
-		import pprint
-		_log.debug(pprint.pformat(state_dict))
 		self._settings[server] = {k: v for k, v in state_dict.items() if k in self._registered_keys}
 
 	def get_state(self, server: int) -> Dict[str, Any]:

@@ -55,7 +55,7 @@ class AnimemeModule(BotBehaviorModule):
 		self._last_new_template = -1
 		self._template_digits = 6
 		self._template_width = 640
-		self._default_pen = Pen(30, 15, 'fonts/anton/anton-regular.ttf')
+		self._default_pen = Pen(60, 30, 'fonts/anton/anton-regular.ttf')
 		self._default_pen.set_color(fg="white", bg="black")
 		self._pens = {}
 		""":type: Dict[int, Pen]"""

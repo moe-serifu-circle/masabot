@@ -119,6 +119,109 @@ class BotContext(object):
 		else:
 			store.set(self.source.guild.id, key, value)
 
+	# TODO: this is in a weirdly coupled state because the idea is to eventually remove settings from the control of
+	# modules entirely; this way, they would only be able to access it through the context, which transparently handles
+	# finding the correct server key by using information in the context.
+	async def execute_setting_command(
+			self,
+			bot_api: 'MasaBot',
+			store: settings.SettingsStore,
+			args,
+			module_name: Optional[str] = None,
+			use_global_in_dms: bool = True
+	) -> DiscordPager:
+		"""
+		Parse a command used to list, get, or set settings. Mutation in a server requires OP status for that server, and
+		mutation in a DM context requires master status.
+
+		Issuing the command in a DM context will affect the global settings; issuing it from a server will affect the
+		per-server settings. (this can be changed with `use_global_in_dms`).
+		:param bot_api: bot_api to use for advanced prompting features/checking permissions.
+		:param store: The store to modify/get from.
+		:param module_name: The module that this is for. Defaults to 'core' if none given.
+		:param use_global_in_dms: If set to True (the default), attempting a mutation in a DM will affect the global
+		settings. If set to False, a server is required and will be prompted if the command is given in a DM context.
+		:param args: The arguments passed to the command. If none are given, the settings are listed. If one argument is
+		given, it is assumed to be the name of the key to get. If two arguments are given, the first is always the name
+		of the key, and the second is the new value.
+		:return: a DiscordPager with the output to be written. Raises an exception if there are issues.
+		"""
+		pager = DiscordPager("_(settings continued)_")
+		if len(args) == 0:
+			# we are doing a list, no need for privileges
+			if module_name is None:
+				module_name = "core"
+			else:
+				module_name = "`" + module_name + "`"
+			pager.add_line("Okay, you got it! Here's a list of settings in my " + module_name + " module:")
+			pager.add_line()
+			if len(store) < 1:
+				pager.add_line("...oh no. This doesn't seem right at all! I can't seem to see any settings at all!")
+			else:
+				for k in store:
+					pager.add_line("`" + str(k) + "`, with type `" + store.get_key_type(k) + "`")
+		elif len(args) == 1:
+			key = args[0]
+			if key not in store:
+				msg = "Let me take a look... Uh-oh! `" + key + "` isn't a setting I have on file! Um, really quick,"
+				msg += " just in case you forgot, you can check which settings I have by using this command by itself,"
+				msg += " if you need to."
+			else:
+				server_id = None
+				if not use_global_in_dms:
+					server_id = await bot_api.require_server(self)
+					if server_id is None:
+						pager.add_line("I can't look that up without a server, sorry!")
+						return pager
+				elif not self.is_pm:
+					server_id = self.source.guild.id
+
+				if server_id is None:
+					val = store.get_global(key)
+				else:
+					val = store.get(server_id, key)
+				msg = "Let me take a look... Okay, it looks like `" + key + "` is currently set to " + repr(val) + "."
+			pager.add_line(msg)
+		elif len(args) >= 2:
+			key = args[0]
+			new_value = args[1]
+			if module_name is None:
+				module_name = "(core module)"
+
+			if key not in store:
+				msg = "Uh-oh! `" + key + "` isn't a setting I have on file! Um, really quick,"
+				msg += " just in case you forgot, you can check which settings I have by using this command by itself,"
+				msg += " if you need to."
+			else:
+				server_id = None
+				if not use_global_in_dms:
+					server_id = await bot_api.require_server(self)
+					if server_id is None:
+						pager.add_line("I can't look that up without a server, sorry!")
+						return pager
+				elif not self.is_pm:
+					server_id = self.source.guild.id
+
+				if server_id is None:
+					bot_api.require_master(self, module_name + " settings set " + repr(key), None)
+					try:
+						store.set_global(key, new_value)
+					except ValueError as e:
+						raise BotSyntaxError(str(e))
+				else:
+					bot_api.require_op(self, server_id, module_name + " settings set " + repr(key), None)
+					try:
+						store.set(server_id, key, new_value)
+					except ValueError as e:
+						raise BotSyntaxError(str(e))
+				log_message = "User " + str(self.author.id) + "/" + str(self.author.name) + " updated setting"
+				log_message += " " + repr(key) + " to new value " + repr(new_value)
+				_log.debug(log_message)
+				bot_api._save_all()  # This is a bad idea but at least it is in the same *file*. Fix during big 'settings-less modules' refactor.
+				msg = "Certainly! `" + key + "` has been updated to " + repr(store.get(server_id, key)) + "!"
+			pager.add_line(msg)
+		return pager
+
 	def mention(self):
 		"""
 		Gets a mention of the author that created the message.
@@ -205,7 +308,6 @@ class MasaBot(object):
 		:param config_file: The path to the configuration file for the bot.
 		"""
 		_log.debug("Initializing MasaBot")
-		self._ops_need_update = False # TODO: REMOVE THIS AFTER UPDATE
 		self._bot_modules = {}
 		""":type : dict[str, commands.BotBehaviorModule]"""
 		self._invocations = {}
@@ -281,14 +383,6 @@ class MasaBot(object):
 			for g in self._client.guilds:
 				_log.info("* " + str(g))
 				self._joined_guilds[g.id] = g
-
-			# TODO: delete after update push
-			if self._ops_need_update:
-				for op in self._operators:
-					op_info = self._operators[op]
-					if op_info['role'] == 'operator':
-						for g in self._client.guilds:
-							op_info['servers'].append(g.id)
 
 			_log.info("Bot is now online")
 			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
@@ -712,66 +806,17 @@ class MasaBot(object):
 	async def _run_settings_command(
 			self,
 			context: BotContext,
-			action: Optional[str] = None,
-			setting: Optional[str] = None,
-			new_value: Optional[str] = None):
+			args):
 		"""
 		Execute the settings command. Depending on the action, this will either be to list all existing keys, to get
 		the value of a particular key, or to set the value of the key. Setting the value requires op permissions.
 
 		:param context: The context of the command.
-		:param action: The action to perform. Leave as None to just list the replacements. Set to "get" to get the value
-		of a current key, in which case setting must also be set. Set to "set" to set the value, in which case both
-		setting and new_value must be set.
-		:param setting: The setting to get or set. This is only used if action is set to "get" or "set".
-		:param new_value: The new value to assign to the setting. This is only used if action is set to "set". This is
-		accepted as a string but will be converted to the proper type while it is being set.
+		:param args: The arguments.
 		"""
-		if action is None:
-			# we are doing a list, no need for privileges
-			pager = DiscordPager("_(settings continued)_")
-			pager.add_line("Okay, you got it! Here's a list of settings in my core module:")
-			pager.add_line()
-			if len(self._settings) < 1:
-				pager.add_line("...oh no. This doesn't seem right at all! I can't seem to see any settings at all!")
-			else:
-				for k in self._settings:
-					pager.add_line("`" + str(k) + "`, with type `" + self._settings.get_key_type(k) + "`")
-
-			for p in pager.get_pages():
-				await self.reply(context, p)
-		elif action == 'get':
-			if setting not in self._settings:
-				msg = "Let me take a look... Uh-oh! `" + setting + "` isn't a setting I have on file! Um, really quick,"
-				msg += " just in case you forgot, you can check which settings I have by using the `" + self._prefix
-				msg += "settings` command by itself, if you need to."
-			else:
-				server_id = await self.require_server(context)
-				val = self._settings.get(server_id, setting)
-				msg = "Let me take a look... Okay, it looks like `" + setting + "` is currently set to " + repr(val) + "."
-			await self.reply(context, msg)
-		elif action == 'set':
-			server_id = await self.require_server(context)
-			if server_id is None:
-				msg = "I can't look that up without a server, sorry!"
-				await self.reply(context, msg)
-				return
-			self.require_op(context, server_id, "settings set " + repr(setting), None)
-			if setting not in self._settings:
-				msg = "Uh-oh! `" + setting + "` isn't a setting I have on file! Um, really quick,"
-				msg += " just in case you forgot, you can check which settings I have by using the `" + self._prefix
-				msg += "settings` command by itself, if you need to."
-			else:
-				try:
-					self._settings.set(server_id, setting, new_value)
-				except ValueError as e:
-					raise BotSyntaxError(str(e))
-				log_message = "User " + str(context.author.id) + "/" + str(context.author.name) + " updated setting"
-				log_message += " " + repr(setting) + " to new value " + repr(new_value)
-				_log.debug(log_message)
-				self._save_all()
-				msg = "Certainly! `" + setting + "` has been updated to " + repr(self._settings.get(server_id, setting)) + "!"
-			await self.reply(context, msg)
+		output = await context.execute_setting_command(self, self._settings, args, use_global_in_dms=False)
+		for page in output.get_pages():
+			await self.reply(context, page)
 
 	async def _run_replchars_command(self, context, action=None, search=None, replacement=None):
 		"""
@@ -938,7 +983,7 @@ class MasaBot(object):
 		from within a core command function or from within one of a module's on_X methods().
 		"""
 		if not self._is_master(context.author.id):
-			raise BotPermissionError(context, command, module, message=message)
+			raise BotPermissionError(context, command, 'master', module, message=message)
 
 	def require_op(self, context, for_server: int, command, module, message="Operation requires operator status"):
 		"""
@@ -960,7 +1005,8 @@ class MasaBot(object):
 		from within a core command function or from within one of a module's on_X methods().
 		"""
 		if not self._is_op(context.author.id, for_server):
-			raise BotPermissionError(context, command, module, message=message)
+			cmd_end = " (in server " + str(for_server) + ")"
+			raise BotPermissionError(context, command + cmd_end, 'operator', module, message=message)
 
 	async def show_ops(self, context):
 		server_id = await self.require_server(context)
@@ -1389,16 +1435,7 @@ class MasaBot(object):
 				repl = args[2]
 			await self._execute_action(context, self._run_replchars_command(context, action, search, repl))
 		elif cmd == 'settings':
-			action = None
-			setting = None
-			new_value = None
-			if len(args) > 0:
-				action = 'get'
-				setting = args[0]
-			if len(args) > 1:
-				action = 'set'
-				new_value = args[1]
-			await self._execute_action(context, self._run_settings_command(context, action, setting, new_value))
+			await self._execute_action(context, self._run_settings_command(context, args))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				await self._execute_action(context, handler.on_invocation(context, meta, cmd, *args), handler)
@@ -1475,9 +1512,10 @@ class MasaBot(object):
 			msg += " permission to execute privileged command " + repr(e.command)
 			if e.module is not None:
 				msg += " in module " + repr(e.module)
+			msg += " (needed at least '" + e.required_role + "' status)"
 			msg += "."
 			_log.error(msg)
-			msg = "Sorry, <@!" + str(e.author.id) + ">, but only my masters and operators can do that."
+			msg = "Sorry, <@!" + str(e.author.id) + ">, but only my " + e.required_role + " users can do that."
 			ctx = context
 			if e.context is not None:
 				ctx = e.context
@@ -1496,6 +1534,7 @@ class MasaBot(object):
 				ctx = e.context
 			await self.reply(ctx, msg + str(e))
 
+		# TODO: this should not happen on every invocation of a mod that *could* have state. update this to be less
 		if mod is not None and mod.has_state:
 			self._save_all()
 
@@ -1531,23 +1570,8 @@ class MasaBot(object):
 
 		if 'operators' in builtin_state:
 			for op in builtin_state['operators']:
-
-				# START legacy update format; remove in future release
-				if not isinstance(op, dict):
-					full_op = {
-						'role': 'operator',
-						'servers': []
-					}
-					self._ops_need_update = True
-				# END legacy update format
-				else:
-					full_op = {
-						'role': op['role']
-					}
-					if op['role'] == 'operator':
-						full_op['servers'] = op['servers']
 				# master roles will be loaded later during config reading
-				self._operators[op] = full_op
+				self._operators[op] = dict(builtin_state['operators'][op])
 
 		if 'invocation_replacements' in builtin_state:
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])

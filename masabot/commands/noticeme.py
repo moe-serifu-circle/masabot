@@ -54,8 +54,8 @@ neutral_mention_reactions = [
 
 class NoticeMeSenpaiModule(BotBehaviorModule):
 	def __init__(self, bot_api, resource_root):
-		help_text = "The \"Notice me, Senpai\" module makes me react to messages that mention me. It doesn't"
-		help_text += " really have any settings yet; just talk about me and sometimes I will answer!"
+		help_text = "The \"Notice me, Senpai\" module makes me react to messages that mention me. It can be configured"
+		help_text += " with the `noticeme-settings` command!"
 
 		super().__init__(
 			bot_api,
@@ -91,7 +91,9 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 		self._settings.set_global_state(state)
 
 	async def on_invocation(self, context, metadata, command, *args):
-		
+		reply = await context.execute_setting_command(self.bot_api, self._settings, args, module_name=self.name)
+		for page in reply.get_pages():
+			await self.bot_api.reply(context, page)
 
 	async def on_regex_match(self, context, metadata, *match_groups):
 		"""
@@ -105,17 +107,32 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 		await self._handle_mention(context, message)
 
 	async def _handle_mention(self, context: bot.BotContext, message_text: str):
-		sentiment = noticeme_analysis.analyze_sentiment(message_text)
-		_log.debug("got a mention; sentiment score is {:d}".format(sentiment))
-		if sentiment > 0:
-			if noticeme_analysis.contains_thanks(message_text, self.bot_api.get_id(), "masabot", "masa", "masachan", "masa-chan"):
-				reply_text = random.choice(positive_thanks_responses)
-			else:
-				reply_text = random.choice(positive_responses)
-			await self.bot_api.reply(context, reply_text)
-		elif sentiment < 0:
-			await self.bot_api.reply(context, random.choice(negative_responses))
-		else:
+		analysis_chunks = message_to_analyzable_chunks(message_text)
+		if len(analysis_chunks) < 1:
+			return
+		worst_sentiment = None
+		neutral_present = False
+		for message_text in analysis_chunks:
+			sentiment = noticeme_analysis.analyze_sentiment(message_text)
+			if sentiment == 0:
+				neutral_present = True
+				continue  # neutrals are checked next if no other is found
+			if worst_sentiment is None:
+				worst_sentiment = sentiment
+			elif sentiment < worst_sentiment:
+				worst_sentiment = sentiment
+		if worst_sentiment is not None:
+			_log.debug("got a mention; sentiment score is {:d}".format(worst_sentiment))
+			if worst_sentiment > 0:
+				if noticeme_analysis.contains_thanks(
+						message_text, self.bot_api.get_id(), "masabot", "masa", "masachan", "masa-chan"):
+					reply_text = random.choice(positive_thanks_responses)
+				else:
+					reply_text = random.choice(positive_responses)
+				await self.bot_api.reply(context, reply_text)
+			elif worst_sentiment < 0:
+				await self.bot_api.reply(context, random.choice(negative_responses))
+		elif neutral_present:
 			if random.random() < context.get_setting(self._settings, 'neutral_reaction_chance'):
 				emoji_text = random.choice(neutral_mention_reactions)
 				min_reaction_delay_ms = context.get_setting(self._settings, 'min_reaction_delay_ms')
@@ -124,6 +141,25 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 				delay = min_reaction_delay_ms + (random.random() * (max_reaction_delay_ms - min_reaction_delay_ms))  # random amount from min to max ms
 				await asyncio.sleep((delay / 1000))
 				await context.message.add_reaction(emoji_text)
+
+
+def message_to_analyzable_chunks(text: str):
+	chunks = []
+	paras = text.split('\n')
+	for p in paras:
+		sents = p.split('.')
+		candidate = None
+		has_more_than_one = False
+		for s in sents:
+			if s.strip(" \t\n\r\v") != "":
+				if candidate is None:
+					candidate = s
+				else:
+					has_more_than_one = True
+					break
+		if not has_more_than_one and candidate is not None:
+			chunks.append(candidate)
+	return chunks
 
 
 BOT_MODULE_CLASS = NoticeMeSenpaiModule
