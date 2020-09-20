@@ -1,5 +1,7 @@
 from . import BotBehaviorModule, InvocationTrigger
 from ..util import BotSyntaxError
+from .. import util
+from ..bot import PluginAPI
 
 
 import logging
@@ -12,7 +14,7 @@ _log.setLevel(logging.DEBUG)
 
 class DiceRollerModule(BotBehaviorModule):
 
-	def __init__(self, bot_api, resource_root):
+	def __init__(self, resource_root: str):
 		help_text = "To roll the dice, use the `roll` command followed by the number of dice and sides to role in the"
 		help_text += " format <X>d<Y>. This will roll X number of Y-sided dice.\n\nExample: `roll 4d6` will roll 4"
 		help_text += " d6's.\n\nIf the number of dice is left out, a single die will be rolled. If the number of sides"
@@ -23,7 +25,6 @@ class DiceRollerModule(BotBehaviorModule):
 		help_text += " number less than 1 disables the dice limit entirely (less than 2 for the sides limit)."
 
 		super().__init__(
-			bot_api,
 			name="roll",
 			desc="Rolls a number of dice",
 			help_text=help_text,
@@ -53,24 +54,18 @@ class DiceRollerModule(BotBehaviorModule):
 		self._max_sides[server_id] = state.get('max-sides', 100)
 		self._max_count[server_id] = state.get('max-count', 100)
 
-	async def on_invocation(self, context, metadata, command, *args):
-		"""
-		:type context: masabot.bot.BotContext
-		:type metadata: masabot.util.MessageMetadata
-		:type command: str
-		:type args: str
-		"""
+	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		if command == 'roll':
-			await self.roll_dice(context, args)
+			await self.roll_dice(bot, args)
 		elif command == 'roll-maxsides':
-			await self.get_max_sides(context, args)
+			await self.get_max_sides(bot, args)
 		elif command == 'roll-maxdice':
-			await self.get_max_dice(context, args)
+			await self.get_max_dice(bot, args)
 
-	async def get_max_sides(self, context, args):
-		server_id = await self.bot_api.require_server(context)
+	async def get_max_sides(self, bot: PluginAPI, args):
+		server_id = await bot.require_server()
 		if len(args) > 0:
-			self.bot_api.require_op(context, server_id, 'roll-maxsides <limit>', self.name)
+			await bot.require_op('roll-maxsides <limit>', self.name, server=server_id)
 			try:
 				new_limit = int(args[0])
 			except ValueError:
@@ -88,18 +83,18 @@ class DiceRollerModule(BotBehaviorModule):
 				msg += "Okay! The new limit for the number of sides is now " + str(new_limit) + "!"
 				self._max_sides[server_id] = new_limit
 			_log.debug("Set dice side limit to " + str(self._max_sides[server_id]))
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 		else:
 			if self._max_sides[server_id] > 0:
 				msg = "Sure! The limit for the number of sides is currently " + str(self._max_sides[server_id]) + "."
 			else:
 				msg = "Right now there isn't a limit to the number of sides you can have on a die."
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 
-	async def get_max_dice(self, context, args):
-		server_id = await self.bot_api.require_server(context)
+	async def get_max_dice(self, bot: PluginAPI, args):
+		server_id = await bot.require_server()
 		if len(args) > 0:
-			self.bot_api.require_op(context, server_id, 'roll-maxdice <limit>', self.name)
+			await bot.require_op('roll-maxdice <limit>', self.name, server=server_id)
 			try:
 				new_limit = int(args[0])
 			except ValueError:
@@ -117,21 +112,21 @@ class DiceRollerModule(BotBehaviorModule):
 				msg += "Okay! The new limit for the number of dice is now " + str(new_limit) + "!"
 				self._max_count[server_id] = new_limit
 			_log.debug("Set dice limit to " + str(self._max_count[server_id]))
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 		else:
 			if self._max_count[server_id] > 0:
 				msg = "Sure! The limit for the number of dice is currently " + str(self._max_count[server_id]) + "."
 			else:
 				msg = "Right now there isn't a limit to the number of dice you can roll at once."
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 
-	async def roll_dice(self, context, args):
-		if context.is_pm:
+	async def roll_dice(self, bot: PluginAPI, args):
+		if bot.context.is_pm():
 			max_sides = 100000
 			max_dice = 100000
 		else:
-			max_sides = self._max_sides[context.source.id]
-			max_dice = self._max_count[context.source.id]
+			max_sides = self._max_sides[bot.get_guild().id]
+			max_dice = self._max_count[bot.get_guild().id]
 
 		msg = ""
 		sides = 6
@@ -146,7 +141,7 @@ class DiceRollerModule(BotBehaviorModule):
 		if sides > max_sides > 1:
 			msg = "Uh oh! That's too many sides on a die! The most you can have right now is " + str(max_sides)
 			msg += "."
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 		elif sides < 2:
 			msg = "I'm sorry, but that's just not possible! All dice have to have at"
 			msg += " least two sides!"
@@ -154,12 +149,12 @@ class DiceRollerModule(BotBehaviorModule):
 		elif count > max_dice > 0:
 			msg = "Woah! That's way too many dice! Are you running Shadowrun or something? The most you can have right"
 			msg += " now is " + str(max_dice) + "."
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 		elif count < 1:
 			msg = "Well, if you say so! I will roll " + str(count) + " dice! That is less than 1, so you automatically"
 			msg += " fail the roll. Not only that, but rocks fell down from the sky and now everybody is dead!\n\n"
 			msg += "...this is just awful... w-why would you make me do that? :c"
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 		else:
 			rolls = ""
 			total = 0
@@ -167,10 +162,10 @@ class DiceRollerModule(BotBehaviorModule):
 				r = random.randint(1, sides)
 				rolls += str(r) + ", "
 				total += r
-			msg += "All right! " + context.mention() + " rolled {0:d}d{1:d}...\n"
+			msg += "All right! " + bot.mention_user() + " rolled {0:d}d{1:d}...\n"
 			msg += "{2:s}\nTotal: {3:d}"
 			msg = msg.format(count, sides, rolls[:-2], total)
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 
 
 BOT_MODULE_CLASS = DiceRollerModule

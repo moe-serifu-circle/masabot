@@ -4,7 +4,11 @@ import logging
 import pathlib
 
 from typing import Optional, Sequence, Tuple, Dict
+
+import discord
+
 from .. import util
+from ..bot import PluginAPI
 
 __all__ = [
 	'karma',
@@ -64,25 +68,27 @@ class TimerTrigger(object):
 
 
 class BotBehaviorModule(object):
-	def __init__(self, bot_api, name, desc, help_text, triggers, resource_root, has_state=False):
+	def __init__(
+			self,
+			name: str,
+			desc: str,
+			help_text: str,
+			triggers: Sequence[InvocationTrigger, RegexTrigger, MentionTrigger, TimerTrigger],
+			resource_root: str,
+			has_state: bool = False,
+			global_settings: Optional[Sequence[str]] = None,
+			server_settings: Optional[Sequence[str]] = None,
+	):
 		"""
 		Create a new BotBehaviorModule instance.
 
-		:type bot_api: masabot.bot.MasaBot
-		:param bot_api: The interface back to the bot that is executing the module.
-		:type name: str
 		:param name: The name of the module. Must be unique among all loaded modules.
-		:type desc: str
 		:param desc: A brief description of what the command does. Should fit on a single line. This is displayed next
 		to the command when `help` lists all modules.
-		:type help_text: str
 		:param help_text: A full help text including all information on the command. This is shown when the help for
 		this particular module is displayed.
-		:type triggers: list[InvocationTrigger | RegexTrigger | MentionTrigger | TimerTrigger]
 		:param triggers: All possible triggers that cause this module to be executed.
-		:type resource_root: str
 		:param resource_root: The root directory that resources are to be placed in.
-		:type has_state: bool
 		:param has_state: Whether this module has state. If this is true, then the module should define get_state()
 		set_state() methods for saving state to a dict and setting state from a dict.
 		"""
@@ -91,8 +97,7 @@ class BotBehaviorModule(object):
 		self.name = name
 		self.has_state = has_state
 		self.triggers = triggers
-		self.bot_api = bot_api
-		self._resource_dir = os.path.join(resource_root, name)
+		self._resource_dir: str = os.path.join(resource_root, name)
 		if not os.path.exists(self._resource_dir):
 			os.mkdir(self._resource_dir)
 
@@ -181,33 +186,22 @@ class BotBehaviorModule(object):
 	def set_global_state(self, state: Dict):
 		pass
 
-	async def on_invocation(self, context, metadata, command, *args):
-		"""
-		:type context: masabot.bot.BotContext
-		:type metadata: masabot.util.MessageMetadata
-		:type command: str
-		:type args: str
-		"""
+	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		pass
 
-	async def on_mention(self, context, metadata, message: str, mentions: Sequence[util.Mention]):
+	async def on_mention(self, bot: PluginAPI, metadata: util.MessageMetadata, message: str, mentions: Sequence[util.Mention]):
 		"""
-		:type context: masabot.bot.BotContext
-		:type metadata: masabot.util.MessageMetadata
-		:type message: str
+		:param bot: The bot to interface with.
+		:param metadata: The metadata from the message.
+		:param message: The text of the message.
 		:param mentions: The mentions, not necessarily in order.
 		"""
 		pass
 
-	async def on_regex_match(self, context, metadata, *match_groups):
-		"""
-		:type context: masabot.bot.BotContext
-		:type metadata: masabot.util.MessageMetadata
-		:type match_groups: str
-		"""
+	async def on_regex_match(self, bot: PluginAPI, metadata: util.MessageMetadata, *match_groups: str):
 		pass
 
-	async def on_timer_fire(self):
+	async def on_timer_fire(self, bot: PluginAPI):
 		pass
 
 	def _create_resource_dirs(self, resource_path):

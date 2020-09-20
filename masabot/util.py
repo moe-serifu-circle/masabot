@@ -1,10 +1,83 @@
 from . import http
 import urllib.parse
 import enum
-from typing import Optional, Sequence, Iterable, Union
-
+import logging
+import discord
+from typing import Optional, Sequence, Iterable, Union, Any
 
 discord_char_limit = 2000
+
+
+def add_context(ctx: Any, message: str, *params) -> str:
+	"""Add context to a message that includes info on the given context. The context could be a discord model class
+	of any place where a message could be sent (discord.abc.Messageable) or it could be an actual BotContext."""
+
+	def user_str(user: Union[discord.User, discord.Member]) -> str:
+		return "{:d}/{:s}#{:s}".format(user.id, user.name, user.discriminator)
+
+	def dm_name(user: Union[discord.User, discord.Member]) -> str:
+		return "DM {:s}".format(user_str(user))
+
+	def guild_ch_str(channel: Union[discord.TextChannel, discord.VoiceChannel, discord.CategoryChannel], channel_name: str) -> str:
+		return "{:d}:{:d}/{!r}:{:s}".format(channel.guild.id, channel.id, channel.guild.name, channel_name)
+
+	def text_ch_name(channel: discord.TextChannel) -> str:
+		return guild_ch_str(channel, "#{:s}".format(channel.name))
+
+	def voice_ch_name(channel: discord.VoiceChannel) -> str:
+		return guild_ch_str(channel, "<VOICE>{!r}".format(channel.name))
+
+	def group_ch_name(channel: discord.GroupChannel) -> str:
+		ch_name = "Group DM with "
+		for u in channel.recipients:
+			ch_name += "{:d},".format(u.id)
+		ch_name = ch_name[:-1]  # remove trailing comma
+		ch_name += "/"
+		for u in channel.recipients:
+			ch_name += "{:s}#{:s},".format(u.name, u.discriminator)
+		ch_name = ch_name[:-1]  # remove trailing comma
+		return ch_name
+
+	context_name = None
+
+	try:
+		if ctx.is_pm:
+			context_name = dm_name(ctx.author)
+		else:
+			ch = ctx.source
+			if ch.type == discord.ChannelType.text:
+				context_name = text_ch_name(ch)
+			elif ch.type == discord.ChannelType.voice:
+				context_name = voice_ch_name(ch)
+			elif ch.type == discord.ChannelType.private:
+				# should never happen, but handle just in case
+				context_name = dm_name(ctx.author)
+			elif ch.type == discord.ChannelType.group:
+				context_name = group_ch_name(ch)
+	except AttributeError:
+		# getting here based on only the bot context having a .source
+		try:
+			context_name = dm_name(ctx)
+		except AttributeError:
+			# getting here based on only user-ish things having a .discriminator
+			ch = ctx
+			if ch.type == discord.ChannelType.text:
+				context_name = text_ch_name(ch)
+			elif ch.type == discord.ChannelType.voice:
+				context_name = voice_ch_name(ch)
+			elif ch.type == discord.ChannelType.private:
+				# should never happen, but handle just in case
+				context_name = dm_name(ch.recipient)
+			elif ch.type == discord.ChannelType.group:
+				context_name = group_ch_name(ch)
+
+	if context_name is None:
+		context_name = "Channel of Unknown Type"
+
+	if len(params) > 0:
+		message = message.format(params)
+
+	return "[{:s}]: {:s}".format(context_name, message)
 
 
 class BotSyntaxError(Exception):

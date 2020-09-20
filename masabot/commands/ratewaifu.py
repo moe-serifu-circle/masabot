@@ -1,25 +1,20 @@
-import asyncio
-from typing import Dict
-
 from ..util import BotSyntaxError
-from . import BotBehaviorModule, RegexTrigger, MentionTrigger, InvocationTrigger, mention_target_self, noticeme_analysis
-from .. import bot, settings
-import discord
+from . import BotBehaviorModule, InvocationTrigger
+from .. import util
+from ..bot import PluginAPI
 
 import logging
-import random
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
 
 class RateWaifuModule(BotBehaviorModule):
-	def __init__(self, bot_api, resource_root):
+	def __init__(self, resource_root: str):
 		help_text = "The \"ratewaifu\" module lets me rate your favorite waifus and tell you if I think they are good or not!"
 		help_text += " To use it, just do `ratewaifu <name-of-waifu>`."
 
 		super().__init__(
-			bot_api,
 			name="ratewaifu",
 			desc="Rate your waifus",
 			help_text=help_text,
@@ -30,7 +25,7 @@ class RateWaifuModule(BotBehaviorModule):
 			has_state=False
 		)
 
-	async def on_invocation(self, context, metadata, command, *args):
+	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want me to rate!")
 		waifu = str(args[0])
@@ -58,7 +53,7 @@ class RateWaifuModule(BotBehaviorModule):
 			msg = "😍 | " + rate_msg + " You better get them before *I* do!"
 		else:
 			raise ValueError("expected rating to be between 1 and 10 but was: " + str(rating))
-		await self.bot_api.reply(context, msg)
+		await bot.reply(msg)
 
 
 BOT_MODULE_CLASS = RateWaifuModule

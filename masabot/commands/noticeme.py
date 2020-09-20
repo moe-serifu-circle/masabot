@@ -2,8 +2,8 @@ import asyncio
 from typing import Dict
 
 from . import BotBehaviorModule, RegexTrigger, MentionTrigger, InvocationTrigger, mention_target_self, noticeme_analysis
-from .. import bot, settings
-import discord
+from .. import settings, util
+from ..bot import PluginAPI
 
 import logging
 import random
@@ -53,12 +53,11 @@ neutral_mention_reactions = [
 
 
 class NoticeMeSenpaiModule(BotBehaviorModule):
-	def __init__(self, bot_api, resource_root):
+	def __init__(self, resource_root: str):
 		help_text = "The \"Notice me, Senpai\" module makes me react to messages that mention me. It can be configured"
 		help_text += " with the `noticeme-settings` command!"
 
 		super().__init__(
-			bot_api,
 			name="noticeme",
 			desc="Makes MasaBot react to mentions",
 			help_text=help_text,
@@ -90,23 +89,18 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 	def set_global_state(self, state: Dict):
 		self._settings.set_global_state(state)
 
-	async def on_invocation(self, context, metadata, command, *args):
-		reply = await context.execute_setting_command(self.bot_api, self._settings, args, module_name=self.name)
+	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command, *args):
+		reply = await bot.context.execute_setting_command(bot._bot, self._settings, args, module_name=self.name)
 		for page in reply.get_pages():
-			await self.bot_api.reply(context, page)
+			await bot.reply(page)
 
-	async def on_regex_match(self, context, metadata, *match_groups):
-		"""
-		:type context: masabot.bot.BotContext
-		:type metadata: masabot.util.MessageMetadata
-		:type match_groups: str
-		"""
-		await self._handle_mention(context, match_groups[0])
+	async def on_regex_match(self, bot: PluginAPI, metadata: util.MessageMetadata, *match_groups: str):
+		await self._handle_mention(bot, match_groups[0])
 
-	async def on_mention(self, context, metadata, message: str, mentions):
-		await self._handle_mention(context, message)
+	async def on_mention(self, bot: PluginAPI, metadata, message: str, mentions):
+		await self._handle_mention(bot, message)
 
-	async def _handle_mention(self, context: bot.BotContext, message_text: str):
+	async def _handle_mention(self, bot: PluginAPI, message_text: str):
 		analysis_chunks = message_to_analyzable_chunks(message_text)
 		if len(analysis_chunks) < 1:
 			return
@@ -125,22 +119,22 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 			_log.debug("got a mention; sentiment score is {:d}".format(worst_sentiment))
 			if worst_sentiment > 0:
 				if noticeme_analysis.contains_thanks(
-						message_text, self.bot_api.get_id(), "masabot", "masa", "masachan", "masa-chan"):
+						message_text, bot.get_bot_id(), "masabot", "masa", "masachan", "masa-chan"):
 					reply_text = random.choice(positive_thanks_responses)
 				else:
 					reply_text = random.choice(positive_responses)
-				await self.bot_api.reply(context, reply_text)
+				await bot.reply(reply_text)
 			elif worst_sentiment < 0:
-				await self.bot_api.reply(context, random.choice(negative_responses))
+				await bot.reply(random.choice(negative_responses))
 		elif neutral_present:
-			if random.random() < context.get_setting(self._settings, 'neutral_reaction_chance'):
+			if random.random() < bot.context.get_setting(self._settings, 'neutral_reaction_chance'):
 				emoji_text = random.choice(neutral_mention_reactions)
-				min_reaction_delay_ms = context.get_setting(self._settings, 'min_reaction_delay_ms')
-				max_reaction_delay_ms = context.get_setting(self._settings, 'max_reaction_delay_ms')
+				min_reaction_delay_ms = bot.context.get_setting(self._settings, 'min_reaction_delay_ms')
+				max_reaction_delay_ms = bot.context.get_setting(self._settings, 'max_reaction_delay_ms')
 				# give a slight delay
 				delay = min_reaction_delay_ms + (random.random() * (max_reaction_delay_ms - min_reaction_delay_ms))  # random amount from min to max ms
 				await asyncio.sleep((delay / 1000))
-				await context.message.add_reaction(emoji_text)
+				await bot.react(emoji_text)
 
 
 def message_to_analyzable_chunks(text: str):

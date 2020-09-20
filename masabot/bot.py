@@ -10,13 +10,25 @@ import time
 import random
 import re
 import shlex
+
+from . import botapi
 from . import configfile, commands, util, version, settings
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Sequence, Callable
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
+import functools, warnings
+
+warnings.simplefilter("error", category=DeprecationWarning)
 
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
+
+
+def deprecated(fn):
+	@functools.wraps(fn)
+	def warn_of_deprecation(*args, **kwargs):
+		warnings.warn("use is deprecated", DeprecationWarning)
+		return fn(*args, **kwargs)
 
 
 def _fmt_channel(ch):
@@ -46,10 +58,11 @@ def _fmt_send(channel, message):
 
 
 class Timer(object):
-	def __init__(self, bot_module, period):
+	def __init__(self, bot: 'MasaBot', bot_module, period):
 		"""
 		Creates a new timer for the given module.
 
+		:param bot: the bot to fire the timer.
 		:type bot_module: commands.BotBehaviorModule
 		:param bot_module: The module that the timer is for.
 		:type period: int
@@ -60,6 +73,7 @@ class Timer(object):
 		self.future = None
 		self.bot_module = bot_module
 		self.period = period
+		self._bot = bot
 
 	def tick(self, now_time, on_fire_error):
 		"""
@@ -85,7 +99,8 @@ class Timer(object):
 		_log.debug("Firing timer on module " + repr(self.bot_module.name))
 		# noinspection PyBroadException
 		try:
-			await self.bot_module.on_timer_fire()
+			api = botapi.MasaBotPluginAPI(self._bot)
+			await self.bot_module.on_timer_fire(api)
 		except Exception:
 			_log.exception("Encountered error in timer-triggered function")
 			msg = "Exception in firing timer of '" + self.bot_module.name + "' module:\n\n```python\n"
@@ -96,7 +111,7 @@ class Timer(object):
 
 class BotContext(object):
 
-	def __init__(self, message: discord.Message):
+	def __init__(self, message: Optional[discord.Message]):
 		if message is not None:
 			self.source = message.channel
 			self.author = message.author
@@ -217,7 +232,7 @@ class BotContext(object):
 				log_message = "User " + str(self.author.id) + "/" + str(self.author.name) + " updated setting"
 				log_message += " " + repr(key) + " to new value " + repr(new_value)
 				_log.debug(log_message)
-				bot_api._save_all()  # This is a bad idea but at least it is in the same *file*. Fix during big 'settings-less modules' refactor.
+				bot_api._save_all()  # TODO: This is a bad idea but at least it is in the same *file*. Fix during big 'settings-less modules' refactor.
 				msg = "Certainly! `" + key + "` has been updated to " + repr(store.get(server_id, key)) + "!"
 			pager.add_line(msg)
 		return pager
@@ -310,7 +325,7 @@ class MasaBot(object):
 		_log.debug("Initializing MasaBot")
 		self._bot_modules = {}
 		""":type : dict[str, commands.BotBehaviorModule]"""
-		self._invocations = {}
+		self._invocations: Dict[str, Sequence[commands.BotBehaviorModule]] = {}
 		self._mention_handlers = {'users': {}, 'channels': {}, 'roles': {}}
 		self._self_mention_handlers = []
 		self._any_mention_handlers = []
@@ -347,10 +362,11 @@ class MasaBot(object):
 		for m in conf['masters']:
 			self._operators[m] = {'role': 'master'}
 		self._api_key = conf['discord-api-key']
-		self._prefix = conf['prefix']
-		self._announce_channels = conf['announce-channels']
+		self.prefix = conf['prefix']
+		# TODO: could announce_channels be removed from the bot and put into the API instead?
+		self.announce_channels = conf['announce-channels']
 
-		self._client = discord.Client(status="being cute with discord.py 1.x")
+		self.client = discord.Client(status="being cute with discord.py 1.x")
 
 		self._sent_announcement = False
 
@@ -366,40 +382,40 @@ class MasaBot(object):
 			"World domination planning",
 		]
 
-		@self._client.event
+		@self.client.event
 		async def on_ready():
-			_log.info("Logged in as " + self._client.user.name)
-			_log.info("ID: " + str(self._client.user.id))
+			_log.info("Logged in as " + self.client.user.name)
+			_log.info("ID: " + str(self.client.user.id))
 
-			if self._client.user.avatar_url == '':
+			if self.client.user.avatar_url == '':
 				_log.info("Avatar not yet set; uploading...")
 				with open('avatar.png', 'rb') as avatar_fp:
 					avatar_data = avatar_fp.read()
-				await self._client.user.edit(avatar=avatar_data)
+				await self.client.user.edit(avatar=avatar_data)
 
-			await self._client.change_presence(activity=discord.Game(name=random.choice(random_status_list)))
+			await self.client.change_presence(activity=discord.Game(name=random.choice(random_status_list)))
 
 			_log.info("Connected to servers:")
-			for g in self._client.guilds:
+			for g in self.client.guilds:
 				_log.info("* " + str(g))
 				self._joined_guilds[g.id] = g
 
 			_log.info("Bot is now online")
 			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
 			if clean_shutdown and not self._sent_announcement:
-				await self.announce("Hello! I'm now online ^_^")
+				await PluginAPI(self).announce("Hello! I'm now online ^_^")
 				self._sent_announcement = True
 			else:
 				_log.info("Back from unclean shutdown caused by: " + repr(reason))
 			await self._check_supervisor_files()
 			self._setup_complete = True
 
-		@self._client.event
+		@self.client.event
 		async def on_message(message):
-			if message.author.id == self._client.user.id:
+			if message.author.id == self.client.user.id:
 				return  # don't answer own messages
-			if message.content.startswith(self._prefix):
-				if message.content.strip() == self._prefix:
+			if message.content.startswith(self.prefix):
+				if message.content.strip() == self.prefix:
 					return  # don't reply to messages that are JUST the prefix
 				await self._handle_invocation(message)
 			else:
@@ -408,19 +424,19 @@ class MasaBot(object):
 
 				await self._handle_regex_scan(message)
 
-		@self._client.event
+		@self.client.event
 		async def on_guild_join(guild: discord.Guild):
 			self._joined_guilds[guild.id] = guild
 			_log.info("joined guild {:s} (ID {:d})".format(guild.name, guild.id))
 			self._save_all()
 
-		@self._client.event
+		@self.client.event
 		async def on_guild_remove(guild: discord.Guild):
 			del self._joined_guilds[guild.id]
 			_log.info("left guild {:s} (ID {:d})".format(guild.name, guild.id))
 			self._save_all()
 
-		@self._client.event
+		@self.client.event
 		async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 			ctx = BotContext(reaction.message)
 			if ctx.is_pm:
@@ -435,7 +451,7 @@ class MasaBot(object):
 				await asyncio.sleep(delay)
 				await reaction.message.add_reaction(reaction)
 
-		@self._client.event
+		@self.client.event
 		async def on_error(event, *args, **kwargs):
 			if len(args) < 1:
 				# assume that we did not come from on_message
@@ -443,7 +459,7 @@ class MasaBot(object):
 				if not self._setup_complete:
 					with open('.supervisor/restart-command', 'w') as restart_command_file:
 						restart_command_file.write("quit")
-					await self._client.close()
+					await self.client.close()
 			else:
 				message = args[0]
 				pager = DiscordPager("_(error continued)_")
@@ -469,243 +485,26 @@ class MasaBot(object):
 		"""
 		_log.info("Connecting...")
 		# WARNING! WE REMOVED client.close() HERE.
-		self._master_timer_task = self._client.loop.create_task(self._run_timer())
-		self._client.run(self._api_key)
+		self._master_timer_task = self.client.loop.create_task(self._run_timer())
+		self.client.run(self._api_key)
 
-	async def announce(self, message):
-		"""
-		Send a message to all applicable channels on all servers. The channels are those that are set as the
-		announce channels in the configuration.
+	@property
+	def connected_guilds(self) -> Sequence[discord.Guild]:
+		guilds: List[discord.Guild] = []
+		for g in self.client.guilds:
+			guild: discord.Guild = g
+			guilds.append(guild)
+		return guilds
 
-		:type message: str
-		:param message: The message to send.
-		"""
-		for g in self._client.guilds:
-			for ch in g.channels:
-				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._announce_channels:
-					await ch.send(message)
-					_log.debug(_fmt_send(ch, message))
-
-	async def require_server(self, context: BotContext) -> int:
-		"""
-		Prompt the user to give a server ID only if the context does not already contain one.
-		:param context:
-		:return:
-		"""
-		if context.is_pm:
-			got_valid_server = False
-			server_id = -1
-			while not got_valid_server:
-				resp = await self.prompt(context, "Ok, really quick, what server should I do that for?")
-				if resp is None:
-					break
-				try:
-					server_id = int(resp)
-				except ValueError:
-					resp = ' '.join(shlex.split(resp))
-					found_guild = None
-					for g in self._client.guilds:
-						g = g
-						""":type: discord.Guild"""
-						norm_guild_name = ' '.join(shlex.split(g.name))
-						if norm_guild_name.lower().find(resp.lower()) > -1:
-							found_guild = g
-							break
-					if found_guild:
-						conf_msg = "Just to make sure, I should do that for {:s}, right?"
-						if not await self.confirm(context, conf_msg.format(found_guild.name)):
-							await self.reply(context, "Sorry; it looked really similar >.<")
-							continue
-						server_id = found_guild.id
-					else:
-						await self.reply(context, "Oh no! I'm not in any servers that match that @_@")
-						continue
-				if server_id not in self._joined_guilds:
-					await self.reply(context, "I'm not in a guild that matches that.")
-					continue
-				got_valid_server = True
-			if not got_valid_server:
-				raise BotModuleError("Sorry, but I can't do that without a server!")
-			return server_id
-		else:
-			return context.source.guild.id
-
-	async def confirm(self, context, message):
-		"""
-		Prompt the user to select a yes-or-no option, and defaults to False if they do not answer. Times out after 60
-		seconds, and returns False then.
-
-		:type context: BotContext
-		:param context: The context of the bot.
-		:type message: str
-		:param message: The message to show before the prompt.
-		:rtype: bool
-		:return: The option selected by the user, or False if the prompt times out.
-		"""
-		answer = await self.prompt_for_option(context, message)
-		if answer is None:
-			msg = "Sorry, " + context.mention() + ", but the prompt timed out! I'll assume 'no' for now; if that's not"
-			msg += " what you wanted, go ahead and rerun the command again, okay?"
-			await self.reply(context, msg)
-			return False
-		elif answer == "yes":
-			return True
-		elif answer == "no":
-			return False
-
-	async def prompt_for_option(self, context, message, option_1="yes", option_2="no", *additional_options):
-		"""
-		Prompt the user to select an option. Not case-sensitive; all options are converted to lower-case. Times out
-		after 60 seconds, and returns None then.
-
-		:type context: BotContext
-		:param context: The context of the bot.
-		:type message: str
-		:param message: The message to show before the prompt.
-		:type option_1: str
-		:param option_1: The first option.
-		:type option_2: str
-		:param option_2: The second option.
-		:type additional_options: str
-		:param additional_options: Any additional options.
-		:rtype: str | None
-		:return: The option selected by the user, or None if the prompt times out.
-		"""
-		if option_1.lower() == option_2.lower():
-			raise ValueError("option 1 and 2 are equal")
-
-		all_options = {
-			self._prefix + self._prefix + option_1.lower(): option_1.lower(),
-			self._prefix + self._prefix + option_2.lower(): option_2.lower()
-		}
-
-		full_message = message + "\n\nSelect one of the following options: \n"
-		full_message += "* `" + self._prefix + self._prefix + option_1.lower() + "`\n"
-		full_message += "* `" + self._prefix + self._prefix + option_2.lower() + "`\n"
-		for op in additional_options:
-			if op.lower() in all_options:
-				raise ValueError("Multiple equal options for '" + op.lower() + "'")
-			full_message += "* `" + self._prefix + self._prefix + op + "`\n"
-			all_options[self._prefix + self._prefix + op.lower()] = op.lower()
-
-		await self.reply(context, full_message)
-		_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " started")
-
-		def check_option(msg):
-			if msg.author != context.author:
-				return False
-			return msg.content in all_options
-
-		try:
-			message = await self._client.wait_for('message', timeout=60, check=check_option)
-		except asyncio.TimeoutError:
-			message = None
-		if message is None:
-			_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " timed out")
-			return None
-		else:
-			log_msg = "[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " received "
-			log_msg += repr(message.content)
-			_log.debug(log_msg)
-			return all_options[message.content]
-
-	def get_id(self):
-		return self._client.user.id
-
-	async def prompt(self, context, message, timeout=60, type_conv=str):
-		"""
-		Prompt the user for open-ended input. Returns None if the prompt times out.
-
-		:type context: BotContext
-		:param context: The context of the bot.
-		:type message: str
-		:param message: The message to show before the prompt.
-		:type timeout: int
-		:param timeout: The number of seconds to wait before timing out the prompt.
-		:type type_conv: Any
-		:param type_conv: The type to put the input through before returning it.
-		:rtype: Any
-		:return: The input given by the user, or None if the prompt times out.
-		"""
-
-		full_message = message + "\n\n(Enter `" + (self._prefix * 2) + "` followed by your answer)"
-		await self.reply(context, full_message)
-		_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " started")
-
-		def check_option(msg):
-			if msg.author != context.author:
-				return False
-			if not msg.content.startswith(self._prefix * 2):
-				return False
-			# noinspection PyBroadException
-			try:
-				type_conv(msg.content[len(self._prefix * 2):])
-			except Exception:
-				return False
-			return True
-
-		try:
-			message = await self._client.wait_for('message', timeout=timeout, check=check_option)
-		except asyncio.TimeoutError:
-			message = None
-		if message is None:
-			_log.debug("[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " timed out")
-			return None
-		else:
-			log_msg = "[" + _fmt_channel(context.source) + "]: prompt for " + context.author_name() + " received "
-			log_msg += repr(message.content)
-			_log.debug(log_msg)
-			return type_conv(message.content[len(self._prefix * 2):])
-
-	# noinspection PyMethodMayBeStatic
-	async def reply(self, context, message):
-		"""
-		Send a message in the same context as the message that caused the action to start.
-
-		:type context: BotContext
-		:param context: The context of the original message.
-		:type message: str
-		:param message: The message to send.
-		"""
-		if context.is_pm:
-			dest = context.author
-		else:
-			dest = context.source
-		await dest.send(message)
-		_log.debug(_fmt_send(dest, message))
-
-	# noinspection PyMethodMayBeStatic
-	async def reply_with_file(self, context, fp, filename=None, message=None):
-		"""
-		Send a file in the same context as the message that caused the action to start.
-
-		:type context: BotContext
-		:param context: The context of the original message.
-		:type fp: Any
-		:param fp: The file-like object to upload.
-		:type filename: str
-		:param filename: The name that the file will have once uploaded to the server.
-		:type message: str
-		:param message: A message to include before the file. Can be None to send only the file.
-		"""
-		if context.is_pm:
-			dest = context.author
-		else:
-			dest = context.source
-
-		await dest.send(content=message, file=discord.File(fp, filename=filename))
-		_log.debug("[" + _fmt_channel(context.source) + "]: sent <FILE>")
-
-	async def show_help(self, context, help_module=None):
+	async def show_help(self, api: 'PluginAPI', help_module=None):
 		"""
 		Display the help command in the current context.
 
-		:type context: BotContext
-		:param context: The context to show the help in.
+		:param api: Context-sensitive methods for reacting to the message.
 		:type help_module: str
 		:param help_module: The module to get additional info on. Can be a module or a command.
 		"""
-		pre = self._prefix
+		pre = self.prefix
 		if help_module is None:
 			msg = "Sure! I'll tell you how to use my interface!\n\n"
 			msg += "Here are my special commands:\n"
@@ -781,7 +580,7 @@ class MasaBot(object):
 				msg += " that, but I have to in order to make sure I can keep running properly!"
 			else:
 				if help_module not in self._invocations and help_module not in self._bot_modules:
-					msg = "Oh no! I'm sorry, <@!" + str(context.author.id) + ">, but I don't have any module or command"
+					msg = "Oh no! I'm sorry, " + api.mention_user() + ", but I don't have any module or command"
 					msg += " called '" + help_module + "'. P-please don't be mad! I'll really do my best at everything"
 					msg += " else, okay?"
 				else:
@@ -789,43 +588,42 @@ class MasaBot(object):
 					if m is None:
 						m = self._invocations[help_module][0]
 					msg = "Oh yeah, the `" + m.name + "` module! `" + m.description + "`\n\n" + m.help_text
-		await self.reply(context, msg)
+		await api.reply(msg)
 
-	async def quit(self, context, restart_command="quit"):
-		self.require_master(context, "quit", None)
+	async def quit(self, api: 'PluginAPI', restart_command="quit"):
+		api.require_master("quit", None)
 		with open('.supervisor/restart-command', 'w') as fp:
 			fp.write(restart_command)
-		await self.reply(context, "Right away, <@!" + str(context.author.id) + ">! See you later!")
+		await api.reply("Right away, " + api.mention_user() + "! See you later!")
 		_log.info("Shutting down...")
 		self._master_timer_task.cancel()
-		await self._client.logout()
+		await self.client.logout()
 
-	async def show_version(self, context):
-		await self.reply(context, "I am Masabot v" + str(version.get_version()) + "!")
+	async def show_version(self, api: 'PluginAPI'):
+		await api.reply("I am Masabot v" + str(version.get_version()) + "!")
 
 	async def _run_settings_command(
 			self,
-			context: BotContext,
+			api: 'PluginAPI',
 			args):
 		"""
 		Execute the settings command. Depending on the action, this will either be to list all existing keys, to get
 		the value of a particular key, or to set the value of the key. Setting the value requires op permissions.
 
-		:param context: The context of the command.
+		:param api: Methods for performing things in discord.
 		:param args: The arguments.
 		"""
-		output = await context.execute_setting_command(self, self._settings, args, use_global_in_dms=False)
+		output = await api.context.execute_setting_command(self, self._settings, args, use_global_in_dms=False)
 		for page in output.get_pages():
-			await self.reply(context, page)
+			await api.reply(page)
 
-	async def _run_replchars_command(self, context, action=None, search=None, replacement=None):
+	async def _run_replchars_command(self, api: 'PluginAPI', action=None, search=None, replacement=None):
 		"""
 		Execute the replchars command. Depending on the action, this will either print out the info on current
 		replacements, add a new replacement, or remove an existing replacement. Adding and removing require operator
 		privileges.
 
-		:type context: BotContext
-		:param context: The context of the command.
+		:param api: Context-sensitive API commands.
 		:type action: str
 		:param action: The action to perform. Leave as None to just list the replacements. Set to "add" to add a new
 		one, in which case both search and replacement must also be set. Set to "remove" to remove an existing
@@ -850,9 +648,9 @@ class MasaBot(object):
 					replacement = self._invocation_replacements[search]
 					msg += "`" + search + "` becomes `" + replacement + "`\n"
 
-			await self.reply(context, msg)
+			await api.reply(msg)
 		elif action == "add":
-			self.require_master(context, "replchars add", None)
+			api.require_master("replchars add", None)
 			if search is None:
 				msg = "I need to know the characters you want me to replace, and what you want to replace them with."
 				raise BotSyntaxError(msg)
@@ -874,7 +672,7 @@ class MasaBot(object):
 			if search in self._invocation_replacements:
 				cur_repl = self._invocation_replacements[search]
 				if cur_repl == replacement:
-					await self.reply(context, "Well, I'm already replacing `" + search + "` with `" + cur_repl + "`.")
+					await api.reply("Well, I'm already replacing `" + search + "` with `" + cur_repl + "`.")
 					return
 				prompt_msg = "Right now, I'm replacing `" + search + "` with `" + cur_repl + "`. Do you want me to"
 				prompt_msg += " start replacing it with `" + replacement + "` instead?"
@@ -882,7 +680,7 @@ class MasaBot(object):
 				prompt_msg = "Just to make sure, you want me to start replacing `" + search + "` with `" + replacement
 				prompt_msg += "`, right?"
 
-			reply = await self.prompt_for_option(context, prompt_msg)
+			reply = await api.prompt_for_option(prompt_msg)
 			msg = ""
 			if reply is None:
 				msg = "Sorry, but I didn't hear back from you on whether you wanted to add that new replacement..."
@@ -909,10 +707,10 @@ class MasaBot(object):
 			msg += "\n\nOh! But no matter what, I will never apply replacements to any invocation of the `replchars`"
 			msg += " command."
 
-			await self.reply(context, msg)
+			await api.reply(msg)
 
 		elif action == "remove":
-			self.require_master(context, "replchars remove", None)
+			api.require_master("replchars remove", None)
 			if search is None:
 				msg = "I need to know the string you want me to stop replacing."
 				raise BotSyntaxError(msg)
@@ -920,13 +718,13 @@ class MasaBot(object):
 			if search not in self._invocation_replacements:
 				msg = "Oh, okay. Actually, I was already not doing any replacements for `" + search + "`, so that works"
 				msg += " out pretty well! Yay!"
-				await self.reply(context, msg)
+				await api.reply(msg)
 				return
 
 			cur_repl = self._invocation_replacements[search]
 			prompt_msg = "Okay, right now I'm replacing `" + search + "` with `" + cur_repl + "` in commands, and you"
 			prompt_msg += " want me to stop doing that, right?"
-			reply = await self.prompt_for_option(context, prompt_msg)
+			reply = await api.prompt_for_option(prompt_msg)
 
 			msg = ""
 			if reply is None:
@@ -942,76 +740,31 @@ class MasaBot(object):
 				_log.debug("Removed invocation replacement " + repr(search) + " -> " + repr(cur_repl))
 				msg = "Sounds good! I'll stop replacing `" + search + "` with `" + cur_repl + "` in commands."
 				self._save_all()
-			await self.reply(context, msg)
+			await api.reply(msg)
 		else:
 			raise BotSyntaxError("The thing is, `" + str(action) + "` is just not a valid subcommand for `replchars`!")
 
-	async def show_syntax_error(self, context, message=None):
+	async def show_syntax_error(self, api: 'PluginAPI', message=None):
 		"""
 		Show the standard syntax error message in the current message context.
 
-		:type context: BotContext
-		:param context: The current message context.
+		:param api: The current message context.
 		:type message: str
 		:param message: The message to include with the syntax error. Make it extremely brief; this function
 		automatically handles setting up a sentence and apologizing to the user.
 		:return:
 		"""
-		msg = "Um, oh no, I'm sorry <@!" + str(context.author.id) + ">, but I really have no idea what you mean..."
+		msg = "Um, oh no, I'm sorry " + api.mention_user() + ", but I really have no idea what you mean..."
 		if message is not None:
 			msg += " " + message
 		msg += "\n\nBut, oh! I know!"
-		msg += " If you're having trouble, maybe the command `" + self._prefix + "help` can help you!"
-		await self.reply(context, msg)
+		msg += " If you're having trouble, maybe the command `" + self.prefix + "help` can help you!"
+		await api.reply(msg)
 
-	def require_master(self, context, command, module, message="Operation requires master status"):
-		"""
-		Ensure that the user that invoked a command has master permission. If the user does not have master
-		permission, a BotPermissionError is raised.
-
-		:type context: BotContext
-		:param context: The context of the command. Must contain the author that invoked it.
-		:type command: str
-		:param command: A string representing the command that is attempting to be executed. This should include enough
-		of the invocation to distinguish it from other potential invocations of the same command.
-		:type module:  str | None
-		:param module: The module that is requiring operator permissions. This can be set to None if it is a built-in
-		command that is requiring op.
-		:type message: str
-		:param message: The message to put in the bot permission error if the check for op fails. This can be left as
-		the default, as a suitable error message will be generated from the other properties if this method is called
-		from within a core command function or from within one of a module's on_X methods().
-		"""
-		if not self._is_master(context.author.id):
-			raise BotPermissionError(context, command, 'master', module, message=message)
-
-	def require_op(self, context, for_server: int, command, module, message="Operation requires operator status"):
-		"""
-		Ensure that the user that invoked a command has operator permission. If the user does not have operator
-		permission, a BotPermissionError is raised.
-
-		:type context: BotContext
-		:param context: The context of the command. Must contain the author that invoked it.
-		:type command: str
-		:param for_server: the server that OP is needed on.
-		:param command: A string representing the command that is attempting to be executed. This should include enough
-		of the invocation to distinguish it from other potential invocations of the same command.
-		:type module:  str | None
-		:param module: The module that is requiring operator permissions. This can be set to None if it is a built-in
-		command that is requiring op.
-		:type message: str
-		:param message: The message to put in the bot permission error if the check for op fails. This can be left as
-		the default, as a suitable error message will be generated from the other properties if this method is called
-		from within a core command function or from within one of a module's on_X methods().
-		"""
-		if not self._is_op(context.author.id, for_server):
-			cmd_end = " (in server " + str(for_server) + ")"
-			raise BotPermissionError(context, command + cmd_end, 'operator', module, message=message)
-
-	async def show_ops(self, context):
-		server_id = await self.require_server(context)
+	async def show_ops(self, api: 'PluginAPI'):
+		server_id = await api.require_server()
 		msg = "Okay, sure! Here's a list of all of my operators:\n\n"
-		with context.source.typing():
+		with api.typing():
 			matching_ops = []
 
 			for u in self._operators:
@@ -1023,38 +776,28 @@ class MasaBot(object):
 						matching_ops.append(u)
 
 			for u in matching_ops:
-				all_info = self._client.get_user(u)
+				all_info = self.client.get_user(u)
 				if all_info is None:
-					all_info = await self._client.fetch_user(u)
+					all_info = await self.client.fetch_user(u)
 				op_info = self._operators[u]
 				op_name = '(UID ' + str(u) + ')'
 				if all_info is not None:
 					op_name = "`" + all_info.name + "#" + all_info.discriminator + "`"
 				msg += "* " + op_name + " _(" + op_info['role'] + ")_\n"
-		await self.reply(context, msg)
+		await api.reply(msg)
 
 	async def pm_master_users(self, message):
 		masters = [x for x in self._operators.keys() if self._operators[x]['role'] == 'master']
 		for m in masters:
-			user = self._client.get_user(m)
+			user = self.client.get_user(m)
 			await user.send(message)
 
-	def get_user(self, snowflake_id) -> Optional[discord.User]:
-		"""
-		Get a user from a snowflake ID.
-
-		:type snowflake_id: int
-		:param snowflake_id: The ID.
-		:return: The user.
-		"""
-		return self._client.get_user(snowflake_id)
-
 	async def _run_timer(self):
-		await self._client.wait_until_ready()
+		await self.client.wait_until_ready()
 		_log.debug("Master timer started")
 		tick_span = 60  # seconds
 
-		while not self._client.is_closed:
+		while not self.client.is_closed:
 			now_time = time.monotonic()
 			for timer in self._timers:
 				timer.tick(now_time, lambda msg: self.pm_master_users(msg))
@@ -1076,10 +819,10 @@ class MasaBot(object):
 			return False
 		return self._operators[uid]['role'] == 'master'
 
-	async def _make_op(self, context, args):
-		server_id = await self.require_server(context)
-		server = self._client.get_guild(server_id).name
-		self.require_op(context, server_id, "op", None)
+	async def _make_op(self, api: 'PluginAPI', args):
+		server_id = await api.require_server()
+		server = self.client.get_guild(server_id).name
+		await api.require_op("op", None, server=server_id)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to turn into an op")
@@ -1089,10 +832,10 @@ class MasaBot(object):
 		if not mention.is_user():
 			msg = "Well, the thing is, " + str(mention) + " is not a user and I'm really afraid of having non-users"
 			msg += " control me. It could be unsafe, and, Deka-nee told me I shouldn't do that!"
-			await self.reply(context, msg)
+			await api.reply(msg)
 			return
 		if self._is_op(mention.id, server_id):
-			await self.reply(context, "Oh! " + str(mention) + " is already an op! So yay!")
+			await api.reply("Oh! " + str(mention) + " is already an op! So yay!")
 			return
 		else:
 			if mention.id not in self._operators:
@@ -1100,12 +843,12 @@ class MasaBot(object):
 			self._operators[mention.id]['servers'].append(server_id)
 			_log.debug("Added new operator (UID " + str(mention.id) + ") in server " + server + " (ID " + str(server_id) + ")")
 			self._save_all()
-			await self.reply(context, str(mention) + " is now an op! Hooray!")
+			await api.reply(str(mention) + " is now an op! Hooray!")
 
-	async def _make_nonop(self, context, args):
-		server_id = await self.require_server(context)
-		server = self._client.get_guild(server_id).name
-		self.require_op(context, server_id, "deop", None)
+	async def _make_nonop(self, api: 'PluginAPI', args):
+		server_id = await api.require_server()
+		server = api.get_guild(server_id).name
+		await api.require_op("deop", None, server=server_id)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know who you want to deop")
@@ -1116,31 +859,31 @@ class MasaBot(object):
 			raise BotSyntaxError(args[0] + " just isn't something that can be an operator.")
 
 		if not self._is_op(mention.id, server_id):
-			await self.reply(context, "It looks like " + str(mention) + " is already not an op.")
+			await api.reply("It looks like " + str(mention) + " is already not an op.")
 			return
 		else:
 			if self._operators[mention.id]['role'] == 'master':
 				msg = "Sorry, but " + str(mention) + " is one of my masters, and I could never remove their operator"
 				msg += " status!"
-				await self.reply(context, msg)
+				await api.reply(msg)
 			else:
 				self._operators[mention.id]['servers'].remove(server_id)
 				if len(self._operators[mention.id]['servers']) == 0:
 					del self._operators[mention.id]
 				_log.debug("Removed operator (UID " + str(mention.id) + ") from server " + server + " (ID " + str(server_id) + ")")
 				self._save_all()
-				await self.reply(context, "Okay. " + str(mention) + " is no longer an op.")
+				await api.reply("Okay. " + str(mention) + " is no longer an op.")
 
-	async def _redeploy(self, context, reason=None):
-		self.require_master(context, "redeploy", None)
+	async def _redeploy(self, api: 'PluginAPI', reason=None):
+		api.require_master("redeploy", None)
 		if reason is not None:
 			with open('.supervisor/reason', 'w') as fp:
 				fp.write(reason)
 		_log.info("Going down for a redeploy")
-		msg = "Oh! It looks like " + context.author_name() + " has triggered a redeploy. I'll be going down now, but"
+		msg = "Oh! It looks like " + api.context.author_name() + " has triggered a redeploy. I'll be going down now, but"
 		msg += " don't worry! I'll be right back!"
-		await self.announce(msg)
-		await self.quit(context, "redeploy")
+		await api.announce(msg)
+		await self.quit(api, "redeploy")
 
 	# noinspection PyMethodMayBeStatic
 	def _check_supervisor_unclean_shutdown(self):
@@ -1225,7 +968,7 @@ class MasaBot(object):
 					msg += "* " + pkg + ": " + change['action'] + " " + ch_status + ch_msg
 				msg += "```"
 			if msg is not None:
-				await self.announce(msg)
+				await PluginAPI(self).announce(msg)
 
 	def _load_modules(self, state_dict, module_configs):
 		names = []
@@ -1240,7 +983,7 @@ class MasaBot(object):
 			}
 			new_timer_handlers = list(self._timers)
 			mod = importlib.import_module("masabot.commands." + module_str)
-			bot_module = mod.BOT_MODULE_CLASS(self, 'resources')
+			bot_module = mod.BOT_MODULE_CLASS('resources')
 			if bot_module.name in names:
 				raise BotModuleError("cannot load duplicate module '" + bot_module.name + "'")
 			for t in bot_module.triggers:
@@ -1297,7 +1040,7 @@ class MasaBot(object):
 		:param current_handlers: The timer handlers that already exist. The new handler will be added to the end.
 		"""
 
-		timer = Timer(bot_module, int(trig.timer_duration.total_seconds()))
+		timer = Timer(self, bot_module, int(trig.timer_duration.total_seconds()))
 		current_handlers.append(timer)
 
 	# noinspection PyMethodMayBeStatic
@@ -1390,14 +1133,14 @@ class MasaBot(object):
 		context = BotContext(message)
 		meta = MessageMetadata.from_message(message)
 
-		log_msg = "[" + _fmt_channel(context.source) + "]: received invocation " + repr(message.content)
+		log_msg = util.add_context(context, "received invocation " + repr(message.content))
 		log_msg += " from " + str(context.author.id) + "/" + context.author_name()
 		_log.debug(log_msg)
 
 		try:
 			tokens = self._message_to_tokens(message)
 		except ValueError as e:
-			await self.show_syntax_error(context, str(e))
+			await self.show_syntax_error(PluginAPI(self, context), str(e))
 			return
 		cmd = tokens[0]
 		args = tokens[1:]
@@ -1406,23 +1149,23 @@ class MasaBot(object):
 			help_cmd = None
 			if len(args) > 0:
 				help_cmd = args[0]
-			await self._execute_action(context, self.show_help(context, help_cmd))
+			await self._execute_action(context, self.show_help(PluginAPI(self, context), help_cmd))
 		elif cmd == 'quit':
-			await self._execute_action(context, self.quit(context))
+			await self._execute_action(context, self.quit(PluginAPI(self, context)))
 		elif cmd == 'op':
-			await self._execute_action(context, self._make_op(context, args))
+			await self._execute_action(context, self._make_op(PluginAPI(self, context), args))
 		elif cmd == 'deop':
-			await self._execute_action(context, self._make_nonop(context, args))
+			await self._execute_action(context, self._make_nonop(PluginAPI(self, context), args))
 		elif cmd == 'showops':
-			await self._execute_action(context, self.show_ops(context))
+			await self._execute_action(context, self.show_ops(PluginAPI(self, context)))
 		elif cmd == 'version':
-			await self._execute_action(context, self.show_version(context))
+			await self._execute_action(context, self.show_version(PluginAPI(self, context)))
 		elif cmd == 'redeploy':
 			if len(args) > 0:
 				reason = args[0]
 			else:
 				reason = None
-			await self._execute_action(context, self._redeploy(context, reason))
+			await self._execute_action(context, self._redeploy(PluginAPI(self, context), reason))
 		elif cmd == 'replchars':
 			action = None
 			search = None
@@ -1433,12 +1176,14 @@ class MasaBot(object):
 				search = args[1]
 			if len(args) > 2:
 				repl = args[2]
-			await self._execute_action(context, self._run_replchars_command(context, action, search, repl))
+			api = PluginAPI(self, context)
+			await self._execute_action(context, self._run_replchars_command(api, action, search, repl))
 		elif cmd == 'settings':
-			await self._execute_action(context, self._run_settings_command(context, args))
+			await self._execute_action(context, self._run_settings_command(PluginAPI(self, context), args))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
-				await self._execute_action(context, handler.on_invocation(context, meta, cmd, *args), handler)
+				api = PluginAPI(self, context)
+				await self._execute_action(context, handler.on_invocation(api, meta, cmd, *args), handler)
 		else:
 			_log.debug("Ignoring unknown command " + repr(cmd))
 
@@ -1458,14 +1203,16 @@ class MasaBot(object):
 		if len(valid_mention_handlers) > 0:
 			_log.debug(log_msg + ": passing to generic mention handlers")
 			for h in valid_mention_handlers:
-				await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
+				api = PluginAPI(self, context)
+				await self._execute_action(context, h.on_mention(api, meta, message.content, mentions), h)
 				handled_already.append(h.name)
 
-		if self._client.user.id in [m.id for m in mentions if m.is_user()]:
+		if self.client.user.id in [m.id for m in mentions if m.is_user()]:
 			for h in self._self_mention_handlers:
 				if h.name not in handled_already:
 					_log.debug(log_msg + ": passing to self-mention handler " + repr(h.name))
-					await self._execute_action(context, h.on_mention(context, meta, message.content, mentions), h)
+					api = PluginAPI(self, context)
+					await self._execute_action(context, h.on_mention(api, meta, message.content, mentions), h)
 					handled_already.append(h.name)
 
 		for m in mentions:
@@ -1482,7 +1229,8 @@ class MasaBot(object):
 				for h in self._mention_handlers[subidx][m]:
 					if h.name not in handled_already:
 						_log.debug(log_msg + ": passing to " + str(m) + " mention handler " + repr(h.name))
-						await self._execute_action(context, h.on_mention(context, meta, message.content, list(mentions)), h)
+						api = PluginAPI(self, context)
+						await self._execute_action(context, h.on_mention(api, meta, message.content, list(mentions)), h)
 						handled_already.append(h.name)
 
 	async def _handle_regex_scan(self, message):
@@ -1500,7 +1248,8 @@ class MasaBot(object):
 				for i in range(regex.groups+1):
 					match_groups.append(m.group(i))
 				for h in h_list:
-					await self._execute_action(context, h.on_regex_match(context, meta, *match_groups), h)
+					api = PluginAPI(self, context)
+					await self._execute_action(context, h.on_regex_match(api, meta, *match_groups), h)
 
 	async def _execute_action(self, context, action, mod=None):
 		try:
@@ -1519,20 +1268,20 @@ class MasaBot(object):
 			ctx = context
 			if e.context is not None:
 				ctx = e.context
-			await self.reply(ctx, msg)
+			await PluginAPI(self, ctx).reply(msg)
 		except BotSyntaxError as e:
 			_log.exception("Syntax error")
 			ctx = context
 			if e.context is not None:
 				ctx = e.context
-			await self.show_syntax_error(ctx, str(e))
+			await self.show_syntax_error(PluginAPI(self, ctx), str(e))
 		except BotModuleError as e:
 			_log.exception("Module error")
 			msg = "Oh no, <@!" + str(context.author.id) + ">-samaaaaa! I can't quite do that! "
 			ctx = context
 			if e.context is not None:
 				ctx = e.context
-			await self.reply(ctx, msg + str(e))
+			await PluginAPI(self, ctx).reply(msg + str(e))
 
 		# TODO: this should not happen on every invocation of a mod that *could* have state. update this to be less
 		if mod is not None and mod.has_state:
@@ -1547,7 +1296,7 @@ class MasaBot(object):
 		:rtype: list[str]
 		:return: The tokens.
 		"""
-		content = message.content[len(self._prefix):]
+		content = message.content[len(self.prefix):]
 		""":type : str"""
 
 		# special case; do NOT apply replacements if the replchars command is being invoked:
@@ -1637,3 +1386,315 @@ def _copy_handler_dict(dict_to_copy):
 		else:
 			new_dict[k] = v
 	return new_dict
+
+
+class PluginAPI:
+	"""
+	BotPluginAPI contains all methods needed for a plugin to perform actions with the bot without directly exposing the
+	actual MasaBot object. We implement a proxy pattern here to hide the actual bot implementation from callers.
+
+	It is intended to be created outside of the plugin's control and then passed to plugins.
+	"""
+	def __init__(self, target_bot: MasaBot, context: Optional[BotContext] = None):
+		"""
+		Create a new plugin API object.
+
+		:param target_bot: The bot that the new MasaBotPluginAPI will affect.
+		"""
+		self._bot = target_bot
+		self._context: Optional[BotContext] = context
+
+	@property
+	def context(self) -> BotContext:
+		if self._context:
+			return self._context
+		else:
+			raise ValueError("context was never set")
+
+	@context.setter
+	def context(self, context: BotContext):
+		self._context = context
+
+	async def announce(self, message: str):
+		"""
+		Send a message to all applicable channels on all servers. The channels are those that are set as the
+		announce channels in the configuration.
+
+		:param message: The message to send.
+		"""
+		for g in self._bot.connected_guilds:
+			for ch in g.channels:
+				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._bot.announce_channels:
+					await ch.send(message)
+					_log.debug(util.add_context("sent: {!r}", message))
+
+	def get_bot_id(self) -> int:
+		"""Get the ID of the user that represents the currently connected bot."""
+		return self._bot.client.user.id
+
+	async def react(self, emoji_text: str):
+		await self.context.message.add_reaction(emoji_text)
+
+	async def require_server(self) -> int:
+		"""
+		Prompt the user to give a server ID only if the context does not already contain one.
+		:return: Either the user-prompted ID if in a DM, or the current server ID.
+		"""
+		if self.context.is_pm:
+			got_valid_server = False
+			server_id = -1
+			while not got_valid_server:
+				resp = await self.prompt("Ok, really quick, what server should I do that for?")
+				if resp is None:
+					break
+				try:
+					server_id = int(resp)
+				except ValueError:
+					resp = ' '.join(shlex.split(resp))
+					found_guild = None
+					for g in self._bot.client.guilds:
+						g = g
+						""":type: discord.Guild"""
+						norm_guild_name = ' '.join(shlex.split(g.name))
+						if norm_guild_name.lower().find(resp.lower()) > -1:
+							found_guild = g
+							break
+					if found_guild:
+						conf_msg = "Just to make sure, I should do that for {:s}, right?"
+						if not await self.confirm(conf_msg.format(found_guild.name)):
+							await self.reply("Sorry; it looked really similar >.<")
+							continue
+						server_id = found_guild.id
+					else:
+						await self.reply("Oh no! I'm not in any servers that match that @_@")
+						continue
+				if server_id not in self._bot._joined_guilds:
+					await self.reply("I'm not in a guild that matches that.")
+					continue
+				got_valid_server = True
+			if not got_valid_server:
+				raise BotModuleError("Sorry, but I can't do that without a server!")
+			return server_id
+		else:
+			return self.context.source.guild.id
+
+	async def reply(self, message: str):
+		"""
+		Send a message in the same context as the message that caused the action to start.
+
+		:param message: The message to send.
+		"""
+		if self.context.is_pm:
+			dest = self.context.author
+		else:
+			dest = self.context.source
+		await dest.send(message)
+		_log.debug(util.add_context(self.context, "sent {!r}", message))
+
+	async def reply_with_file(self, fp: Any, filename: str = None, message: str = None):
+		"""
+		Send a file in the same context as the message that caused the action to start.
+
+		:param fp: The file-like object to upload.
+		:param filename: The name that the file will have once uploaded to the server.
+		:param message: A message to include before the file. Can be None to send only the file.
+		"""
+		if self.context.is_pm:
+			dest = self.context.author
+		else:
+			dest = self.context.source
+
+		await dest.send(content=message, file=discord.File(fp, filename=filename))
+		_log.debug(util.add_context(self.context, " sent <FILE>"))
+
+	def require_master(self, command, module, message="Operation requires master status"):
+		"""
+		Ensure that the user that invoked a command has master permission. If the user does not have master
+		permission, a BotPermissionError is raised.
+
+		:param command: A string representing the command that is attempting to be executed. This should include enough
+		of the invocation to distinguish it from other potential invocations of the same command.
+		:param module: The module that is requiring operator permissions. This can be set to None if it is a built-in
+		command that is requiring op.
+		:param message: The message to put in the bot permission error if the check for op fails. This can be left as
+		the default, as a suitable error message will be generated from the other properties if this method is called
+		from within a core command function or from within one of a module's on_X methods().
+		"""
+		if not self._bot._is_master(self.context.author.id):
+			raise BotPermissionError(self.context, command, 'master', module, message=message)
+
+	async def require_op(
+			self,
+			command: str,
+			module: Optional[str],
+			message: str = "Operation requires operator status",
+			server: Optional[int] = None
+	):
+		"""
+		Ensure that the user that invoked a command has operator permission. If the user does not have operator
+		permission, a BotPermissionError is raised.
+
+		:param command: A string representing the command that is attempting to be executed. This should include enough
+		of the invocation to distinguish it from other potential invocations of the same command.
+		:param module: The module that is requiring operator permissions. This can be set to None if it is a built-in
+		command that is requiring op.
+		:param message: The message to put in the bot permission error if the check for op fails. This can be left as
+		the default, as a suitable error message will be generated from the other properties if this method is called
+		from within a core command function or from within one of a module's on_X methods().
+		:param server: if set, ensures that the user is op in the given server.
+		"""
+		if server is None:
+			server_id = await self.require_server()
+		else:
+			server_id = server
+		if not self._bot._is_op(self.context.author.id, server_id):
+			cmd_end = " (in server " + str(server_id) + ")"
+			raise BotPermissionError(self.context, command + cmd_end, 'operator', module, message=message)
+
+	async def prompt(self, message: str, timeout: int = 60, type_conv: Callable[[str], Any] = str) -> Any:
+		"""
+		Prompt the user for open-ended input. Returns None if the prompt times out.
+
+		:param message: The message to show before the prompt.
+		:param timeout: The number of seconds to wait before timing out the prompt.
+		:param type_conv: The type to put the input through before returning it.
+		:return: The input given by the user, or None if the prompt times out.
+		"""
+
+		full_message = message + "\n\n(Enter `" + (self._bot.prefix * 2) + "` followed by your answer)"
+		await self.reply(full_message)
+		_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " started"))
+
+		def check_option(msg):
+			if msg.author != self.context.author:
+				return False
+			if not msg.content.startswith(self._bot.prefix * 2):
+				return False
+			# noinspection PyBroadException
+			try:
+				type_conv(msg.content[len(self._bot.prefix * 2):])
+			except Exception:
+				return False
+			return True
+
+		try:
+			message = await self._bot.client.wait_for('message', timeout=timeout, check=check_option)
+		except asyncio.TimeoutError:
+			message = None
+		if message is None:
+			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
+			return None
+		else:
+			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received ")
+			log_msg += repr(message.content)
+			_log.debug(log_msg)
+			return type_conv(message.content[len(self._bot.prefix * 2):])
+
+	def mention_user(self, user_id: Optional[int] = None) -> str:
+		if user_id is None:
+			user_id = self.context.author.id
+		return '<@' + str(user_id) + '>'
+
+	def typing(self):
+		return self.context.source.typing()
+
+	def get_guild(self, guild_id: Optional[int] = None) -> Optional[discord.Guild]:
+		"""Return the current guild. None is returned if there is no current guild; consider doing bot_api.require_server()
+		for cases where a server ID is needed.
+
+		If the ID is passed in, always gets that server ID.
+		"""
+		if guild_id is None:
+			if self.context.is_pm:
+				return None
+			else:
+				return self.context.source.guild
+		else:
+			return self._bot.client.get_guild(guild_id)
+
+	async def confirm(self, message: str) -> bool:
+		"""
+		Prompt the user to select a yes-or-no option, and defaults to False if they do not answer. Times out after 60
+		seconds, and returns False then.
+
+		:param message: The message to show before the prompt.
+		:return: The option selected by the user, or False if the prompt times out.
+		"""
+		answer = await self.prompt_for_option(message)
+		if answer is None:
+			msg = "Sorry, " + self.context.mention() + ", but the prompt timed out! I'll assume 'no' for now; if that's not"
+			msg += " what you wanted, go ahead and rerun the command again, okay?"
+			await self.reply(msg)
+			return False
+		elif answer == "yes":
+			return True
+		elif answer == "no":
+			return False
+
+	async def prompt_for_option(
+			self,
+			message: str,
+			option_1: str = "yes",
+			option_2: str = "no",
+			*additional_options
+	) -> Optional[str]:
+		"""
+		Prompt the user to select an option. Not case-sensitive; all options are converted to lower-case. Times out
+		after 60 seconds, and returns None then.
+
+		:param message: The message to show before the prompt.
+		:param option_1: The first option.
+		:param option_2: The second option.
+		:param additional_options: Any additional options.
+		:return: The option selected by the user, or None if the prompt times out.
+		"""
+		if option_1.lower() == option_2.lower():
+			raise ValueError("option 1 and 2 are equal")
+
+		all_options = {
+			self._bot.prefix + self._bot.prefix + option_1.lower(): option_1.lower(),
+			self._bot.prefix + self._bot.prefix + option_2.lower(): option_2.lower()
+		}
+
+		full_message = message + "\n\nSelect one of the following options: \n"
+		full_message += "* `" + self._bot.prefix + self._bot.prefix + option_1.lower() + "`\n"
+		full_message += "* `" + self._bot.prefix + self._bot.prefix + option_2.lower() + "`\n"
+		for op in additional_options:
+			if op.lower() in all_options:
+				raise ValueError("Multiple equal options for '" + op.lower() + "'")
+			full_message += "* `" + self._bot.prefix + self._bot.prefix + op + "`\n"
+			all_options[self._bot.prefix + self._bot.prefix + op.lower()] = op.lower()
+
+		await self.reply(full_message)
+		_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " started"))
+
+		def check_option(msg):
+			if msg.author != self.context.author:
+				return False
+			return msg.content in all_options
+
+		try:
+			message = await self._bot.client.wait_for('message', timeout=60, check=check_option)
+		except asyncio.TimeoutError:
+			message = None
+		if message is None:
+			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
+			return None
+		else:
+			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received ")
+			log_msg += repr(message.content)
+			_log.debug(log_msg)
+			return all_options[message.content]
+
+	def get_user(self, snowflake_id: Optional[int] = None) -> Optional[discord.User]:
+		"""
+		Get a user from a snowflake ID.
+		:param snowflake_id: The ID.
+		:return: The user.
+		"""
+		if snowflake_id is None:
+			return self.context.author
+		return self._bot.client.get_user(snowflake_id)
+
+	async def with_dm_context(self) -> 'PluginAPI':
+		return PluginAPI(self._bot, await self.context.to_dm_context())

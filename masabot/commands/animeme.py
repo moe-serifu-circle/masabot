@@ -1,8 +1,9 @@
-from typing import Dict
+from typing import Dict, Sequence
 
 from . import BotBehaviorModule, InvocationTrigger
 from .. import util
 from ..util import BotSyntaxError, BotModuleError
+from ..bot import PluginAPI
 
 import requests
 import random
@@ -19,7 +20,7 @@ _log.setLevel(logging.DEBUG)
 
 class AnimemeModule(BotBehaviorModule):
 
-	def __init__(self, bot_api, resource_root):
+	def __init__(self, resource_root: str):
 		help_text = "Generates anime memes by assigning a random background to the given text. Type `animeme` followed"
 		help_text += " by one or two sentences in quotes to generate a meme for them. Example: `animeme \"This meme\""
 		help_text += " \"is awesome!\"`.\n\nOps are able to add new images to the system from by using the"
@@ -33,7 +34,6 @@ class AnimemeModule(BotBehaviorModule):
 		help_text += " of a parameter by giving the new value after the name."
 
 		super().__init__(
-			bot_api,
 			name="animeme",
 			desc="Generates anime memes",
 			help_text=help_text,
@@ -99,30 +99,24 @@ class AnimemeModule(BotBehaviorModule):
 		}
 		return new_state
 
-	async def on_invocation(self, context, metadata, command, *args):
-		"""
-		:type context: masabot.bot.BotContext
-		:type metadata: masabot.util.MessageMetadata
-		:type command: str
-		:type args: str
-		"""
+	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		if command == "animeme":
-			await self.generate_animeme(context, args)
+			await self.generate_animeme(bot, args)
 		elif command == "animeme-add":
-			await self.add_animeme(context, metadata, args)
+			await self.add_animeme(bot, metadata, args)
 		elif command == "animeme-remove":
-			await self.remove_animeme(context, args)
+			await self.remove_animeme(bot, args)
 		elif command == "animeme-info":
 			t_id = None
 			if len(args) > 0:
 				t_id = self._validate_template_id(args[0])
-			await self.get_animeme_info(context, t_id)
+			await self.get_animeme_info(bot, t_id)
 		elif command == 'animeme-layout':
-			await self.set_or_get_layout_param(context, args)
+			await self.set_or_get_layout_param(bot, args)
 		elif command == 'animeme-list':
-			await self.list_animemes(context)
+			await self.list_animemes(bot)
 
-	async def list_animemes(self, context):
+	async def list_animemes(self, bot: PluginAPI):
 		pager = util.DiscordPager("_(template list, continued)_")
 		pager.add("Sure! Here's the complete list of all animeme templates I'm using. ")
 		pager.add_line("You can use `animeme-info` followed by the id of a template to see a picture of it!")
@@ -133,9 +127,9 @@ class AnimemeModule(BotBehaviorModule):
 
 		pages = pager.get_pages()
 		for p in pages:
-			await self.bot_api.reply(context, p)
+			await bot.reply(p)
 
-	async def set_or_get_layout_param(self, context, args):
+	async def set_or_get_layout_param(self, bot: PluginAPI, args):
 		layout_params = ['kerning', 'template-width', 'spacing', 'border', 'minfont', 'maxfont']
 		if len(args) < 1:
 			msg = "I need to know what layout parameter you want to set or get, it can be any one of these: "
@@ -150,19 +144,19 @@ class AnimemeModule(BotBehaviorModule):
 			raise BotSyntaxError(msg)
 
 		if len(args) > 1:
-			await self.set_layout_param(context, param, args[1])
+			await self.set_layout_param(bot, param, args[1])
 		else:
-			await self.get_layout_param(context, param)
+			await self.get_layout_param(bot, param)
 
-	async def set_layout_param(self, context, param, value):
-		if not context.is_pm:
-			server_id = await self.bot_api.require_server(context)
-			self.bot_api.require_op(context, server_id, "animeme-layout " + str(param) + " <value>", self.name)
+	async def set_layout_param(self, bot: PluginAPI, param, value):
+		if not bot.context.is_pm():
+			server_id = await bot.require_server()
+			await bot.require_op("animeme-layout " + str(param) + " <value>", self.name, server=server_id)
 			if server_id not in self._pens:
 				self._pens[server_id] = self._default_pen.copy()
 			pen = self._pens[server_id]
 		else:
-			self.bot_api.require_master(context, "animeme-layout " + str(param) + " <value>", self.name)
+			bot.require_master("animeme-layout " + str(param) + " <value>", self.name)
 			pen = self._dm_pen
 
 		if param == 'kerning':
@@ -181,16 +175,16 @@ class AnimemeModule(BotBehaviorModule):
 				msg = "Ah, well, I can do that, but I'll have to resize all the templates I'm already using, and some"
 				msg += " of them might lose quality! Also, it might take me a little bit. Are you sure you want me to"
 				msg += " do that?"
-				if await self.bot_api.confirm(context, msg):
+				if await bot.confirm(msg):
 					self._template_width = value
 					_log.debug("Set animeme template width to " + str(value))
 					msg = "Okay, I've changed the width, but now I need to resize my images! I'll let you know as soon"
 					msg += " as I'm done!"
-					await self.bot_api.reply(context, msg)
+					await bot.reply(msg)
 					_log.debug("Resize started, " + str(len(self.template_ids)) + " to resize...")
 					await self._resize_templates()
 					_log.debug("Resize of templates completed")
-					msg = "All done, " + context.mention() + "! I resized all my templates!"
+					msg = "All done, " + bot.mention_user() + "! I resized all my templates!"
 				else:
 					msg = "Okay! I'll leave my templates alone, then."
 		elif param == 'spacing':
@@ -228,11 +222,11 @@ class AnimemeModule(BotBehaviorModule):
 		else:
 			raise BotSyntaxError("I don't know anything about the `" + param + "` layout parameter... what is that?")
 
-		await self.bot_api.reply(context, msg)
+		await bot.reply(msg)
 
-	async def get_layout_param(self, context, param):
-		if not context.is_pm:
-			server_id = await self.bot_api.require_server(context)
+	async def get_layout_param(self, bot: PluginAPI, param):
+		if not bot.context.is_pm:
+			server_id = await bot.require_server()
 			if server_id not in self._pens:
 				self._pens[server_id] = self._default_pen.copy()
 			pen = self._pens[server_id]
@@ -255,10 +249,10 @@ class AnimemeModule(BotBehaviorModule):
 		else:
 			raise BotSyntaxError("I don't know anything about the `" + param + "` layout parameter... what is that?")
 
-		await self.bot_api.reply(context, msg)
+		await bot.reply(msg)
 
-	async def add_animeme(self, context, metadata, args):
-		self.bot_api.require_op(context, "animeme-add", self.name)
+	async def add_animeme(self, bot: PluginAPI, metadata, args):
+		await bot.require_op("animeme-add", self.name)
 		if not metadata.has_attachments() or not metadata.attachments[0].is_image():
 			raise BotSyntaxError("I need to know the image you want me to add, but you didn't attach one!")
 
@@ -269,24 +263,24 @@ class AnimemeModule(BotBehaviorModule):
 		else:
 			template_id = self._validate_template_id(args[0])
 			if template_id in self.template_ids:
-				async with context.source.typing():
+				async with bot.typing():
 					file = self._template_filename(template_id)
 					with self.open_resource('templates/' + file) as res:
 						msg = "Oh! But I already have this template for ID " + str(template_id) + ":"
-						await self.bot_api.reply_with_file(context, res, file, msg)
+						await bot.reply_with_file(res, file, msg)
 
-				replace = await self.bot_api.confirm(context, "Do you want to replace it with the new image?")
+				replace = await bot.confirm("Do you want to replace it with the new image?")
 				if not replace:
 					msg = "Okay! I'll keep using the old image!"
-					await self.bot_api.reply(context, msg)
+					await bot.reply(msg)
 					return
 				else:
 					msg = "All right, you got it! I'll replace that image with the new one!"
-					await self.bot_api.reply(context, msg)
+					await bot.reply(msg)
 			else:
 				new_template = True
 
-		async with context.source.typing():
+		async with bot.typing():
 			template_data = metadata.attachments[0].download()
 
 			template_data = self._normalize_template(template_data)
@@ -303,10 +297,10 @@ class AnimemeModule(BotBehaviorModule):
 
 			_log.debug("Added animeme template " + str(template_id))
 
-		await self.bot_api.reply(context, "Okay! I'll start using that new template to generate animemes ^_^")
+		await bot.reply("Okay! I'll start using that new template to generate animemes ^_^")
 
-	async def remove_animeme(self, context, args):
-		self.bot_api.require_op(context, "animeme-remove", self.name)
+	async def remove_animeme(self, bot: PluginAPI, args):
+		await bot.require_op("animeme-remove", self.name)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know the ID of the template you want me to remove.")
@@ -314,38 +308,38 @@ class AnimemeModule(BotBehaviorModule):
 		template_id = self._validate_template_id(args[0])
 
 		if template_id in self.template_ids:
-			async with context.source.typing():
+			async with bot.typing():
 				file = self._template_filename(template_id)
 
 				with self.open_resource('templates/' + file) as res:
 					msg_text = "Oh, " + str(template_id) + ", huh? Let's see, that would be this template:"
-					await self.bot_api.reply_with_file(context, res, file, msg_text)
+					await bot.reply_with_file(res, file, msg_text)
 
-			stop_using_it = await self.bot_api.confirm(context, "Want me to stop using it?")
+			stop_using_it = await bot.confirm("Want me to stop using it?")
 			if not stop_using_it:
-				await self.bot_api.reply(context, "You got it! I'll keep using it.")
+				await bot.reply("You got it! I'll keep using it.")
 			else:
 				self.template_ids.remove(template_id)
 				self.remove_resource('templates/' + file)
 				_log.debug("Removed animeme template " + str(template_id))
-				await self.bot_api.reply(context, "Okay! I'll stop using that template in animemes.")
+				await bot.reply("Okay! I'll stop using that template in animemes.")
 		else:
-			await self.bot_api.reply(context, "Mmm, all right, but I was already not using that template for animemes.")
+			await bot.reply("Mmm, all right, but I was already not using that template for animemes.")
 		return
 
-	async def get_animeme_info(self, context, t_id=None):
+	async def get_animeme_info(self, bot: PluginAPI, t_id=None):
 		if t_id is None:
 			msg = "Sure! I've currently got " + str(len(self.template_ids)) + " images for use with animemes."
-			await self.bot_api.reply(context, msg)
+			await bot.reply(msg)
 		else:
 			if t_id not in self.template_ids:
 				raise BotModuleError("I don't have a template with that ID!")
 			msg = "Oh, sure! Here's template " + str(t_id).zfill(self._template_digits) + ":"
 			file = self._template_filename(t_id)
 			with self.open_resource('templates/' + file) as fp:
-				await self.bot_api.reply_with_file(context, fp, file, msg)
+				await bot.reply_with_file(fp, file, msg)
 
-	async def generate_animeme(self, context, args):
+	async def generate_animeme(self, bot: PluginAPI, args):
 		if len(args) < 1:
 			raise BotSyntaxError("I need at least one line of text to make a meme.")
 		meme_line_1 = args[0].upper()
@@ -359,7 +353,7 @@ class AnimemeModule(BotBehaviorModule):
 			msg += " first."
 			raise BotModuleError(msg)
 
-		async with context.source.typing():
+		async with bot.typing():
 			template_id = random.sample(self.template_ids, 1)[0]
 
 			_log.debug("Creating animeme for template ID " + str(template_id))
@@ -368,10 +362,10 @@ class AnimemeModule(BotBehaviorModule):
 			im = Image.open(self.open_resource('templates/' + self._template_filename(template_id)))
 			":type : Image.Image"
 
-			if context.is_pm:
+			if bot.context.is_pm:
 				self._dm_pen.draw_meme_text(im, meme_line_1, meme_line_2)
 			else:
-				server_id = context.source.guild.id
+				server_id = bot.get_guild().id
 				if server_id not in self._pens:
 					self._pens[server_id] = self._default_pen.copy()
 				self._pens[server_id].draw_meme_text(im, meme_line_1, meme_line_2)
@@ -380,7 +374,7 @@ class AnimemeModule(BotBehaviorModule):
 			im.save(buf, format='PNG')
 			buf.seek(0)
 
-		await self.bot_api.reply_with_file(context, buf, str(template_id) + "-generated.png", "_(" + padded_id + ")_")
+		await bot.reply_with_file(buf, str(template_id) + "-generated.png", "_(" + padded_id + ")_")
 
 	# noinspection PyMethodMayBeStatic
 	async def get_template_preview(self, template_id):

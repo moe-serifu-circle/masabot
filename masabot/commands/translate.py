@@ -1,5 +1,7 @@
 from . import BotBehaviorModule, InvocationTrigger
 from ..util import BotSyntaxError, BotModuleError
+from .. import util
+from ..bot import PluginAPI
 
 import googletrans
 import logging
@@ -11,7 +13,7 @@ _log.setLevel(logging.DEBUG)
 
 class TranslationModule(BotBehaviorModule):
 
-	def __init__(self, bot_api, resource_root):
+	def __init__(self, resource_root: str):
 		help_text = "To translate text, type `tl` followed by the phrase to translate (in quotes):\n\n`tl"
 		help_text += " \"안녕하세요\"`\n\nThe text will be translated to English, and the source language will be"
 		help_text += " automatically detected.\n\nTo set the source language, give the code of the language after the"
@@ -19,7 +21,6 @@ class TranslationModule(BotBehaviorModule):
 		help_text += " the destination language after the source language:\n\n`tl \"안녕하세요\" ko ja`."
 
 		super().__init__(
-			bot_api,
 			name="translate",
 			desc="Translate text",
 			help_text=help_text,
@@ -69,13 +70,7 @@ class TranslationModule(BotBehaviorModule):
 			'ro': 'romanian'
 		}
 
-	async def on_invocation(self, context, metadata, command, *args):
-		"""
-		:type context: masabot.bot.BotContext
-		:type metadata: masabot.util.MessageMetadata
-		:type command: str
-		:type args: str
-		"""
+	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		if len(args) < 1:
 			raise BotSyntaxError("I don't know what you want me to translate...")
 
@@ -89,7 +84,7 @@ class TranslationModule(BotBehaviorModule):
 		if len(args) > 2:
 			dest = args[2]
 
-		async with context.source.typing():
+		async with bot.typing():
 			try:
 				if source is not None:
 					trans = self._translator.translate(text, src=source, dest=dest)
@@ -114,7 +109,7 @@ class TranslationModule(BotBehaviorModule):
 			if trans.pronunciation is not None and trans.pronunciation != trans.text:
 				msg += "Oh, and the reading is:\n```\n" + trans.pronunciation + "\n```"
 
-		await self.bot_api.reply(context, msg)
+		await bot.reply(msg)
 
 
 BOT_MODULE_CLASS = TranslationModule

@@ -4,6 +4,7 @@ from . import BotBehaviorModule, InvocationTrigger
 from ..util import BotModuleError, BotSyntaxError
 from ..http import HttpAgent
 from .. import util
+from ..bot import PluginAPI
 
 
 import urllib.parse
@@ -18,7 +19,7 @@ _log.setLevel(logging.DEBUG)
 
 class WatchListModule(BotBehaviorModule):
 
-	def __init__(self, bot_api, resource_root):
+	def __init__(self, resource_root: str):
 		help_text = "This module accesses your list on Anilist for viewing and updating! You can view your Anilist"
 		help_text += " entries by typing `anilist` by itself, and you can view other users' Anilists by typing their"
 		help_text += " name after the command.\n\nBefore using the anilist module, you will need to give me permission"
@@ -33,7 +34,6 @@ class WatchListModule(BotBehaviorModule):
 		help_text += " work with R-18 shows through my interface, you'll have to do it either in a DM or in a channel"
 		help_text += " marked as NSFW, okay?"
 		super().__init__(
-			bot_api,
 			name="animelist",
 			desc="Manages list of current anime on Anilist",
 			help_text=help_text,
@@ -71,24 +71,18 @@ class WatchListModule(BotBehaviorModule):
 			'anilist-users': self._anilist_users,
 		}
 
-	async def on_invocation(self, context, metadata, command, *args):
-		"""
-		:type context: masabot.bot.BotContext
-		:type metadata: masabot.util.MessageMetadata
-		:type command: str
-		:type args: str
-		"""
+	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		if command == "anilist-auth":
-			if context.author.id not in self._anilist_users:
-				await self.authorize(context)
+			if bot.get_user().id not in self._anilist_users:
+				await self.authorize(bot)
 			else:
-				await self.bot_api.reply(context, "I already have an access token for you!")
+				await bot.reply("I already have an access token for you!")
 		elif command == "anilist":
-			await self._show_anilist(context, args)
+			await self._show_anilist(bot, args)
 		elif command == "anilist-update":
-			await self._add_anilist_episode(context, *args)
+			await self._add_anilist_episode(*args)
 
-	async def _add_anilist_episode(self, context, *args):
+	async def _add_anilist_episode(self, bot: PluginAPI, *args):
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know the name of the show you want to mark down your progress on.")
 		search = args[0]
@@ -102,9 +96,9 @@ class WatchListModule(BotBehaviorModule):
 		else:
 			ep_count = None
 
-		uid = context.author.id
-		async with context.source.typing():
-			anime_list = self.get_user_anime_list(uid, include_nsfw=context.is_nsfw())
+		uid = bot.get_user().id
+		async with bot.typing():
+			anime_list = self.get_user_anime_list(uid, include_nsfw=bot.context.is_nsfw())
 
 			matching_titles = []
 			for x in anime_list:
@@ -177,10 +171,10 @@ class WatchListModule(BotBehaviorModule):
 			msg += ('s' if entry['media']['episodes'] != 1 else '') + '.'
 			if new_status == 'COMPLETED':
 				msg += " Wow! You finished it!"
-		await self.bot_api.reply(context, msg)
+		await bot.reply(msg)
 
-	async def _show_anilist(self, context, args):
-		uid = context.author.id
+	async def _show_anilist(self, bot: PluginAPI, args):
+		uid = bot.get_user().id
 		if len(args) > 0:
 			try:
 				mention = util.parse_mention(args[0], require_type=util.MentionType.USER)
@@ -188,14 +182,14 @@ class WatchListModule(BotBehaviorModule):
 				msg = "I can only look up the anime lists of users, and " + repr(str(args[0])) + " is not a user!"
 				raise BotSyntaxError(msg) from e
 			uid = mention.id
-		async with context.source.typing():
-			anime_list = self.get_user_anime_list(uid, include_nsfw=context.is_nsfw())
-			pager = util.DiscordPager("_(" + context.mention() + "'s Anilist, continued)_")
-			pager.add_line("Okay! Here is " + context.mention() + "'s Anilist:")
+		async with bot.typing():
+			anime_list = self.get_user_anime_list(uid, include_nsfw=bot.context.is_nsfw())
+			pager = util.DiscordPager("_(" + bot.mention_user() + "'s Anilist, continued)_")
+			pager.add_line("Okay! Here is " + bot.mention_user() + "'s Anilist:")
 			pager.add_line()
 			self.format_anime_list(anime_list, pager)
 		for page in pager.get_pages():
-			await self.bot_api.reply(context, page)
+			await bot.reply(page)
 
 	# noinspection PyMethodMayBeStatic
 	def format_anime_list(self, anime_list, pager):
@@ -211,10 +205,10 @@ class WatchListModule(BotBehaviorModule):
 		for anime in anime_list:
 			sorted_by_status[anime['status']].append(anime)
 
-		def format_eps(anime_list, heading, show_eps, pager):
+		def format_eps(anime_list, heading, show_eps, p):
 			if len(anime_list) > 0:
-				pager.add_line(heading + ":")
-				pager.start_code_block()
+				p.add_line(heading + ":")
+				p.start_code_block()
 				for anime in anime_list:
 					list_item = '* "'
 					titles = anime['media']['title']
@@ -227,8 +221,8 @@ class WatchListModule(BotBehaviorModule):
 					list_item += '"'
 					if show_eps:
 						list_item += ' (' + str(anime['progress']) + "/" + str(anime['media']['episodes']) + " episodes)"
-					pager.add_line(list_item)
-				pager.end_code_block()
+					p.add_line(list_item)
+				p.end_code_block()
 
 		format_eps(sorted_by_status['CURRENT'], "Current Anime", True, pager)
 		format_eps(sorted_by_status['REPEATING'], "Repeating", True, pager)
@@ -271,6 +265,7 @@ class WatchListModule(BotBehaviorModule):
 			payload['variables']['status'] = status
 
 		_, resp = cl.request('POST', '/', payload=payload, auth=True)
+		resp: dict = resp  # for pycharm type-checker
 		actual_id = resp['data']['SaveMediaListEntry']['id']
 
 		if actual_id != entry_id:
@@ -336,6 +331,7 @@ class WatchListModule(BotBehaviorModule):
 				}
 			}
 			_, resp = cl.request('POST', '/', payload=payload, auth=True)
+			resp: dict = resp  # for pycharm type checker
 			page_list = resp['data']['Page']['mediaList']
 			for x in page_list:
 				if x['private'] and not include_private:
@@ -351,7 +347,7 @@ class WatchListModule(BotBehaviorModule):
 
 		return full_list
 
-	async def authorize(self, context):
+	async def authorize(self, bot: PluginAPI):
 		auth_payload = {
 			'client_id': self._anilist_id,
 			'redirect_uri': "https://github.com/moe-serifu-circle/masabot/blob/master/docs/oauth2-authorization-code.md",
@@ -360,24 +356,24 @@ class WatchListModule(BotBehaviorModule):
 
 		p = requests.Request('GET', 'https://anilist.co/api/v2/oauth/authorize', params=auth_payload).prepare()
 
-		dm_ctx = await context.to_dm_context()
+		bot = await bot.with_dm_context()
 
 		msg = "Oh! You want to authorize me to use your Anilist profile? Okay! I need you go to this website"
 		msg += " and tell Anilist that it's okay for me to access your profile first, okay?\n\nWhen you finish at that"
 		msg += " website, tell me what the authorization code is and then I'll be able to continue!\n\n" + p.url
 
-		await self.bot_api.reply(dm_ctx, msg)
+		await bot.reply(msg)
 
-		code_url = await self.bot_api.prompt(dm_ctx, "What's the authorization code?", timeout=120)
+		code_url = await bot.prompt("What's the authorization code?", timeout=120)
 		if code_url is None:
 			msg = "I really need you to access that website and tell me what the code is if you want to use Anilist!"
 			msg += " Let me know if you want to try again sometime, okay?"
-			raise BotModuleError(msg, dm_ctx)
+			raise BotModuleError(msg, bot.context)
 
 		parsed_url = urllib.parse.urlparse(code_url)
 		query = urllib.parse.parse_qs(parsed_url.query)
-		if not 'code' in query:
-			raise BotModuleError("That URL doesn't contain a valid authorization code in it!", dm_ctx)
+		if 'code' not in query:
+			raise BotModuleError("That URL doesn't contain a valid authorization code in it!", bot.context)
 		code = query['code']
 
 		token_payload = {
@@ -388,7 +384,7 @@ class WatchListModule(BotBehaviorModule):
 			'code': code
 		}
 
-		async with dm_ctx.source.typing():
+		async with bot.typing():
 			_log.debug("Sending token request to Anilist...")
 			resp = requests.post('https://anilist.co/api/v2/oauth/token', data=token_payload)
 			_log.debug("Response from Anilist: " + repr(resp.text))
@@ -400,24 +396,25 @@ class WatchListModule(BotBehaviorModule):
 
 			# TODO: actually use the 'expires-in' response object
 			if 'access_token' in resp_json:
-				self._anilist_users[context.author.id] = {
+				self._anilist_users[bot.get_user().id] = {
 					'token': resp_json['access_token']
 				}
-				self._anilist_clients[context.author.id] = self._create_anilist_client(context.author.id)
-				_log.debug("User " + str(context.author.id) + " is now authenticated to use Anilist")
+				self._anilist_clients[bot.get_user().id] = self._create_anilist_client(bot.get_user().id)
+				_log.debug("User " + str(bot.get_user().id) + " is now authenticated to use Anilist")
 				_log.debug("Getting Anilist UID...")
-				_, user_data = self._anilist_clients[context.author.id].request('POST', '/', auth=True, payload={
+				_, user_data = self._anilist_clients[bot.get_user().id].request('POST', '/', auth=True, payload={
 					'query': "{Viewer{id}}"
 				})
+				user_data: dict = user_data  # for pycharm type-checker
 				anilist_id = user_data['data']['Viewer']['id']
 				_log.debug("Got back UID: " + str(anilist_id))
 
-				self._anilist_users[context.author.id]['id'] = anilist_id
+				self._anilist_users[bot.get_user().id]['id'] = anilist_id
 			else:
 				msg = "There was a problem when I tried to use that authorization code! Maybe we can try again in a"
 				msg += " bit?"
-				raise BotModuleError(msg, dm_ctx)
-		await self.bot_api.reply(dm_ctx, "Hooray! Now you can use my Anilist functionality!")
+				raise BotModuleError(msg, bot.context)
+		await bot.reply("Hooray! Now you can use my Anilist functionality!")
 
 	def _create_anilist_client(self, uid):
 		def auth_func(req):
