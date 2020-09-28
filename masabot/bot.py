@@ -484,7 +484,7 @@ class MasaBot(object):
 				pager.add_line("...oh no. This doesn't seem right at all! I can't seem to see any settings at all!")
 			else:
 				for k in store:
-					pager.add_line("`" + str(k) + "`, with type `" + store.get_key_type(k) + "`")
+					pager.add_line("`" + str(k) + "`, with type `" + store.get_key(k).type.name + "`")
 		elif len(args) == 1:
 			key = args[0]
 			context_restriction = self.get_setting_restrictions(module_name, key)
@@ -523,6 +523,7 @@ class MasaBot(object):
 				msg += " just in case you forgot, you can check which settings I have by using this command by itself,"
 				msg += " if you need to."
 			else:
+				store_key = store.get_key(key)
 				if context_restriction is None:
 					if api.context.is_pm:
 						server_id = None
@@ -537,14 +538,24 @@ class MasaBot(object):
 
 				if server_id is None:
 					api.require_master(module_name + " settings set " + repr(key), None)
+					if store_key.prompt_before:
+						if not await api.confirm(store_key.prompt_before):
+							await api.reply("Okay! I'll leave that setting alone, then.")
+							return
 					try:
+						old_value = store.get_global(key)
 						store.set_global(key, new_value)
 						updated_value = store.get_global(key)
 					except ValueError as e:
 						raise BotSyntaxError(str(e))
 				else:
 					await api.require_op(module_name + " settings set " + repr(key))
+					if store_key.prompt_before:
+						if not await api.confirm(store_key.prompt_before):
+							await api.reply("Okay! I'll leave that setting alone, then.")
+							return
 					try:
+						old_value = store.get(server_id, key)
 						store.set(server_id, key, new_value)
 						updated_value = store.get(server_id, key)
 					except ValueError as e:
@@ -554,10 +565,25 @@ class MasaBot(object):
 					log_message += "<CORE>:"
 				else:
 					log_message += module_name + ":"
-				log_message += repr(key) + " to new value " + repr(updated_value)
+				log_message += repr(key) + " from " + repr(old_value) + " to new value " + repr(updated_value)
 				_log.debug(log_message)
 				self._save_all()
-				msg = "Certainly! `" + key + "` has been updated to " + repr(updated_value) + "!"
+				await api.reply("Certainly! `" + key + "` has been updated to " + repr(updated_value) + "!")
+				if store_key.call_module_on_alter:
+					if module_name is None:
+						raise ValueError("core module cannot hook into setting mutations")
+					bot_module = self._bot_modules[module_name]
+					# noinspection PyBroadException
+					try:
+						await bot_module.on_setting_change(api, key, old_value, updated_value)
+					except Exception:
+						_log.debug("got exception while running on_settings hook; reverting change")
+						if server_id is None:
+							store.set_global(key, old_value)
+						else:
+							store.set(server_id, key, old_value)
+						raise
+				return
 			pager.add_line(msg)
 
 		for page in pager.get_pages():
@@ -1328,21 +1354,23 @@ class MasaBot(object):
 			self.module_settings[module_name] = store
 
 	def _save_all(self):
-		state_dict = {'__BOT__': {
-			'operators': {op: self._operators[op] for op in self._operators if self._operators[op]['role'] != 'master'},
-			'invocation_replacements': dict(self._invocation_replacements),
-			'settings': {
-				'core': {
-					'global': self.core_settings.get_global_state(),
-					'servers': {server.id: self.core_settings.get_state(server.id) for server in self.connected_guilds},
-				},
-				'modules': {mod_name: {
-					'global': self.module_settings[mod_name].get_global_state(),
-					'servers': {server.id: self.module_settings[mod_name].get_state(server.id) for server in self.connected_guilds}
-				} for mod_name in self._bot_modules},
-			}
-		},
-		'__VERSION__': version.get_version()}
+		state_dict = {
+			'__BOT__': {
+				'operators': {op: self._operators[op] for op in self._operators if self._operators[op]['role'] != 'master'},
+				'invocation_replacements': dict(self._invocation_replacements),
+				'settings': {
+					'core': {
+						'global': self.core_settings.get_global_state(),
+						'servers': {server.id: self.core_settings.get_state(server.id) for server in self.connected_guilds},
+					},
+					'modules': {mod_name: {
+						'global': self.module_settings[mod_name].get_global_state(),
+						'servers': {server.id: self.module_settings[mod_name].get_state(server.id) for server in self.connected_guilds}
+					} for mod_name in self._bot_modules},
+				}
+			},
+			'__VERSION__': version.get_version()
+		}
 
 		for m_name in self._bot_modules:
 			mod = self._bot_modules[m_name]

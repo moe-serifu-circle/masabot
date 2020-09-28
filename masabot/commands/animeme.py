@@ -1,7 +1,7 @@
-from typing import Dict
+from typing import Any
 
 from . import BotBehaviorModule, InvocationTrigger
-from .. import util
+from .. import util, settings
 from ..util import BotSyntaxError, BotModuleError
 from ..bot import PluginAPI
 
@@ -31,9 +31,20 @@ class AnimemeModule(BotBehaviorModule):
 		help_text += " In addition, the `animeme-info` command will tell how many template IDs there currently are, and"
 		help_text += " you can see any current template by running `animeme-info` followed by the template ID!\n\n"
 		help_text += "The `animeme-list` command will show a list of all template IDs that I'm currently using!\n\n"
-		help_text += "The `animeme-layout` command shows the values of my text layout engine. Give the name of a"
-		help_text += " parameter after the command and I'll tell what its value is! Oh, and ops can also set the value"
-		help_text += " of a parameter by giving the new value after the name."
+		help_text += "__Settings__\n"
+		help_text += "Use the `settings animeme` command to set these:\n"
+		help_text += " * `kerning` - The number of pixes between letters.\n"
+		help_text += " * `spacing` - The amount of space between words, measured as this value multiplied by the width"
+		help_text += " of a space.\n"
+		help_text += " * `text-border` - Width in pixels of the border around text.\n"
+		help_text += " * `min-font` - The minimum size in points that text can be drawn at to avoid going to a new line.\n"
+		help_text += " * `max-font` - The maximum size in points that text can be drawn at.\n"
+		help_text += " * `template-width` - The width of the templates used to generate animemes. This is a global value"
+		help_text += " that is used by all servers I'm connected to."
+
+		width_prompt = "Ah, well, I can do that, but I'll have to resize all the templates"
+		width_prompt += " I'm already using, and some of them might lose quality! Also, it"
+		width_prompt += " might take me a little bit. Are you sure you want me to do that?"
 
 		super().__init__(
 			name="animeme",
@@ -44,11 +55,26 @@ class AnimemeModule(BotBehaviorModule):
 				InvocationTrigger('animeme-add'),
 				InvocationTrigger('animeme-remove'),
 				InvocationTrigger('animeme-info'),
-				InvocationTrigger('animeme-layout'),
 				InvocationTrigger('animeme-list')
 			],
 			resource_root=resource_root,
-			has_state=True
+			has_state=True,
+			settings=[
+				settings.Key(settings.key_type_int_range(min=0), 'kerning', default=2),
+				settings.Key(settings.key_type_float_range(min=0.0), 'spacing', default=1.5),
+				settings.Key(settings.key_type_int_range(min=0), 'text-border', default=1),
+				settings.Key(settings.key_type_int_range(min=2), 'min-font', default=30),
+				settings.Key(settings.key_type_int_range(min=2), 'max-font', default=60),
+			],
+			global_settings=[
+				settings.Key(
+					settings.key_type_int_range(min=1),
+					'template-width',
+					default=640,
+					prompt_before=width_prompt,
+					call_module_on_alter=True
+				),
+			]
 		)
 
 		self.template_ids = set()
@@ -56,12 +82,21 @@ class AnimemeModule(BotBehaviorModule):
 		self._pass = ""
 		self._last_new_template = -1
 		self._template_digits = 6
-		self._template_width = 640
-		self._default_pen = Pen(60, 30, 'fonts/anton/anton-regular.ttf')
-		self._default_pen.set_color(fg="white", bg="black")
-		self._pens = {}
-		""":type: Dict[int, Pen]"""
-		self._dm_pen = self._default_pen.copy()
+
+	# noinspection PyMethodMayBeStatic
+	async def create_pen(self, bot: PluginAPI) -> 'Pen':
+		kerning = await bot.get_setting('kerning')
+		spacing = await bot.get_setting('spacing')
+		border = await bot.get_setting('text-border')
+		min_font = await bot.get_setting('min-font')
+		max_font = await bot.get_setting('max-font')
+
+		p = Pen(max_font, min_font, 'fonts/anton/anton-regular.ttf')
+		p.set_color(fg="white", bg="black")
+		p.border_width = border
+		p.word_spacing_factor = spacing
+		p.kerning = kerning
+		return p
 
 	def load_config(self, config):
 		if 'username' not in config:
@@ -76,28 +111,11 @@ class AnimemeModule(BotBehaviorModule):
 			self.template_ids = set(state['template-ids'])
 		if 'last-added' in state:
 			self._last_new_template = state['last-added']
-		if 'template-width' in state:
-			self._template_width = state['template-width']
-
-	def set_state(self, server: int, state: Dict):
-		self._pens[server] = self._default_pen.copy()
-		if 'font-layout' in state:
-			self._pens[server].set_from_state_dict(state['font-layout'])
-
-	def get_state(self, server: int) -> Dict:
-		if server not in self._pens:
-			return {
-				'font-layout': self._default_pen.get_state_dict()
-			}
-		return {
-			'font-layout': self._pens[server].get_state_dict()
-		}
 
 	def get_global_state(self):
 		new_state = {
 			'template-ids': list(self.template_ids),
 			'last-added': self._last_new_template,
-			'template-width': self._template_width,
 		}
 		return new_state
 
@@ -113,8 +131,6 @@ class AnimemeModule(BotBehaviorModule):
 			if len(args) > 0:
 				t_id = self._validate_template_id(args[0])
 			await self.get_animeme_info(bot, t_id)
-		elif command == 'animeme-layout':
-			await self.set_or_get_layout_param(bot, args)
 		elif command == 'animeme-list':
 			await self.list_animemes(bot)
 
@@ -131,126 +147,17 @@ class AnimemeModule(BotBehaviorModule):
 		for p in pages:
 			await bot.reply(p)
 
-	async def set_or_get_layout_param(self, bot: PluginAPI, args):
-		layout_params = ['kerning', 'template-width', 'spacing', 'border', 'minfont', 'maxfont']
-		if len(args) < 1:
-			msg = "I need to know what layout parameter you want to set or get, it can be any one of these: "
-			msg += ','.join('`' + x + '`' for x in layout_params) + '.'
-			raise BotSyntaxError(msg)
+	async def on_setting_change(self, bot: PluginAPI, key: str, old_value: Any, new_value: Any):
+		if key != 'template-width':
+			return
 
-		param = args[0]
-
-		if param not in layout_params:
-			msg = "That's not a valid layout parameter! It has to be one of these: "
-			msg += ','.join('`' + x + '`' for x in layout_params) + ', okay?'
-			raise BotSyntaxError(msg)
-
-		if len(args) > 1:
-			await self.set_layout_param(bot, param, args[1])
-		else:
-			await self.get_layout_param(bot, param)
-
-	async def set_layout_param(self, bot: PluginAPI, param, value):
-		if not bot.context.is_pm:
-			server_id = await bot.require_server()
-			await bot.require_op("animeme-layout " + str(param) + " <value>")
-			if server_id not in self._pens:
-				self._pens[server_id] = self._default_pen.copy()
-			pen = self._pens[server_id]
-		else:
-			bot.require_master("animeme-layout " + str(param) + " <value>", self.name)
-			pen = self._dm_pen
-
-		if param == 'kerning':
-			value = util.str_to_int(value, min_allowed=0, name="kerning")
-			if pen.kerning == value:
-				msg = "Haha, the kerning is already set to " + str(value) + ", so yay!"
-			else:
-				pen.kerning = value
-				_log.debug("Set animeme kerning to " + str(value))
-				msg = "Okay, I'll set the kerning to " + str(value) + " pixels!"
-		elif param == 'template-width':
-			value = util.str_to_int(value, min_allowed=1, name="template width")
-			if self._template_width == value:
-				msg = "Ah, well, the template width is already set to " + str(value) + ", so yay!"
-			else:
-				msg = "Ah, well, I can do that, but I'll have to resize all the templates I'm already using, and some"
-				msg += " of them might lose quality! Also, it might take me a little bit. Are you sure you want me to"
-				msg += " do that?"
-				if await bot.confirm(msg):
-					self._template_width = value
-					_log.debug("Set animeme template width to " + str(value))
-					msg = "Okay, I've changed the width, but now I need to resize my images! I'll let you know as soon"
-					msg += " as I'm done!"
-					await bot.reply(msg)
-					_log.debug("Resize started, " + str(len(self.template_ids)) + " to resize...")
-					await self._resize_templates()
-					_log.debug("Resize of templates completed")
-					msg = "All done, " + bot.mention_user() + "! I resized all my templates!"
-				else:
-					msg = "Okay! I'll leave my templates alone, then."
-		elif param == 'spacing':
-			value = util.str_to_float(value, min_allowed=0, name="word spacing")
-			if pen.word_spacing_factor == value:
-				msg = "Mmm, the word spacing is already set to " + str(value) + "..."
-			else:
-				pen.word_spacing_factor = value
-				_log.debug("Set animeme word spacing factor to " + str(value))
-				msg = "Okay, I'll set the word spacing to " + str(value) + "x the width of a single space!"
-		elif param == 'border':
-			value = util.str_to_int(value, min_allowed=0, name="border width")
-			if pen.border_width == value:
-				msg = "Oh, the border width is already set to " + str(value) + "."
-			else:
-				pen.border_width = value
-				_log.debug("Set animeme border width to " + str(value))
-				msg = "Okay, I'll set the border width to " + str(value) + " pixels!"
-		elif param == 'minfont':
-			value = util.str_to_int(value, min_allowed=2, name="minimum font size")
-			if pen.min_font_size == value:
-				msg = "Oh, the minimum font size is already set to " + str(value) + "."
-			else:
-				pen.min_font_size = value
-				_log.debug("Set animeme minimum font size to " + str(value))
-				msg = "Okay, I'll set the minimum font size to " + str(value) + " points!"
-		elif param == 'maxfont':
-			value = util.str_to_int(value, min_allowed=2, name="maximum font size")
-			if pen.max_font_size == value:
-				msg = "Oh, the maximum font size is already set to " + str(value) + "."
-			else:
-				pen.max_font_size = value
-				_log.debug("Set animeme maximum font size to " + str(value))
-				msg = "Okay, I'll set the maximum font size to " + str(value) + " points!"
-		else:
-			raise BotSyntaxError("I don't know anything about the `" + param + "` layout parameter... what is that?")
-
+		msg = "Okay, I've changed the width, but now I need to resize my images! I'll let you know as soon"
+		msg += " as I'm done!"
 		await bot.reply(msg)
-
-	async def get_layout_param(self, bot: PluginAPI, param):
-		if not bot.context.is_pm:
-			server_id = await bot.require_server()
-			if server_id not in self._pens:
-				self._pens[server_id] = self._default_pen.copy()
-			pen = self._pens[server_id]
-		else:
-			pen = self._dm_pen
-
-		if param == 'kerning':
-			msg = "Sure! I've got the kerning set to " + str(pen.kerning) + " pixels right now."
-		elif param == 'template-width':
-			msg = "Sure! I've got the template width set to " + str(self._template_width) + " pixels right now."
-		elif param == 'spacing':
-			msg = "Sure! I've got the word spacing set to " + str(pen.word_spacing_factor) + " times the width of"
-			msg += " a regular space."
-		elif param == 'border':
-			msg = "Sure! I'm currently setting a " + str(pen.border_width) + " pixel border on the text."
-		elif param == 'minfont':
-			msg = "Sure! The minimum size of the font is set to " + str(pen.min_font_size) + " points."
-		elif param == 'maxfont':
-			msg = "Sure! The maximum size of the font is set to " + str(pen.max_font_size) + " points."
-		else:
-			raise BotSyntaxError("I don't know anything about the `" + param + "` layout parameter... what is that?")
-
+		_log.debug(util.add_context(bot.context, "Resize started, {:d} to resize...", len(self.template_ids)))
+		await self._resize_templates(new_value)
+		_log.debug(util.add_context(bot.context, "Resize of templates completed"))
+		msg = "All done, " + bot.mention_user() + "! I resized all my templates!"
 		await bot.reply(msg)
 
 	async def add_animeme(self, bot: PluginAPI, metadata, args):
@@ -283,9 +190,9 @@ class AnimemeModule(BotBehaviorModule):
 				new_template = True
 
 		async with bot.typing():
+			template_width = await bot.get_setting('template-width')
 			template_data = metadata.attachments[0].download()
-
-			template_data = self._normalize_template(template_data)
+			template_data = self._normalize_template(template_width, template_data)
 
 			res_fp = self.open_resource('templates/' + self._template_filename(template_id), for_writing=True)
 			res_fp.write(template_data)
@@ -364,13 +271,8 @@ class AnimemeModule(BotBehaviorModule):
 			im = Image.open(self.open_resource('templates/' + self._template_filename(template_id)))
 			":type : Image.Image"
 
-			if bot.context.is_pm:
-				self._dm_pen.draw_meme_text(im, meme_line_1, meme_line_2)
-			else:
-				server_id = bot.get_guild().id
-				if server_id not in self._pens:
-					self._pens[server_id] = self._default_pen.copy()
-				self._pens[server_id].draw_meme_text(im, meme_line_1, meme_line_2)
+			pen = await self.create_pen(bot)
+			pen.draw_meme_text(im, meme_line_1, meme_line_2)
 
 			buf = io.BytesIO()
 			im.save(buf, format='PNG')
@@ -387,7 +289,7 @@ class AnimemeModule(BotBehaviorModule):
 		if not m:
 			raise BotSyntaxError("Not a valid template ID")
 
-		filename = m.group(1)[m.group(1).index('/')+1:]
+		filename = m.group(1)[m.group(1).index('/') + 1:]
 		response = requests.get("https://" + m.group(1))
 
 		return response.content, filename
@@ -430,29 +332,30 @@ class AnimemeModule(BotBehaviorModule):
 
 		return temp_id
 
-	async def _resize_templates(self):
+	async def _resize_templates(self, width: int):
 		for template_id in self.template_ids:
 			with self.open_resource('templates/' + self._template_filename(template_id)) as fp:
 				data = fp.read()
-			data = self._normalize_template(data)
+			data = self._normalize_template(width, data)
 			with self.open_resource('templates/' + self._template_filename(template_id), for_writing=True) as fp:
 				fp.write(data)
 				fp.flush()
 			_log.debug("Resized animeme template " + str(template_id))
 			await asyncio.sleep(0.1)
 
-	def _normalize_template(self, template_data):
+	# noinspection PyMethodMayBeStatic
+	def _normalize_template(self, width: int, template_data):
 		with io.BytesIO(template_data) as buf:
 			im = Image.open(buf).convert("RGB")
 			""":type : Image.Image"""
-			if im.width != self._template_width:
-				ratio = self._template_width / float(im.width)
+			if im.width != width:
+				ratio = width / float(im.width)
 				new_height = round(im.height * ratio)
 				if ratio > 1:
 					resample_algo = Image.HAMMING
 				else:
 					resample_algo = Image.LANCZOS
-				im = im.resize((self._template_width, new_height), resample_algo)
+				im = im.resize((width, new_height), resample_algo)
 
 			with io.BytesIO() as out_buf:
 				im.save(out_buf, format='PNG')
@@ -508,37 +411,12 @@ class Pen(object):
 		self.kerning = 2
 		self.word_spacing_factor = 1.5
 
-	def copy(self) -> 'Pen':
-		state = self.get_state_dict()
-		p = Pen(self.max_font_size, self.min_font_size, self._default_font)
-		p.set_from_state_dict(state)
-		p._fg_color = self._fg_color
-		p._bg_color = self._bg_color
-		return p
-
 	# noinspection PyMethodMayBeStatic
 	def draw_meme_text(self, im, upper, lower):
 		self.set_image(im)
 		self.draw_top_aligned_text(upper)
 		if lower is not None and lower != '':
 			self.draw_bottom_aligned_text(lower)
-
-	def set_from_state_dict(self, state):
-		self.border_width = state.get('border-width', self.border_width)
-		self.kerning = state.get('kerning', self.kerning)
-		self.word_spacing_factor = state.get('spacing-factor', self.word_spacing_factor)
-		self.min_font_size = state.get('min-font-size', self.min_font_size)
-		self.max_font_size = state.get('max-font-size', self.max_font_size)
-
-	def get_state_dict(self):
-		d = {
-			'border-width': self.border_width,
-			'kerning': self.kerning,
-			'spacing-factor': self.word_spacing_factor,
-			'min-font-size': self.min_font_size,
-			'max-font-size': self.max_font_size
-		}
-		return d
 
 	def set_image(self, im):
 		self._image = im

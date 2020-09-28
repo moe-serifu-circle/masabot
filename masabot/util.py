@@ -78,7 +78,7 @@ def add_context(ctx: Any, message: str, *params) -> str:
 		context_name = "Channel of Unknown Type"
 
 	if len(params) > 0:
-		message = message.format(params)
+		message = message.format(*params)
 
 	return "[{:s}]: {:s}".format(context_name, message)
 

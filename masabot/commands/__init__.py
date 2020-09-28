@@ -3,7 +3,7 @@ import os.path
 import logging
 import pathlib
 
-from typing import Optional, Sequence, Tuple, Dict, Union, List
+from typing import Optional, Sequence, Tuple, Dict, Union, List, Any
 
 from .. import util, settings as masabotsettings
 from ..pluginapi import PluginAPI
@@ -218,6 +218,9 @@ class BotBehaviorModule(object):
 		:param message: The text of the message.
 		:param mentions: The mentions, not necessarily in order.
 		"""
+		pass
+
+	async def on_setting_change(self, bot: PluginAPI, key: str, old_value: Any, new_value: Any):
 		pass
 
 	async def on_regex_match(self, bot: PluginAPI, metadata: util.MessageMetadata, *match_groups: str):

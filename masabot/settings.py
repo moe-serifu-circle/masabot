@@ -21,6 +21,7 @@ class _IntKeyType(_KeyType):
 		super().__init__(name='int', default_default=0)
 
 	def parse(self, value: str) -> int:
+		value = str(value)
 		try:
 			int_val = int(value)
 		except ValueError:
@@ -30,7 +31,7 @@ class _IntKeyType(_KeyType):
 
 class _IntRangeKeyType(_KeyType):
 	def __init__(self, min_allowed: Optional[int] = None, max_allowed: Optional[int] = None):
-		if min_allowed is not None and max_allowed is not None and min_allowed >= max_allowed:
+		if min_allowed is not None and max_allowed is not None and int(min_allowed) >= int(max_allowed):
 			raise ValueError("min_allowed must be less than max_allowed if both are specified")
 		if min_allowed is None and max_allowed is None:
 			raise ValueError("both min_allowed and max_allowed cannot be unspecified; use _IntKeyType for that")
@@ -46,10 +47,10 @@ class _IntRangeKeyType(_KeyType):
 			range_name += "INF)"
 
 		zero_val = 0
-		if min_allowed is not None and min_allowed > zero_val:
-			zero_val = min_allowed
-		if max_allowed is not None and max_allowed < zero_val:
-			zero_val = max_allowed
+		if min_allowed is not None and int(min_allowed) > zero_val:
+			zero_val = int(min_allowed)
+		if max_allowed is not None and int(max_allowed) < zero_val:
+			zero_val = int(max_allowed)
 
 		super().__init__(name=range_name, default_default=zero_val)
 		self.min: Optional[int] = None
@@ -61,6 +62,7 @@ class _IntRangeKeyType(_KeyType):
 			self.max = int(max_allowed)
 
 	def parse(self, value: str) -> int:
+		value = str(value)
 		try:
 			int_val = int(value)
 		except ValueError:
@@ -80,12 +82,88 @@ class _PercentKeyType(_KeyType):
 		super().__init__(name='percent', default_default=0.0)
 
 	def parse(self, value: str) -> float:
+		value = str(value)
+		if value.endswith("%"):
+			value = value[:-1]
+			try:
+				fval = float(value)
+			except ValueError:
+				raise ValueError("That setting is a percentage, and has to be set to a number between 0 and 100 when using %")
+			if fval < 0 or fval > 100:
+				raise ValueError("That setting is a percentage, and has to be set to a number between 0 and 100 when using %")
+			value = fval / 100.0
+
 		try:
 			float_val = float(value)
 		except ValueError:
 			raise ValueError("That setting is a percentage, and has to be set to a number between 0 and 1")
 		if float_val < 0.0 or float_val > 1.0:
 			raise ValueError("That setting is a percentage, and has to be set to a number between 0 and 1")
+		return float_val
+
+
+class _FloatKeyType(_KeyType):
+	def __init__(self):
+		super().__init__(name='float', default_default=0.0)
+
+	def parse(self, value: str) -> float:
+		value = str(value)
+		try:
+			float_val = float(value)
+		except ValueError:
+			raise ValueError("That setting has to be set to a number")
+		if float_val < 0.0 or float_val > 1.0:
+			raise ValueError("That setting has to be set to a number")
+		return float_val
+
+
+class _FloatRangeKeyType(_KeyType):
+	def __init__(self, min_allowed: Optional[float] = None, max_allowed: Optional[float] = None):
+		if min_allowed is not None and max_allowed is not None and float(min_allowed) >= float(max_allowed):
+			raise ValueError("min_allowed must be less than max_allowed if both are specified")
+		if min_allowed is None and max_allowed is None:
+			raise ValueError("both min_allowed and max_allowed cannot be unspecified; use _FloatKeyType for that")
+		if min_allowed is not None and max_allowed is not None and float(min_allowed) == 0.0 and float(max_allowed) == 1.0:
+			raise ValueError("float range between 0 and 1 is a percent; use _PercentKeyType for that")
+
+		range_name = "float-range"
+		if min_allowed is not None:
+			range_name += "[" + str(float(min_allowed)) + ", "
+		else:
+			range_name += "(-INF, "
+		if max_allowed is not None:
+			range_name += str(float(max_allowed)) + "]"
+		else:
+			range_name += "INF)"
+
+		zero_val = 0
+		if min_allowed is not None and float(min_allowed) > zero_val:
+			zero_val = float(min_allowed)
+		if max_allowed is not None and float(max_allowed) < zero_val:
+			zero_val = float(max_allowed)
+
+		super().__init__(name=range_name, default_default=zero_val)
+		self.min: Optional[float] = None
+		self.max: Optional[float] = None
+
+		if min_allowed is not None:
+			self.min = float(min_allowed)
+		if max_allowed is not None:
+			self.max = float(max_allowed)
+
+	def parse(self, value: str) -> float:
+		value = str(value)
+		try:
+			float_val = float(value)
+		except ValueError:
+			raise ValueError("That setting has to be set to a number")
+
+		if self.min is not None and float_val < self.min:
+			raise ValueError("That setting has to be set to at least " + repr(self.min))
+
+		if self.max is not None and float_val > self.max:
+			raise ValueError("That setting can't be any bigger than " + repr(self.min))
+
 		return float_val
 
 
@@ -101,27 +179,60 @@ class _StringKeyType(_KeyType):
 key_type_int = _IntKeyType()
 key_type_percent = _PercentKeyType()
 key_type_string = _StringKeyType()
+key_type_float = _FloatKeyType()
 
 
 def key_type_int_range(min: Optional[int] = None, max: Optional[int] = None):
 	return _IntRangeKeyType(min, max)
 
 
+def key_type_float_range(min: Optional[float] = None, max: Optional[float] = None):
+	return _FloatRangeKeyType(min, max)
+
+
+# TODO: incorporate context limitations in the key obj itself instead of maintaining a key metadata in core
 # TODO: incorporate standardized setting help by allowing keys to give a help string.
 class Key:
 	def __init__(self, key_type: _KeyType, name: str, **kwargs):
+		"""
+		Create a new Key.
+
+		:param key_type: The type of the key.
+		:param name: The name of the key.
+		:param kwargs: The following additional options are supported:
+		`default` - Set the default for the key.
+		`prompt_before` - Gives a string to have as the prompt before it is updated. Default, with none specified
+		is to require no prompt.
+		`call_module_on_alter` - Specifies that the module on_settings_change should be called when the value
+		is updated. Default is False.
+		"""
 		self.name = name
 		self.type = key_type
 		if 'default' in kwargs:
 			self.default = self.type.parse(kwargs['default'])
 		else:
 			self.default = self.type.default_default
+		self.prompt_before: Optional[str] = kwargs.get('prompt_before', None)
+		self.call_module_on_alter: bool = kwargs.get('call_module_on_alter', False)
+
+	def __str__(self):
+		msg = "Key[{:s}, {:s}, default={!r}, prompt_before={:s}, call_on_alter={:s}]"
+		prompt_text = "True" if self.prompt_before is not None else "False"
+		on_alter_text = "True" if self.call_module_on_alter else "False"
+		return msg.format(self.type.name, self.name, self.default, prompt_text, on_alter_text)
 
 	def parse(self, value: str) -> Any:
 		return self.type.parse(value)
 
 	def clone(self) -> 'Key':
-		return Key(self.type, self.name, default=self.default)
+		return Key(
+			self.type,
+			self.name,
+			default=self.default,
+			prompt_before=self.prompt_before,
+			call_module_on_alter=self.call_module_on_alter
+		)
+
 
 
 class SettingsStore:
@@ -166,16 +277,16 @@ class SettingsStore:
 		self._registered_keys[key.name] = key
 		self.set_all(key.name, key.default)
 
-	def get_key_type(self, key: str) -> str:
+	def get_key(self, key_name: str) -> Key:
 		"""
-		Get the type of a key. If the key does not currently exist, a KeyError is raised.
-		:param key: The key to get the type of.
-		:return: The type.
+		Get the Key object for a given key name. If the key does not currently exist, a KeyError is raised.
+		:param key_name: The name of the Key to get.
+		:return: The key.
 		"""
-		if key not in self._registered_keys:
-			raise KeyError("key does not exist in settings: " + repr(key))
+		if key_name not in self._registered_keys:
+			raise KeyError("key does not exist in settings: " + repr(key_name))
 
-		return self._registered_keys[key].type.name
+		return self._registered_keys[key_name]
 
 	def get(self, server: int, key: str) -> Any:
 		"""
@@ -190,6 +301,8 @@ class SettingsStore:
 
 		if server not in self._settings:
 			self._settings[server] = {}
+
+		if key not in self._settings[server]:
 			for k in self._registered_keys:
 				key_obj = self._registered_keys[k]
 				self._settings[server][k] = key_obj.default
@@ -204,6 +317,11 @@ class SettingsStore:
 		"""
 		if key not in self._registered_keys:
 			raise KeyError("key does not exist in settings: " + repr(key))
+
+		if key not in self._global_settings:
+			for k in self._registered_keys:
+				key_obj = self._registered_keys[k]
+				self._global_settings[k] = key_obj.default
 		return self._global_settings[key]
 
 	def set(self, server: int, key: str, value: Any):
