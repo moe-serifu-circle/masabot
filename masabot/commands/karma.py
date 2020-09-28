@@ -1,5 +1,3 @@
-from typing import Sequence
-
 from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
 from ..util import BotSyntaxError
 from .. import util
@@ -186,7 +184,7 @@ class KarmaModule(BotBehaviorModule):
 
 	async def configure_buzzkill(self, bot: PluginAPI, args):
 		if len(args) > 0:
-			await bot.require_op("karma-buzzkill <limit>", self.name)
+			await bot.require_op("karma-buzzkill <limit>")
 			try:
 				new_limit = int(args[0])
 			except ValueError:
@@ -255,10 +253,12 @@ class KarmaModule(BotBehaviorModule):
 
 		self._karma[uuid][server_id] += amount
 
-		_log.debug("Modified karma of user " + str(uuid) + " by " + str(amount) + "; new total " + str(self._karma[uuid][server_id]))
+		new_total = str(self._karma[uuid][server_id])
+		_log.debug("Modified karma of user " + str(uuid) + " by " + str(amount) + "; new total " + new_total)
 
 		if random.random() < self._tsundere_chance and amount > 0:
-			msg = "F-fine, <@" + str(uuid) + ">'s karma is now " + str(self._karma[uuid][server_id]) + ". B-b-but it's not like I like"
+			msg = "F-fine, <@" + str(uuid) + ">'s karma is now " + str(self._karma[uuid][server_id])
+			msg += ". B-b-but it's not like I like"
 			msg += " them or anything weird like that. So don't get the wrong idea! B-baka..."
 		else:
 			msg = "Okay! <@" + str(uuid) + ">'s karma is now " + str(self._karma[uuid][server_id])

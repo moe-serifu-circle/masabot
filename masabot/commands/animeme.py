@@ -1,4 +1,4 @@
-from typing import Dict, Sequence
+from typing import Dict
 
 from . import BotBehaviorModule, InvocationTrigger
 from .. import util
@@ -151,7 +151,7 @@ class AnimemeModule(BotBehaviorModule):
 	async def set_layout_param(self, bot: PluginAPI, param, value):
 		if not bot.context.is_pm():
 			server_id = await bot.require_server()
-			await bot.require_op("animeme-layout " + str(param) + " <value>", self.name, server=server_id)
+			await bot.require_op("animeme-layout " + str(param) + " <value>")
 			if server_id not in self._pens:
 				self._pens[server_id] = self._default_pen.copy()
 			pen = self._pens[server_id]
@@ -252,7 +252,7 @@ class AnimemeModule(BotBehaviorModule):
 		await bot.reply(msg)
 
 	async def add_animeme(self, bot: PluginAPI, metadata, args):
-		await bot.require_op("animeme-add", self.name)
+		await bot.require_op("animeme-add")
 		if not metadata.has_attachments() or not metadata.attachments[0].is_image():
 			raise BotSyntaxError("I need to know the image you want me to add, but you didn't attach one!")
 
@@ -300,7 +300,7 @@ class AnimemeModule(BotBehaviorModule):
 		await bot.reply("Okay! I'll start using that new template to generate animemes ^_^")
 
 	async def remove_animeme(self, bot: PluginAPI, args):
-		await bot.require_op("animeme-remove", self.name)
+		await bot.require_op("animeme-remove")
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know the ID of the template you want me to remove.")
@@ -486,9 +486,9 @@ class Pen(object):
 		Create a new one.
 		"""
 		self._image = None
-		""":type : Image.Image"""
+		""":type : Optional[Image.Image]"""
 		self._ctx = None
-		""":type : ImageDraw.ImageDraw"""
+		""":type : Optional[ImageDraw.ImageDraw]"""
 		self._fg_color = "black"
 		self._bg_color = "white"
 		self._pos_x = 0

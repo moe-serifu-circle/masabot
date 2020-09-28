@@ -1,8 +1,6 @@
 # Handles settings registration and getting.
-from typing import Dict, Any, Union, Callable, Optional
+from typing import Dict, Any, Union
 import logging
-
-from masabot.util import DiscordPager
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
@@ -44,42 +42,34 @@ class _PercentKeyType(_KeyType):
 		return float_val
 
 
+class _StringKeyType(_KeyType):
+	def __init__(self):
+		super().__init__(name='string', default_default="")
+
+	def parse(self, value: str) -> str:
+		return str(value)
+
+
 # set up some singletons here; using oo so we can get parse() polymorphism
-_int_key_type = _IntKeyType()
-_percent_key_type = _PercentKeyType()
+key_type_int = _IntKeyType()
+key_type_percent = _PercentKeyType()
+key_type_string = _StringKeyType()
 
 
-class _Key:
+class Key:
 	def __init__(self, key_type: _KeyType, name: str, **kwargs):
 		self.name = name
 		self.type = key_type
 		if 'default' in kwargs:
-			self.default = kwargs['default']
+			self.default = self.type.parse(kwargs['default'])
 		else:
 			self.default = self.type.default_default
 
 	def parse(self, value: str) -> Any:
 		return self.type.parse(value)
 
-	def to_state_dict(self) -> Dict[str, Union[int, str, bool, float]]:
-		state_dict = {
-			'name': self.name,
-			'type': self.type.name,
-			'default': self.default
-		}
-		return state_dict
-
-	def set_from_state_dict(self, state_dict: Dict[str, Any]):
-		type_name = state_dict['type']
-		if type_name == _int_key_type.name:
-			kt = _int_key_type
-		elif type_name == _percent_key_type.name:
-			kt = _percent_key_type
-		else:
-			raise ValueError("unknown key type {:s}".format(type_name))
-		self.type = kt
-		self.name = state_dict['name']
-		self.default = state_dict.get('default', self.type.default_default)
+	def clone(self) -> 'Key':
+		return Key(self.type, self.name, default=self.default)
 
 
 class SettingsStore:
@@ -115,26 +105,14 @@ class SettingsStore:
 	def get_global_state(self) -> Dict[str, Any]:
 		return dict(self._global_settings)
 
-	def create_percent_key(self, key: str, default_value: float = 0.0):
+	def register_key(self, key: Key):
 		"""
-		Create a new key with a value type of 'percent'. This will be a float that allows values between 0 and 1.
-		:param key: The name of the new key.
-		:param default_value: The initial value of the new key. This will default to 0.0.
+		Register an existing key with this settings store. If any servers already exist, they are instantly updated to
+		all have a value for the key equal to the default value of the key.
+		:param key: The key to be registered. If a key with the same name already exists, it is replaced.
 		"""
-		if key in self._registered_keys:
-			raise KeyError("key already exists in settings: " + repr(key))
-
-		self._registered_keys[key] = _Key(_percent_key_type, key, default=default_value)
-		self.set_all(key, default_value)
-
-	def create_int_key(self, key: str, default_value: int = 0):
-		"""
-		Create a new key with a value type of 'int'.
-		:param key: The name of the new key.
-		:param default_value: The initial value of the new key. This will default to 0.
-		"""
-		self._registered_keys[key] = _Key(_int_key_type, key, default=default_value)
-		self.set_all(key, default_value)
+		self._registered_keys[key.name] = key
+		self.set_all(key.name, key.default)
 
 	def get_key_type(self, key: str) -> str:
 		"""
@@ -187,6 +165,9 @@ class SettingsStore:
 		"""
 		if key not in self._registered_keys:
 			raise KeyError("key does not exist in settings: " + repr(key))
+
+		if server not in self._settings:
+			self._settings[server] = {}
 
 		key_obj = self._registered_keys[key]
 		self._settings[server][key] = key_obj.parse(value)

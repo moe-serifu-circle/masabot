@@ -202,14 +202,14 @@ class WatchListModule(BotBehaviorModule):
 			'REPEATING': []
 		}
 
-		for anime in anime_list:
-			sorted_by_status[anime['status']].append(anime)
+		for a in anime_list:
+			sorted_by_status[a['status']].append(a)
 
-		def format_eps(anime_list, heading, show_eps, p):
-			if len(anime_list) > 0:
+		def format_eps(fn_anime_list, heading, show_eps, p):
+			if len(fn_anime_list) > 0:
 				p.add_line(heading + ":")
 				p.start_code_block()
-				for anime in anime_list:
+				for anime in fn_anime_list:
 					list_item = '* "'
 					titles = anime['media']['title']
 					if titles['english'] is not None:

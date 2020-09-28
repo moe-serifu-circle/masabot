@@ -3,12 +3,10 @@ import os.path
 import logging
 import pathlib
 
-from typing import Optional, Sequence, Tuple, Dict
+from typing import Optional, Sequence, Tuple, Dict, Union, List
 
-import discord
-
-from .. import util
-from ..bot import PluginAPI
+from .. import util, settings as masabotsettings
+from ..pluginapi import PluginAPI
 
 __all__ = [
 	'karma',
@@ -73,11 +71,12 @@ class BotBehaviorModule(object):
 			name: str,
 			desc: str,
 			help_text: str,
-			triggers: Sequence[InvocationTrigger, RegexTrigger, MentionTrigger, TimerTrigger],
+			triggers: Sequence[Union[InvocationTrigger, RegexTrigger, MentionTrigger, TimerTrigger]],
 			resource_root: str,
 			has_state: bool = False,
-			global_settings: Optional[Sequence[str]] = None,
-			server_settings: Optional[Sequence[str]] = None,
+			settings: Optional[Sequence[masabotsettings.Key]] = None,
+			global_settings: Optional[Sequence[masabotsettings.Key]] = None,
+			server_only_settings: Optional[Sequence[masabotsettings.Key]] = None,
 	):
 		"""
 		Create a new BotBehaviorModule instance.
@@ -91,12 +90,29 @@ class BotBehaviorModule(object):
 		:param resource_root: The root directory that resources are to be placed in.
 		:param has_state: Whether this module has state. If this is true, then the module should define get_state()
 		set_state() methods for saving state to a dict and setting state from a dict.
+		:param settings: Settings keys that this module uses. There will be a value for each key for every server that
+		the bot runs in, as well as a separate 'global' value that is used in non-server contexts.
+		:param global_settings: Settings keys that this module uses that have only a single value across all servers that this
+		module is active in.
+		:param server_only_settings: Settings keys that this module uses that have only values for the servers that it is
+		in, and has no value in a non-server context.
 		"""
 		self.help_text = help_text
 		self.description = desc
 		self.name = name
 		self.has_state = has_state
 		self.triggers = triggers
+		self.per_server_settings_keys: List[masabotsettings.Key] = []
+		self.global_settings_keys: List[masabotsettings.Key] = []
+		self.server_only_settings_keys: List[masabotsettings.Key] = []
+
+		if settings is not None:
+			self.per_server_settings_keys = [k.clone() for k in settings]
+		if global_settings is not None:
+			self.global_settings_keys = [k.clone() for k in global_settings]
+		if server_only_settings is not None:
+			self.server_only_settings_keys = [k.clone() for k in server_only_settings]
+
 		self._resource_dir: str = os.path.join(resource_root, name)
 		if not os.path.exists(self._resource_dir):
 			os.mkdir(self._resource_dir)

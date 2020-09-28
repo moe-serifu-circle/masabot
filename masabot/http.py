@@ -109,7 +109,7 @@ class HttpAgent(object):
 		self._ignored_http_errors = [] if ignored_errors is None else ignored_errors
 		self._use_ssl = ssl
 		self._session = None
-		""":type : requests.Session"""
+		""":type : Optional[requests.Session]"""
 		self._async_http_requests = []
 		self._async_executor = concurrent.futures.ThreadPoolExecutor(max_workers=100)
 		self._async_transforms = []

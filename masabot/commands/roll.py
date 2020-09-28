@@ -1,6 +1,6 @@
 from . import BotBehaviorModule, InvocationTrigger
 from ..util import BotSyntaxError
-from .. import util
+from .. import util, settings
 from ..bot import PluginAPI
 
 
@@ -30,103 +30,25 @@ class DiceRollerModule(BotBehaviorModule):
 			help_text=help_text,
 			triggers=[
 				InvocationTrigger('roll'),
-				InvocationTrigger('roll-maxsides'),
-				InvocationTrigger('roll-maxdice')
 			],
 			resource_root=resource_root,
-			has_state=True
+			server_only_settings=[
+				settings.Key(settings.key_type_int, 'max-count', default=1000),
+				settings.Key(settings.key_type_int, 'max-sides', default=200),
+			]
 		)
-
-		self._max_count = {}
-		self._max_sides = {}
-
-	def get_state(self, server_id: int):
-		if server_id not in self._max_count:
-			self._max_count[server_id] = 100
-			self._max_sides[server_id] = 100
-
-		return {
-			'max-sides': self._max_sides[server_id],
-			'max-count': self._max_count[server_id]
-		}
-
-	def set_state(self, server_id: int, state):
-		self._max_sides[server_id] = state.get('max-sides', 100)
-		self._max_count[server_id] = state.get('max-count', 100)
 
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		if command == 'roll':
 			await self.roll_dice(bot, args)
-		elif command == 'roll-maxsides':
-			await self.get_max_sides(bot, args)
-		elif command == 'roll-maxdice':
-			await self.get_max_dice(bot, args)
-
-	async def get_max_sides(self, bot: PluginAPI, args):
-		server_id = await bot.require_server()
-		if len(args) > 0:
-			await bot.require_op('roll-maxsides <limit>', self.name, server=server_id)
-			try:
-				new_limit = int(args[0])
-			except ValueError:
-				raise BotSyntaxError("That's not a number at all!")
-			if new_limit < 2:
-				if self._max_sides[server_id] < 2:
-					msg = "The maximum side limit is already disabled."
-				else:
-					msg = "Okay, I'll go ahead and disable the limit for number of sides."
-				self._max_sides[server_id] = 0
-			else:
-				msg = ""
-				if self._max_sides[server_id] < 2:
-					msg = "Oh, right now there isn't any limit for the number of sides. I'll turn it on for you!\n\n"
-				msg += "Okay! The new limit for the number of sides is now " + str(new_limit) + "!"
-				self._max_sides[server_id] = new_limit
-			_log.debug("Set dice side limit to " + str(self._max_sides[server_id]))
-			await bot.reply(msg)
-		else:
-			if self._max_sides[server_id] > 0:
-				msg = "Sure! The limit for the number of sides is currently " + str(self._max_sides[server_id]) + "."
-			else:
-				msg = "Right now there isn't a limit to the number of sides you can have on a die."
-			await bot.reply(msg)
-
-	async def get_max_dice(self, bot: PluginAPI, args):
-		server_id = await bot.require_server()
-		if len(args) > 0:
-			await bot.require_op('roll-maxdice <limit>', self.name, server=server_id)
-			try:
-				new_limit = int(args[0])
-			except ValueError:
-				raise BotSyntaxError("That's not a number at all!")
-			if new_limit < 1:
-				if self._max_count[server_id] < 1:
-					msg = "The maximum dice limit is already disabled."
-				else:
-					msg = "Okay, I'll go ahead and disable the limit for number of dice."
-				self._max_count[server_id] = 0
-			else:
-				msg = ""
-				if self._max_count[server_id] < 1:
-					msg = "Oh, right now there isn't any limit for the number of dice. I'll turn it on for you!\n\n"
-				msg += "Okay! The new limit for the number of dice is now " + str(new_limit) + "!"
-				self._max_count[server_id] = new_limit
-			_log.debug("Set dice limit to " + str(self._max_count[server_id]))
-			await bot.reply(msg)
-		else:
-			if self._max_count[server_id] > 0:
-				msg = "Sure! The limit for the number of dice is currently " + str(self._max_count[server_id]) + "."
-			else:
-				msg = "Right now there isn't a limit to the number of dice you can roll at once."
-			await bot.reply(msg)
 
 	async def roll_dice(self, bot: PluginAPI, args):
-		if bot.context.is_pm():
+		if bot.context.is_pm:
 			max_sides = 100000
 			max_dice = 100000
 		else:
-			max_sides = self._max_sides[bot.get_guild().id]
-			max_dice = self._max_count[bot.get_guild().id]
+			max_sides = bot.get_setting('max-sides')
+			max_dice = bot.get_setting('max-count')
 
 		msg = ""
 		sides = 6

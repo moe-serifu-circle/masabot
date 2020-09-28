@@ -1,7 +1,6 @@
 from . import http
 import urllib.parse
 import enum
-import logging
 import discord
 from typing import Optional, Sequence, Iterable, Union, Any
 
@@ -18,7 +17,10 @@ def add_context(ctx: Any, message: str, *params) -> str:
 	def dm_name(user: Union[discord.User, discord.Member]) -> str:
 		return "DM {:s}".format(user_str(user))
 
-	def guild_ch_str(channel: Union[discord.TextChannel, discord.VoiceChannel, discord.CategoryChannel], channel_name: str) -> str:
+	def guild_ch_str(
+			channel: Union[discord.TextChannel, discord.VoiceChannel, discord.CategoryChannel],
+			channel_name: str
+	) -> str:
 		return "{:d}:{:d}/{!r}:{:s}".format(channel.guild.id, channel.id, channel.guild.name, channel_name)
 
 	def text_ch_name(channel: discord.TextChannel) -> str:
@@ -111,9 +113,9 @@ class MentionType(enum.IntEnum):
 
 
 class Mention:
-	def __init__(self, m_type: MentionType, id: int, has_nick: bool):
+	def __init__(self, m_type: MentionType, m_id: int, has_nick: bool):
 		self.resource_type = m_type
-		self.id = id
+		self.id = m_id
 		":type: int"
 		self._has_nick = has_nick
 

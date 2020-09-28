@@ -1,7 +1,6 @@
 import asyncio
-from typing import Dict
 
-from . import BotBehaviorModule, RegexTrigger, MentionTrigger, InvocationTrigger, mention_target_self, noticeme_analysis
+from . import BotBehaviorModule, RegexTrigger, MentionTrigger, mention_target_self, noticeme_analysis
 from .. import settings, util
 from ..bot import PluginAPI
 
@@ -64,35 +63,14 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 			triggers=[
 				MentionTrigger(target=mention_target_self()),
 				RegexTrigger(r'.*\b[Mm][Aa][Ss][Aa](?:[Bb][Oo][Tt])?\b.*'),
-				InvocationTrigger("noticeme-settings")
-
 			],
 			resource_root=resource_root,
-			has_state=True
+			settings=[
+				settings.Key(settings.key_type_percent, 'neutral_reaction_chance', default=0.6),
+				settings.Key(settings.key_type_int, 'min_reaction_delay_ms', default=1000),
+				settings.Key(settings.key_type_int, 'max_reaction_delay_ms', default=7000),
+			]
 		)
-
-		# TODO: standardize _settings in this fashion across all that use settings.
-		self._settings = settings.SettingsStore()
-		self._settings.create_percent_key('neutral_reaction_chance', 0.6)
-		self._settings.create_int_key('min_reaction_delay_ms', 1000)
-		self._settings.create_int_key('max_reaction_delay_ms', 7000)
-
-	def set_state(self, server: int, state: Dict):
-		self._settings.set_state(server, state)
-
-	def get_state(self, server: int) -> Dict:
-		return self._settings.get_state(server)
-
-	def get_global_state(self) -> Dict:
-		return self._settings.get_global_state()
-
-	def set_global_state(self, state: Dict):
-		self._settings.set_global_state(state)
-
-	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command, *args):
-		reply = await bot.context.execute_setting_command(bot._bot, self._settings, args, module_name=self.name)
-		for page in reply.get_pages():
-			await bot.reply(page)
 
 	async def on_regex_match(self, bot: PluginAPI, metadata: util.MessageMetadata, *match_groups: str):
 		await self._handle_mention(bot, match_groups[0])
@@ -127,12 +105,13 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 			elif worst_sentiment < 0:
 				await bot.reply(random.choice(negative_responses))
 		elif neutral_present:
-			if random.random() < bot.context.get_setting(self._settings, 'neutral_reaction_chance'):
+			if random.random() < await bot.get_setting('neutral_reaction_chance'):
 				emoji_text = random.choice(neutral_mention_reactions)
-				min_reaction_delay_ms = bot.context.get_setting(self._settings, 'min_reaction_delay_ms')
-				max_reaction_delay_ms = bot.context.get_setting(self._settings, 'max_reaction_delay_ms')
+				min_reaction_delay_ms = await bot.get_setting('min_reaction_delay_ms')
+				max_reaction_delay_ms = await bot.get_setting('max_reaction_delay_ms')
 				# give a slight delay
-				delay = min_reaction_delay_ms + (random.random() * (max_reaction_delay_ms - min_reaction_delay_ms))  # random amount from min to max ms
+				# random amount from min to max ms
+				delay = min_reaction_delay_ms + (random.random() * (max_reaction_delay_ms - min_reaction_delay_ms))
 				await asyncio.sleep((delay / 1000))
 				await bot.react(emoji_text)
 

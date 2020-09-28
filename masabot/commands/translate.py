@@ -1,5 +1,5 @@
 from . import BotBehaviorModule, InvocationTrigger
-from ..util import BotSyntaxError, BotModuleError
+from ..util import BotSyntaxError
 from .. import util
 from ..bot import PluginAPI
 
