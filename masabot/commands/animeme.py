@@ -151,7 +151,7 @@ class AnimemeModule(BotBehaviorModule):
 			await self.get_layout_param(bot, param)
 
 	async def set_layout_param(self, bot: PluginAPI, param, value):
-		if not bot.context.is_pm():
+		if not bot.context.is_pm:
 			server_id = await bot.require_server()
 			await bot.require_op("animeme-layout " + str(param) + " <value>")
 			if server_id not in self._pens:

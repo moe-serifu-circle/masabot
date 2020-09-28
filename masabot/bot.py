@@ -298,9 +298,15 @@ class MasaBot(object):
 
 		# noinspection PyBroadException
 		try:
+			self._set_settings_in_loaded_modules(state_dict['__BOT__']['settings']['modules'])
+		except Exception:
+			_log.exception("could not set module settings from state file; defaults will be used")
+
+		# noinspection PyBroadException
+		try:
 			self._set_state_in_loaded_modules(state_dict)
 		except Exception:
-			_log.exception("could not set module state from config; defaults will be used")
+			_log.exception("could not set module state from state file; defaults will be used")
 		_log.info("Modules are now ready")
 
 	def run(self):
@@ -359,13 +365,17 @@ class MasaBot(object):
 				msg += " can you put a module name after it to find out about that module! But I guess you already know"
 				msg += " that, eheheh ^_^"
 			elif help_module == "settings":
-				msg = "Ara! That's the command that controls the settings of various features in my core system! There"
-				msg += " are three different ways to use this command:\n\n"
-				msg += " * `" + pre + "settings` by itself will list all of the current settings.\n"
-				msg += " * `" + pre + "settings name-of-setting` will show what that setting in particular is set to "
+				msg = "Ara! That's the command that controls the settings of various features in my system! There"
+				msg += " are four different ways to use this command:\n\n"
+				msg += " * `" + pre + "settings` by itself will list all of the modules that I have settings for so you"
+				msg += " can pick the module to look at.\n"
+				msg += " * `" + pre + "settings <module>` will list all of the settings that are available in that"
+				msg += " module.\n"
+				msg += " * `" + pre + "settings <module> <key>` will show what that setting in particular is set to "
 				msg += " right now.\n"
-				msg += " * Finally, `" + pre + "settings name-of-setting new-value` will set that setting to a new"
-				msg += " value! But you do gotta be an operator to do that one, because otherwise someone could"
+				msg += " * Finally, `" + pre + "settings <module> <key> <new_value>` will set that setting to a new"
+				msg += " value! But you do gotta be an operator (or even a master for some settings!) to do that one,"
+				msg += " because otherwise someone could"
 				msg += " accidentally set it to values that don't work very well, which is really scary!"
 			elif help_module == "version":
 				msg = "Oh, that's the command that tells you what version I am!"
@@ -439,8 +449,8 @@ class MasaBot(object):
 		:param args: The arguments.
 		"""
 		if len(args) == 0:
-			modules_list = list(self._bot_modules.keys())
-			modules_list.append("core")
+			modules_list = ["core"]
+			modules_list += list(self._bot_modules.keys())
 
 			if len(modules_list) < 2:
 				module_name = None
@@ -464,6 +474,7 @@ class MasaBot(object):
 		else:
 			module_name_str = "`" + module_name + "`"
 			store = self.module_settings[module_name]
+
 		pager = DiscordPager("_(settings continued)_")
 		if len(args) == 0:
 			# we are doing a list, no need for privileges
@@ -528,12 +539,14 @@ class MasaBot(object):
 					api.require_master(module_name + " settings set " + repr(key), None)
 					try:
 						store.set_global(key, new_value)
+						updated_value = store.get_global(key)
 					except ValueError as e:
 						raise BotSyntaxError(str(e))
 				else:
 					await api.require_op(module_name + " settings set " + repr(key))
 					try:
 						store.set(server_id, key, new_value)
+						updated_value = store.get(server_id, key)
 					except ValueError as e:
 						raise BotSyntaxError(str(e))
 				log_message = "User " + str(api.get_user().id) + "/" + str(api.get_user().name) + " updated setting "
@@ -541,10 +554,10 @@ class MasaBot(object):
 					log_message += "<CORE>:"
 				else:
 					log_message += module_name + ":"
-				log_message += repr(key) + " to new value " + repr(new_value)
+				log_message += repr(key) + " to new value " + repr(updated_value)
 				_log.debug(log_message)
 				self._save_all()
-				msg = "Certainly! `" + key + "` has been updated to " + repr(store.get(server_id, key)) + "!"
+				msg = "Certainly! `" + key + "` has been updated to " + repr(updated_value) + "!"
 			pager.add_line(msg)
 
 		for page in pager.get_pages():
@@ -917,6 +930,16 @@ class MasaBot(object):
 		for name in self._bot_modules:
 			bot_module = self._bot_modules[name]
 			bot_module.load_config(module_configs.get(name, {}))
+
+	def _set_settings_in_loaded_modules(self, module_settings_dict):
+		for name in self._bot_modules:
+			store = self.module_settings[name]
+			mod_state = module_settings_dict.get(name, {'global': {}, 'servers': {}})
+			store.set_global_state(mod_state['global'])
+			for server_id in mod_state['servers']:
+				mod_server_state = mod_state['servers'][server_id]
+				if mod_server_state is not None:
+					store.set_state(server_id, mod_server_state)
 
 	def _set_state_in_loaded_modules(self, state_dict):
 		for name in self._bot_modules:
@@ -1318,7 +1341,8 @@ class MasaBot(object):
 					'servers': {server.id: self.module_settings[mod_name].get_state(server.id) for server in self.connected_guilds}
 				} for mod_name in self._bot_modules},
 			}
-		}}
+		},
+		'__VERSION__': version.get_version()}
 
 		for m_name in self._bot_modules:
 			mod = self._bot_modules[m_name]

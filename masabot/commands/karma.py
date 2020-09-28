@@ -1,6 +1,6 @@
 from . import BotBehaviorModule, RegexTrigger, InvocationTrigger
 from ..util import BotSyntaxError
-from .. import util
+from .. import util, settings
 from ..bot import PluginAPI
 
 import logging
@@ -24,11 +24,12 @@ class KarmaModule(BotBehaviorModule):
 		help_text += " invoking `karma-top` with no arguments.\n\n"
 		help_text += "If you would like to see a user's global karma (or your own global karma), simply add a `global`"
 		help_text += " to the end of the command (e.g. `karma global` to see your own, `karma @user global` to see"
-		help_text += " another user's global karma). \n\nIn order to prevent huge karma changes, there is a buzzkill mode,"
-		help_text += " which limits the amount that karma can change by. The `karma-buzzkill` command with no arguments"
-		help_text += " will give what the current buzzkill limit is, and ops are able to give an argument to set the limit."
-		help_text += " Setting the limit to anything less than 1 disables buzzkill mode entirely, allowing any amount of"
-		help_text += " karma change."
+		help_text += " another user's global karma).\n\n"
+		help_text += "To see the top list for the server, you can do `!karma-top`.\n\n"
+		help_text += "__Settings__\n"
+		help_text += " * `buzzkill-limit` - The maximum amount that karma can change by. Setting to anything less than 1"
+		help_text += " disables buzzkill mode entirely, allowing any amount of karma change.\n"
+		help_text += " * `tsundere-chance` - How likely I am to act tsundere when increasing karma."
 
 		super().__init__(
 			name="karma",
@@ -37,37 +38,31 @@ class KarmaModule(BotBehaviorModule):
 			triggers=[
 				RegexTrigger(r'<([#@])([!&]?)(\d+)>\s*(\+\++|--+)$'),
 				InvocationTrigger('karma'),
-				InvocationTrigger('karma-buzzkill'),
 				InvocationTrigger('karma-top')
 			],
 			resource_root=resource_root,
-			has_state=True
+			has_state=True,
+			server_only_settings=[
+				settings.Key(settings.key_type_int_range(min=0), 'buzzkill-limit', default=5),
+				settings.Key(settings.key_type_percent, 'tsundere-chance', default=0.1),
+			]
 		)
 
 		self._karma = {}
-		self._buzzkill_limit = 5
-		self._tsundere_chance = 0.1
 
 	def get_global_state(self):
 		return {
 			'karma': self._karma,
-			'buzzkill': self._buzzkill_limit,
-			'tsundere-chance': self._tsundere_chance
 		}
 
 	def set_global_state(self, state):
 		loaded_dict = state.get('karma', {})
 		for idx in loaded_dict:
 			self._karma[int(idx)] = loaded_dict[idx]
-		self._buzzkill_limit = state['buzzkill']
-		if 'tsundere-chance' in state:
-			self._tsundere_chance = state['tsundere-chance']
 
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		if command == "karma":
 			await self.show_karma(bot, args)
-		elif command == "karma-buzzkill":
-			await self.configure_buzzkill(bot, args)
 		elif command == "karma-top":
 			await self.show_toplist_karma(bot)
 
@@ -87,17 +82,19 @@ class KarmaModule(BotBehaviorModule):
 		if amount_str.startswith('-'):
 			amount *= -1
 
+		buzzkill_limit = await bot.get_setting('buzzkill-limit')
+
 		if amount is not None:
 			if user == bot.get_user().id:
 				msg = "You cannot set karma on yourself!"
-			elif abs(amount) > self._buzzkill_limit > 0:
+			elif abs(amount) > buzzkill_limit > 0:
 				msg = "Buzzkill mode enabled;"
-				msg += " karma change greater than " + str(self._buzzkill_limit) + " not allowed"
+				msg += " karma change greater than " + str(buzzkill_limit) + " not allowed"
 			else:
-				if bot.context.is_pm():
-					msg = self.add_user_karma(user, 0, amount)
+				if bot.context.is_pm:
+					msg = self.add_user_karma(bot, user, 0, amount)
 				else:
-					msg = self.add_user_karma(user, bot.get_guild().id, amount)
+					msg = self.add_user_karma(bot, user, bot.get_guild().id, amount)
 		if msg is not None:
 			await bot.reply(msg)
 
@@ -108,7 +105,7 @@ class KarmaModule(BotBehaviorModule):
 		"""
 
 		server = 0
-		if not bot.context.is_pm():
+		if not bot.context.is_pm:
 			server = bot.get_guild().id
 
 		global_karma = False
@@ -140,7 +137,7 @@ class KarmaModule(BotBehaviorModule):
 		replies with the karma of the top users as well as the caller's place in the leaderboard
 		"""
 		server = None
-		if not bot.context.is_pm():
+		if not bot.context.is_pm:
 			server = bot.get_guild().id
 		else:
 			await bot.reply("There are no leaderboards in private messages, baka!")
@@ -182,33 +179,6 @@ class KarmaModule(BotBehaviorModule):
 
 		await bot.reply(msg)
 
-	async def configure_buzzkill(self, bot: PluginAPI, args):
-		if len(args) > 0:
-			await bot.require_op("karma-buzzkill <limit>")
-			try:
-				new_limit = int(args[0])
-			except ValueError:
-				raise BotSyntaxError("I need the new limit to be an integer.")
-			if new_limit > 0:
-				msg = ""
-				if self._buzzkill_limit < 1:
-					msg += "Looks like buzzkill mode was disabled before. I'll turn it on now!\n\n"
-				self._buzzkill_limit = new_limit
-				msg += "All right, done! The most that karma can change by is now " + str(new_limit) + "."
-				await bot.reply(msg)
-			else:
-				self._buzzkill_limit = 0
-				msg = "Okay! Buzzkill mode has now been disabled. Karma change is now unlimited!"
-				await bot.reply(msg)
-			_log.debug("Set buzzkill limit to " + str(self._buzzkill_limit))
-		else:
-			if self._buzzkill_limit > 0:
-				msg = "Yep! Buzzkill mode is currently enabled; the most that karma can change by is currently"
-				msg += " " + str(self._buzzkill_limit) + "."
-			else:
-				msg = "Hmm... It looks like there is currently no limit to how much karma can change by. Hooray!"
-			await bot.reply(msg)
-
 	def get_user_karma(self, uuid: int, global_karma: bool = False, server_id: int = 0):
 		"""
 		returns given user's karma
@@ -237,7 +207,7 @@ class KarmaModule(BotBehaviorModule):
 			msg = "<@" + str(uuid) + ">'s karma is at " + str(amt) + "."
 		return msg
 
-	def add_user_karma(self, uuid, server_id, amount):
+	def add_user_karma(self, bot: PluginAPI, uuid, server_id, amount):
 		# fix for user's still in old karma format, gives current karma
 		# to the first server that requests it
 		if uuid in self._karma:
@@ -256,7 +226,8 @@ class KarmaModule(BotBehaviorModule):
 		new_total = str(self._karma[uuid][server_id])
 		_log.debug("Modified karma of user " + str(uuid) + " by " + str(amount) + "; new total " + new_total)
 
-		if random.random() < self._tsundere_chance and amount > 0:
+		tsundere_chance = await bot.get_setting('tsundere-chance')
+		if random.random() < tsundere_chance and amount > 0:
 			msg = "F-fine, <@" + str(uuid) + ">'s karma is now " + str(self._karma[uuid][server_id])
 			msg += ". B-b-but it's not like I like"
 			msg += " them or anything weird like that. So don't get the wrong idea! B-baka..."

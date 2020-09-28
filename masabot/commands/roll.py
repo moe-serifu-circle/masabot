@@ -19,10 +19,12 @@ class DiceRollerModule(BotBehaviorModule):
 		help_text += " format <X>d<Y>. This will roll X number of Y-sided dice.\n\nExample: `roll 4d6` will roll 4"
 		help_text += " d6's.\n\nIf the number of dice is left out, a single die will be rolled. If the number of sides"
 		help_text += " is left out, d6 will be assumed. If no arguments are given, a single d6 is rolled.\n\n"
-		help_text += "The maximum number of dice that can be rolled at once can be shown with the `roll-maxdice`"
-		help_text += " command. The maximum number of sides that a die can have can be shown with the `roll-maxsides`"
-		help_text += " command. Operators may change each of these numbers by giving a number after the command. A"
-		help_text += " number less than 1 disables the dice limit entirely (less than 2 for the sides limit)."
+		help_text += "__Settings__\n"
+		help_text += "I have some settings for this module, which can be set by using the `settings roll` command:\n"
+		help_text += "* `max-count` is the maximum number of dice that can be rolled at once. Setting it to less than 1"
+		help_text += " disables the dice limit entirely.\n"
+		help_text += "* `max-sides` is the maximum number of sides that a die can have. Setting it to less than 2"
+		help_text += " disables the side limit entirely."
 
 		super().__init__(
 			name="roll",
@@ -48,8 +50,8 @@ class DiceRollerModule(BotBehaviorModule):
 			max_sides = 100000
 			max_dice = 100000
 		else:
-			max_sides = bot.get_setting('max-sides')
-			max_dice = bot.get_setting('max-count')
+			max_sides = await bot.get_setting('max-sides')
+			max_dice = await bot.get_setting('max-count')
 
 		msg = ""
 		sides = 6

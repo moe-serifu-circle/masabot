@@ -12,7 +12,10 @@ _log.setLevel(logging.DEBUG)
 class RateWaifuModule(BotBehaviorModule):
 	def __init__(self, resource_root: str):
 		help_text = "The \"ratewaifu\" module lets me rate your favorite waifus and tell you if I think they are good or not!"
-		help_text += " To use it, just do `ratewaifu <name-of-waifu>`."
+		help_text += " To use it, just do `ratewaifu <name-of-waifu>`.\n\n"
+		help_text += "__Settings__\n"
+		help_text += "I have some settings for this module, which can be set by using the `settings ratewaifu` command:\n"
+		help_text += "* `seed` is the internal seed that is combined with input and then hashed to get the result."
 
 		super().__init__(
 			name="ratewaifu",

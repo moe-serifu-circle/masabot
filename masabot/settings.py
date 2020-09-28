@@ -1,5 +1,5 @@
 # Handles settings registration and getting.
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Optional
 import logging
 
 _log = logging.getLogger(__name__)
@@ -25,6 +25,53 @@ class _IntKeyType(_KeyType):
 			int_val = int(value)
 		except ValueError:
 			raise ValueError("That setting is int-valued, and has to be set to a whole number")
+		return int_val
+
+
+class _IntRangeKeyType(_KeyType):
+	def __init__(self, min_allowed: Optional[int] = None, max_allowed: Optional[int] = None):
+		if min_allowed is not None and max_allowed is not None and min_allowed >= max_allowed:
+			raise ValueError("min_allowed must be less than max_allowed if both are specified")
+		if min_allowed is None and max_allowed is None:
+			raise ValueError("both min_allowed and max_allowed cannot be unspecified; use _IntKeyType for that")
+
+		range_name = "int-range"
+		if min_allowed is not None:
+			range_name += "[" + str(int(min_allowed)) + ", "
+		else:
+			range_name += "(-INF, "
+		if max_allowed is not None:
+			range_name += str(int(max_allowed)) + "]"
+		else:
+			range_name += "INF)"
+
+		zero_val = 0
+		if min_allowed is not None and min_allowed > zero_val:
+			zero_val = min_allowed
+		if max_allowed is not None and max_allowed < zero_val:
+			zero_val = max_allowed
+
+		super().__init__(name=range_name, default_default=zero_val)
+		self.min: Optional[int] = None
+		self.max: Optional[int] = None
+
+		if min_allowed is not None:
+			self.min = int(min_allowed)
+		if max_allowed is not None:
+			self.max = int(max_allowed)
+
+	def parse(self, value: str) -> int:
+		try:
+			int_val = int(value)
+		except ValueError:
+			raise ValueError("That setting is int-valued, and has to be set to a whole number")
+
+		if self.min is not None and int_val < self.min:
+			raise ValueError("That setting has to be set to at least " + repr(self.min))
+
+		if self.max is not None and int_val > self.max:
+			raise ValueError("That setting can't be any bigger than " + repr(self.min))
+
 		return int_val
 
 
@@ -56,6 +103,11 @@ key_type_percent = _PercentKeyType()
 key_type_string = _StringKeyType()
 
 
+def key_type_int_range(min: Optional[int] = None, max: Optional[int] = None):
+	return _IntRangeKeyType(min, max)
+
+
+# TODO: incorporate standardized setting help by allowing keys to give a help string.
 class Key:
 	def __init__(self, key_type: _KeyType, name: str, **kwargs):
 		self.name = name
