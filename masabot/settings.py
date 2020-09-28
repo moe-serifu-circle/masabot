@@ -192,6 +192,7 @@ def key_type_float_range(min: Optional[float] = None, max: Optional[float] = Non
 
 # TODO: incorporate context limitations in the key obj itself instead of maintaining a key metadata in core
 # TODO: incorporate standardized setting help by allowing keys to give a help string.
+# TODO: storage format - once context limitations are applied, ensure that global/non-globals are not repeated in state
 class Key:
 	def __init__(self, key_type: _KeyType, name: str, **kwargs):
 		"""
