@@ -5,6 +5,7 @@ from .. import util
 from ..util import BotSyntaxError, BotModuleError
 from ..bot import PluginAPI
 
+# noinspection PyPackageRequirements
 import requests
 import random
 import logging
@@ -12,6 +13,7 @@ import re
 import io
 import asyncio
 
+# noinspection PyPackageRequirements
 from PIL import Image, ImageFont, ImageDraw
 
 _log = logging.getLogger(__name__)
@@ -160,7 +162,7 @@ class AnimemeModule(BotBehaviorModule):
 			pen = self._dm_pen
 
 		if param == 'kerning':
-			value = util.str_to_int(value, min=0, name="kerning")
+			value = util.str_to_int(value, min_allowed=0, name="kerning")
 			if pen.kerning == value:
 				msg = "Haha, the kerning is already set to " + str(value) + ", so yay!"
 			else:
@@ -168,7 +170,7 @@ class AnimemeModule(BotBehaviorModule):
 				_log.debug("Set animeme kerning to " + str(value))
 				msg = "Okay, I'll set the kerning to " + str(value) + " pixels!"
 		elif param == 'template-width':
-			value = util.str_to_int(value, min=1, name="template width")
+			value = util.str_to_int(value, min_allowed=1, name="template width")
 			if self._template_width == value:
 				msg = "Ah, well, the template width is already set to " + str(value) + ", so yay!"
 			else:
@@ -188,7 +190,7 @@ class AnimemeModule(BotBehaviorModule):
 				else:
 					msg = "Okay! I'll leave my templates alone, then."
 		elif param == 'spacing':
-			value = util.str_to_float(value, min=0, name="word spacing")
+			value = util.str_to_float(value, min_allowed=0, name="word spacing")
 			if pen.word_spacing_factor == value:
 				msg = "Mmm, the word spacing is already set to " + str(value) + "..."
 			else:
@@ -196,7 +198,7 @@ class AnimemeModule(BotBehaviorModule):
 				_log.debug("Set animeme word spacing factor to " + str(value))
 				msg = "Okay, I'll set the word spacing to " + str(value) + "x the width of a single space!"
 		elif param == 'border':
-			value = util.str_to_int(value, min=0, name="border width")
+			value = util.str_to_int(value, min_allowed=0, name="border width")
 			if pen.border_width == value:
 				msg = "Oh, the border width is already set to " + str(value) + "."
 			else:
@@ -204,7 +206,7 @@ class AnimemeModule(BotBehaviorModule):
 				_log.debug("Set animeme border width to " + str(value))
 				msg = "Okay, I'll set the border width to " + str(value) + " pixels!"
 		elif param == 'minfont':
-			value = util.str_to_int(value, min=2, name="minimum font size")
+			value = util.str_to_int(value, min_allowed=2, name="minimum font size")
 			if pen.min_font_size == value:
 				msg = "Oh, the minimum font size is already set to " + str(value) + "."
 			else:
@@ -212,7 +214,7 @@ class AnimemeModule(BotBehaviorModule):
 				_log.debug("Set animeme minimum font size to " + str(value))
 				msg = "Okay, I'll set the minimum font size to " + str(value) + " points!"
 		elif param == 'maxfont':
-			value = util.str_to_int(value, min=2, name="maximum font size")
+			value = util.str_to_int(value, min_allowed=2, name="maximum font size")
 			if pen.max_font_size == value:
 				msg = "Oh, the maximum font size is already set to " + str(value) + "."
 			else:

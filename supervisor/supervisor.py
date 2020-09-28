@@ -80,8 +80,8 @@ def run_venv_shell(exe, path=None):
 		raise
 
 	with open(os.path.join('.supervisor', 'temp'), 'r') as fp:
-		for l in fp:
-			lines.append(l.strip('\n'))
+		for line in fp:
+			lines.append(line.strip('\n'))
 
 	os.remove(os.path.join('.supervisor', 'temp'))
 	return lines
@@ -175,13 +175,13 @@ if __name__ == "__main__":
 
 	if sys.argv[1] == 'redeploy':
 		print("Running redeploy...")
-		venv_dir=None
+		venv_dir = None
 		if len(sys.argv) >= 3:
 			venv_dir = sys.argv[2]
 		output = deploy(is_redeploy=True, virtual_environment_path=venv_dir)
 	elif sys.argv[1] == 'initial-deploy':
 		print("Running deploy...")
-		venv_dir=None
+		venv_dir = None
 		if len(sys.argv) >= 3:
 			venv_dir = sys.argv[2]
 		output = deploy(virtual_environment_path=venv_dir)
@@ -189,5 +189,5 @@ if __name__ == "__main__":
 		print("Unknown subcommand '" + sys.argv[1] + "'", file=sys.stderr)
 		sys.exit(3)
 
-	with open(os.path.join('.supervisor', 'status'), 'w') as fp:
-		json.dump(output, fp)
+	with open(os.path.join('.supervisor', 'status'), 'w') as status_file_fp:
+		json.dump(output, status_file_fp)

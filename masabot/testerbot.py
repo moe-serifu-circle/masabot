@@ -1,3 +1,4 @@
+# noinspection PyPackageRequirements
 import discord
 import asyncio
 import traceback
@@ -122,6 +123,7 @@ class TesterBot(object):
 		self._api_key = api_key
 		self._command_reader_task = None
 		self._client = discord.Client()
+		self._logged_in = False
 
 		@self._client.event
 		async def on_ready():
@@ -129,18 +131,20 @@ class TesterBot(object):
 			_log.info("Tester bot ID: " + self._client.user.id)
 			self._running = True
 			_log.info("Tester bot is now online")
-			for server in self._client.servers:
+			for server in self._client.guilds:
 				for ch in server.channels:
 					if ch.type == discord.ChannelType.text and ('#' + ch.name) == self._channel_name:
 						self._channels.append(ch)
 			if len(self._channels) == 0:
 				raise RuntimeError("No channels in servers that this bot is connected to match " + repr(self._channel_name))
+			self._logged_in = True
 
 		@self._client.event
 		async def on_message(message):
 			if message.author.id == self._target_id and ('#' + message.channel.name) == self._channel_name:
 				await self._handle_target_message(message)
 
+		# noinspection PyUnusedLocal
 		@self._client.event
 		async def on_error(event, *args, **kwargs):
 			pager = DiscordPager("_(error continued)_")
@@ -156,7 +160,7 @@ class TesterBot(object):
 			pager.end_code_block()
 			pages = pager.get_pages()
 			for p in pages:
-				await self._client.send_message(message.channel, p)
+				await message.channel.send(p)
 
 	def run(self):
 		"""
@@ -184,7 +188,7 @@ class TesterBot(object):
 				raise TimeoutError("Bot took too long to come online")
 			await asyncio.sleep(1)
 		while self._running:
-			if self._client.is_logged_in and self._pipe.poll():
+			if self._logged_in and self._pipe.poll():
 				command = self._pipe.recv()
 				if command == _BOT_TESTER_SHUTDOWN_COMMAND:
 					self._pipe.close()
@@ -199,4 +203,4 @@ class TesterBot(object):
 		:param message: The message to send.
 		"""
 		for ch in self._channels:
-			await self._client.send_message(ch, message)
+			await ch.send(message)

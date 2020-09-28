@@ -42,6 +42,7 @@ class DiceRollerModule(BotBehaviorModule):
 		if command == 'roll':
 			await self.roll_dice(bot, args)
 
+	# noinspection PyMethodMayBeStatic
 	async def roll_dice(self, bot: PluginAPI, args):
 		if bot.context.is_pm:
 			max_sides = 100000

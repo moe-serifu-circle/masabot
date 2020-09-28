@@ -1,6 +1,7 @@
 from . import http
 import urllib.parse
 import enum
+# noinspection PyPackageRequirements
 import discord
 from typing import Optional, Sequence, Iterable, Union, Any
 
@@ -339,17 +340,17 @@ class DiscordPager(object):
 
 
 # TODO: find out who is using this; convert them to SettingsStore usage
-def str_to_int(str_value, min=None, max=None, name="value"):
+def str_to_int(str_value, min_allowed=None, max_allowed=None, name="value"):
 	"""
 	Convert a string value to an int. If the conversion fails, instead of a ValueError, a BotSyntaxError is
 	generated.
 
 	:type str_value: str
 	:param str_value: The value to be converted.
-	:type min: int
-	:param min: The minimum value a number can be. If not set, no lower limit is enforced.
-	:type max: int
-	:param max: The maximum value a number can be. If not set, no upper limit is enforced.
+	:type min_allowed: int
+	:param min_allowed: The minimum value a number can be. If not set, no lower limit is enforced.
+	:type max_allowed: int
+	:param max_allowed: The maximum value a number can be. If not set, no upper limit is enforced.
 	:type name: str
 	:param name: What the value should be called in the resulting error, should conversion fail. If no name
 	is given, no reference to a name is included in the resulting error.
@@ -363,28 +364,28 @@ def str_to_int(str_value, min=None, max=None, name="value"):
 		msg += " isn't one at all!"
 		raise BotSyntaxError(msg)
 
-	if min is not None and value < min:
-		msg = "The " + name + " just has to be at least " + str(min) + ", so " + str(value) + " is too small!"
+	if min_allowed is not None and value < min_allowed:
+		msg = "The " + name + " just has to be at least " + str(min_allowed) + ", so " + str(value) + " is too small!"
 		raise BotSyntaxError(msg)
 
-	if max is not None and value > max:
-		msg = "The " + name + " really can't be any bigger than " + str(max) + ", so " + str(value) + " is too big!"
+	if max_allowed is not None and value > max_allowed:
+		msg = "The " + name + " really can't be any bigger than " + str(max_allowed) + ", so " + str(value) + " is too big!"
 		raise BotSyntaxError(msg)
 
 	return value
 
 
-def str_to_float(str_value, min=None, max=None, name="value"):
+def str_to_float(str_value, min_allowed=None, max_allowed=None, name="value"):
 	"""
 	Convert a string value to a float. If the conversion fails, instead of a ValueError, a BotSyntaxError is
 	generated.
 
 	:type str_value: str
 	:param str_value: The value to be converted.
-	:type min: float
-	:param min: The minimum value a number can be. If not set, no lower limit is enforced.
-	:type max: float
-	:param max: The maximum value a number can be. If not set, no upper limit is enforced.
+	:type min_allowed: float
+	:param min_allowed: The minimum value a number can be. If not set, no lower limit is enforced.
+	:type max_allowed: float
+	:param max_allowed: The maximum value a number can be. If not set, no upper limit is enforced.
 	:type name: str
 	:param name: What the value should be called in the resulting error, should conversion fail. If no name
 	is given, no reference to a name is included in the resulting error.
@@ -398,12 +399,12 @@ def str_to_float(str_value, min=None, max=None, name="value"):
 		msg += " isn't one at all!"
 		raise BotSyntaxError(msg)
 
-	if min is not None and value < min:
-		msg = "The " + name + " just has to be at least " + str(min) + ", so " + str(value) + " is too small!"
+	if min_allowed is not None and value < min_allowed:
+		msg = "The " + name + " just has to be at least " + str(min_allowed) + ", so " + str(value) + " is too small!"
 		raise BotSyntaxError(msg)
 
-	if max is not None and value > max:
-		msg = "The " + name + " really can't be any bigger than " + str(max) + ", so " + str(value) + " is too big!"
+	if max_allowed is not None and value > max_allowed:
+		msg = "The " + name + " really can't be any bigger than " + str(max_allowed) + ", so " + str(value) + " is too big!"
 		raise BotSyntaxError(msg)
 
 	return value

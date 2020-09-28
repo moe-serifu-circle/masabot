@@ -78,6 +78,7 @@ class NoticeMeSenpaiModule(BotBehaviorModule):
 	async def on_mention(self, bot: PluginAPI, metadata, message: str, mentions):
 		await self._handle_mention(bot, message)
 
+	# noinspection PyMethodMayBeStatic
 	async def _handle_mention(self, bot: PluginAPI, message_text: str):
 		analysis_chunks = message_to_analyzable_chunks(message_text)
 		if len(analysis_chunks) < 1:

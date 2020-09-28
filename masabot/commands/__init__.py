@@ -205,7 +205,13 @@ class BotBehaviorModule(object):
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		pass
 
-	async def on_mention(self, bot: PluginAPI, metadata: util.MessageMetadata, message: str, mentions: Sequence[util.Mention]):
+	async def on_mention(
+			self,
+			bot: PluginAPI,
+			metadata: util.MessageMetadata,
+			message: str,
+			mentions: Sequence[util.Mention]
+	):
 		"""
 		:param bot: The bot to interface with.
 		:param metadata: The metadata from the message.

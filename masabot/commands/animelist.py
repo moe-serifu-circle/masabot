@@ -8,6 +8,7 @@ from ..bot import PluginAPI
 
 
 import urllib.parse
+# noinspection PyPackageRequirements
 import requests
 import logging
 import json.decoder

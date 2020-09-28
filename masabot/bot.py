@@ -1,6 +1,7 @@
 import importlib
 import logging
 import pickle
+# noinspection PyPackageRequirements
 import discord
 import json
 import traceback
@@ -162,17 +163,25 @@ class MasaBot(object):
 		# state dict
 		self._load_modules()
 
+		# initialize module settings stores here. Core settings are already initialized in this init function.
+		self._initialize_module_settings()
+
 		state_dict = {}
+		# noinspection PyBroadException
 		try:
 			with open('state.p', 'rb') as fp:
 				state_dict = pickle.load(fp)
 		except FileNotFoundError:
 			_log.warning("No state file found; default settings will be used")
 		except Exception:
-			_log.exception("Could not load state file; skipping")
+			_log.exception("Could not read state file; skipping")
 		else:
 			_log.info("Loading state file...")
-			self._load_builtin_state(state_dict)
+			# noinspection PyBroadException
+			try:
+				self._load_builtin_state(state_dict)
+			except Exception:
+				_log.exception("Could not load state file contents; skipping")
 
 		self.client = discord.Client(status="being cute with discord.py 1.x")
 
@@ -286,7 +295,12 @@ class MasaBot(object):
 
 		_log.info("Loading module config and state...")
 		self._configure_loaded_modules(conf['modules'])
-		self._set_state_in_loaded_modules(state_dict)
+
+		# noinspection PyBroadException
+		try:
+			self._set_state_in_loaded_modules(state_dict)
+		except Exception:
+			_log.exception("could not set module state from config; defaults will be used")
 		_log.info("Modules are now ready")
 
 	def run(self):
@@ -416,16 +430,33 @@ class MasaBot(object):
 	async def _run_settings_command(
 			self,
 			api: 'PluginAPI',
-			module_name: Optional[str],
 			args):
 		"""
 		Execute the settings command. Depending on the action, this will either be to list all existing keys, to get
 		the value of a particular key, or to set the value of the key. Setting the value requires op permissions.
 
 		:param api: Methods for performing things in discord.
-		:param module_name: the name of the module, or None if for core.
 		:param args: The arguments.
 		"""
+		if len(args) == 0:
+			modules_list = list(self._bot_modules.keys())
+			modules_list.append("core")
+
+			if len(modules_list) < 2:
+				module_name = None
+			else:
+				msg = "What module do you want to see the settings for?"
+				opt = await api.prompt_for_option(msg, modules_list[0], modules_list[1], *modules_list[2:])
+				if opt is None:
+					raise BotSyntaxError("I have a lot of settings so I need to know which module you want to look at")
+				if opt == "core":
+					module_name = None
+				else:
+					module_name = opt
+		else:
+			module_name = args[0]
+			# modify args to pull out the module name so we dont have to worry about detecting the name
+			args = args[1:]
 
 		if module_name is None:
 			module_name_str = "core"
@@ -911,6 +942,8 @@ class MasaBot(object):
 			new_timer_handlers = list(self._timers)
 			mod = importlib.import_module("masabot.commands." + module_str)
 			bot_module = mod.BOT_MODULE_CLASS('resources')
+			if bot_module.name == "core":
+				raise BotModuleError("refusing to load module with reserved name 'core'")
 			if bot_module.name in names:
 				raise BotModuleError("cannot load duplicate module '" + bot_module.name + "'")
 			for t in bot_module.triggers:
@@ -1085,14 +1118,8 @@ class MasaBot(object):
 			if len(args) > 2:
 				repl = args[2]
 			await self._execute_action(core_api, self._run_replchars_command(core_api, action, search, repl))
-		elif cmd.startswith('settings'):
-			# check for a module name
-			mod_name_split = cmd.split('-', 2)
-			if len(mod_name_split) == 2:
-				module_name = mod_name_split[1]
-			else:
-				module_name = None
-			await self._execute_action(core_api, self._run_settings_command(core_api, module_name, args))
+		elif cmd == 'settings':
+			await self._execute_action(core_api, self._run_settings_command(core_api, args))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				api = PluginAPI(self, handler.name, context)
@@ -1229,63 +1256,53 @@ class MasaBot(object):
 		if 'invocation_replacements' in builtin_state:
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
 
-		if 'settings' in builtin_state:
-			settings_data = builtin_state['settings']
+		settings_data = builtin_state['settings']
+		# TODO: Legacy Update code; erase after 1.4.0 release deploys successfully
+		if 'core' not in settings_data:
+			settings_data['core'] = {'global': settings_data['global'], 'servers': settings_data['values']}
+			settings_data['modules'] = {}
 
-			# Legacy Update code; erase after 1.4.0 release deploys successfully
-			if 'core' not in settings_data:
-				settings_data['core'] = {'global': settings_data['global'], 'servers': settings_data['values']}
-				settings_data['modules'] = {}
+		core_settings = settings_data['core']
+		if 'global' in core_settings:
+			self.core_settings.set_global_state(core_settings['global'])
+		for server in core_settings['servers']:
+			server_settings = core_settings['servers'][server]
+			self.core_settings.set_state(server, server_settings)
 
-			core_settings = settings_data['core']
-			if 'global' in core_settings:
-				self.core_settings.set_global_state(core_settings['global'])
-			for server in core_settings['servers']:
-				server_settings = core_settings['servers'][server]
-				self.core_settings.set_state(server, server_settings)
+	def _initialize_module_settings(self):
+		for module_name in self._bot_modules:
+			bot_module = self._bot_modules.get(module_name, None)
+			if bot_module is None:
+				_log.warning("found module settings for unused module " + repr(module_name) + "; ignoring")
+				continue
 
-			all_module_settings = settings_data['modules']
-			for module_name in self._bot_modules:
-				bot_module = self._bot_modules.get(module_name, None)
-				if bot_module is None:
-					_log.warning("found module settings for unused module " + repr(module_name) + "; ignoring")
-					continue
+			store = settings.SettingsStore()
 
-				store = settings.SettingsStore()
+			context_limitations = {}
+			dupe_msg = "got duplicate settings key {!r} for module {!r}; previous key will be replaced"
+			seen_keys = list()
+			for k in bot_module.per_server_settings_keys:
+				if k.name in seen_keys:
+					_log.warning(dupe_msg.format(k.name, module_name))
+				store.register_key(k)
+				seen_keys.append(k.name)
+				if k.name in context_limitations:
+					del context_limitations[k.name]
+			for k in bot_module.global_settings_keys:
+				if k.name in seen_keys:
+					_log.warning(dupe_msg.format(k.name, module_name))
+				store.register_key(k)
+				context_limitations[k.name] = 'global'
+				seen_keys.append(k.name)
+			for k in bot_module.server_only_settings_keys:
+				if k.name in seen_keys:
+					_log.warning(dupe_msg.format(k.name, module_name))
+				store.register_key(k)
+				context_limitations[k.name] = 'server'
+				seen_keys.append(k.name)
+			self._module_settings_context_limitations[module_name] = context_limitations
 
-				context_limitations = {}
-				dupe_msg = "got duplicate settings key {!r} for module {!r}; previous key will be replaced"
-				seen_keys = list()
-				for k in bot_module.per_server_settings_keys:
-					if k.name in seen_keys:
-						_log.warning(dupe_msg.format(k.name, module_name))
-					store.register_key(k)
-					seen_keys.append(k.name)
-					if k.name in context_limitations:
-						del context_limitations[k.name]
-				for k in bot_module.global_settings_keys:
-					if k.name in seen_keys:
-						_log.warning(dupe_msg.format(k.name, module_name))
-					store.register_key(k)
-					context_limitations[k.name] = 'global'
-					seen_keys.append(k.name)
-				for k in bot_module.server_only_settings_keys:
-					if k.name in seen_keys:
-						_log.warning(dupe_msg.format(k.name, module_name))
-					store.register_key(k)
-					context_limitations[k.name] = 'server'
-					seen_keys.append(k.name)
-				self._module_settings_context_limitations[module_name] = context_limitations
-
-				module_settings = all_module_settings.get(module_name, None)
-				if module_settings is not None:
-					store.set_global_state(module_settings['global'])
-					for server_id in module_settings['servers']:
-						mod_server_state = module_settings['servers'][server_id]
-						if mod_server_state is not None:
-							store.set_state(server_id, mod_server_state)
-
-				self.module_settings[module_name] = store
+			self.module_settings[module_name] = store
 
 	def _save_all(self):
 		state_dict = {'__BOT__': {
@@ -1347,4 +1364,3 @@ def _copy_handler_dict(dict_to_copy):
 		else:
 			new_dict[k] = v
 	return new_dict
-

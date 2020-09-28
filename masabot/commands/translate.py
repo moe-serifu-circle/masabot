@@ -3,6 +3,7 @@ from ..util import BotSyntaxError
 from .. import util
 from ..bot import PluginAPI
 
+# noinspection PyPackageRequirements
 import googletrans
 import logging
 

@@ -2,6 +2,7 @@
 Functions for working with HTTP and connections.
 """
 
+# noinspection PyPackageRequirements
 import requests
 import pickle
 import concurrent.futures

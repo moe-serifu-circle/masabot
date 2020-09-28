@@ -17,4 +17,6 @@ class TestNoticeMeAnalysis(TestCase):
 		for case in test_cases:
 			message_text, expected = case
 			actual = analysis.contains_thanks(message_text, 1234, 'MasaBot')
-			self.assertEqual(actual, expected, msg="for " + repr(message_text) + "; expected " + ("no " if not expected else "") + "match but got " + ("no " if not actual else "") + "match")
+			fmt = "for {!r}; expected {:s}match but got {:s}match"
+			msg = fmt.format(message_text, "no " if not expected else "", "no " if not actual else "")
+			self.assertEqual(actual, expected, msg=msg)

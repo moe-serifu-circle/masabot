@@ -35,7 +35,8 @@ class RateWaifuModule(BotBehaviorModule):
 		rating = (hash(waifu.lower() + seed) % 10) + 1
 		rate_msg = "I'd give " + waifu + " a " + str(rating) + "/10."
 		if rating == 1:
-			msg = "❌ **|** " + rate_msg + " Woah, uh... I didn't think anybody could like " + waifu + "... Oh! But it's okay if you do!"
+			msg = "❌ **|** " + rate_msg + " Woah, uh... I didn't think anybody could like " + waifu + "..."
+			msg += " Oh! But it's okay if you do!"
 		elif rating == 2:
 			msg = "🗑️ **|** " + rate_msg + " That's pretty awful! @_@"
 		elif rating == 3:

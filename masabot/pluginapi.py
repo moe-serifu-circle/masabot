@@ -1,6 +1,7 @@
 from typing import Any, Optional, Callable, Union
 
 import asyncio
+# noinspection PyPackageRequirements
 import discord
 import logging
 import shlex

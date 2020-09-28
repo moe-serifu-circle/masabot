@@ -17,7 +17,7 @@ def run():
 		_log.exception("Exception in main thread")
 
 
-class _ExactLevelFilter(object):
+class _ExactLevelFilter(logging.Filter):
 	"""
 	Only allows log records through that are particular levels.
 	"""
@@ -29,6 +29,7 @@ class _ExactLevelFilter(object):
 		:param levels: The levels that should pass through the filter; all others are filtered out. Each item is either
 		one of the predefined level names or an integer level.
 		"""
+		super().__init__()
 		self._levels = set()
 		for lev in levels:
 			is_int = False

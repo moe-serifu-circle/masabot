@@ -1,6 +1,8 @@
 from typing import Optional
 
+# noinspection PyPackageRequirements
 import discord
+
 
 class BotContext(object):
 
