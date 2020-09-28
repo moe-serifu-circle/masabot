@@ -11,8 +11,6 @@ import time
 import random
 import re
 import shlex
-import functools
-import warnings
 
 from . import configfile, commands, util, version, settings
 from typing import Optional, Dict, Any, List, Sequence
@@ -20,22 +18,9 @@ from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMet
 from .context import BotContext
 from .pluginapi import PluginAPI
 
-warnings.simplefilter("error", category=DeprecationWarning)
-
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
-
-
-def deprecated(fn):
-	@functools.wraps(fn)
-	def warn_of_deprecation(*args, **kwargs):
-		warnings.warn("use is deprecated", DeprecationWarning)
-		return fn(*args, **kwargs)
-
-	# specifically do not warn on this exact usage of a deprecated function
-	# noinspection PyDeprecation
-	return warn_of_deprecation
 
 
 def _fmt_channel(ch):
