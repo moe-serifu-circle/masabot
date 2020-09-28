@@ -92,9 +92,9 @@ class KarmaModule(BotBehaviorModule):
 				msg += " karma change greater than " + str(buzzkill_limit) + " not allowed"
 			else:
 				if bot.context.is_pm:
-					msg = self.add_user_karma(bot, user, 0, amount)
+					msg = await self.add_user_karma(bot, user, 0, amount)
 				else:
-					msg = self.add_user_karma(bot, user, bot.get_guild().id, amount)
+					msg = await self.add_user_karma(bot, user, bot.get_guild().id, amount)
 		if msg is not None:
 			await bot.reply(msg)
 
@@ -207,7 +207,7 @@ class KarmaModule(BotBehaviorModule):
 			msg = "<@" + str(uuid) + ">'s karma is at " + str(amt) + "."
 		return msg
 
-	def add_user_karma(self, bot: PluginAPI, uuid, server_id, amount):
+	async def add_user_karma(self, bot: PluginAPI, uuid, server_id, amount):
 		# fix for user's still in old karma format, gives current karma
 		# to the first server that requests it
 		if uuid in self._karma:
