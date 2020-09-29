@@ -450,6 +450,9 @@ class MasaBot(object):
 					module_name = opt
 		else:
 			module_name = args[0]
+			if module_name.lower() == "core":
+				module_name = None
+
 			# modify args to pull out the module name so we dont have to worry about detecting the name
 			args = args[1:]
 
@@ -976,7 +979,7 @@ class MasaBot(object):
 			new_timer_handlers = list(self._timers)
 			mod = importlib.import_module("masabot.commands." + module_str)
 			bot_module = mod.BOT_MODULE_CLASS('resources')
-			if bot_module.name == "core":
+			if bot_module.name.lower() == "core":
 				raise BotModuleError("refusing to load module with reserved name 'core'")
 			if bot_module.name in names:
 				raise BotModuleError("cannot load duplicate module '" + bot_module.name + "'")
@@ -1291,10 +1294,6 @@ class MasaBot(object):
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
 
 		settings_data = builtin_state['settings']
-		# TODO: Legacy Update code; erase after 1.4.0 release deploys successfully
-		if 'core' not in settings_data:
-			settings_data['core'] = {'global': settings_data['global'], 'servers': settings_data['values']}
-			settings_data['modules'] = {}
 
 		core_settings = settings_data['core']
 		if 'global' in core_settings:
