@@ -32,9 +32,9 @@ On Mac/Unix/Linux, this is::
 
 Now the environment is prepared, but before launching masabot, its Configuration_ must be set up. Copy the
 `config-example.json` file to `config.json`, and fill in the values approriately. At minimum, the `discord-api-key` must
-be set to the token for your bot, and the masters list should contain at least one user's uuid. For information on
-obtaining a bot token, see `Obtaining a Discord Key`_ in the Configuration_ section; for information on master users,
-see `Masters List`_ in the Configuration_ section.
+be set to the token for your bot, and the superops list should contain at least one user's uuid. For information on
+obtaining a bot token, see `Obtaining a Discord Key`_ in the Configuration_ section; for information on superop users,
+see `Superops List`_ in the Configuration_ section.
 
 Once `masabot` is fully configured, it can be started via its supervisor. To launch the masabot supervisor, execute the
 `run-masabot.sh` script::

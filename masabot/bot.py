@@ -137,8 +137,10 @@ class MasaBot(object):
 
 		_log.info("Loading config file...")
 		conf = configfile.load_config(config_file)
-		for m in conf['masters']:
-			self._operators[m] = {'role': 'master'}
+		if 'masters' in conf:
+			conf['superops'] = conf['masters']  # convert configs with outdated terminology. remove after all configs updated
+		for m in conf['superops']:
+			self._operators[m] = {'role': 'superop'}
 		self._api_key = conf['discord-api-key']
 		self.prefix = conf['prefix']
 		# TODO: could announce_channels be removed from the bot and put into the API instead?
@@ -329,7 +331,7 @@ class MasaBot(object):
 			msg += "* `" + pre + "quit` - Immediately stops me from running.\n"
 			msg += "* `" + pre + "op` - Gives a user operator permissions.\n"
 			msg += "* `" + pre + "deop` - Takes away operator permissions from a user.\n"
-			msg += "* `" + pre + "showops` - Shows all of my operators and masters.\n"
+			msg += "* `" + pre + "showops` - Shows all of my operators and superops.\n"
 			msg += "* `" + pre + "replchars` - Shows/sets characters that are replaced before parsing.\n"
 			msg += "* `" + pre + "settings` - Shows and sets core module settings.\n"
 			msg += "\nHere are the modules that I'm running:\n"
@@ -359,34 +361,33 @@ class MasaBot(object):
 				msg += " * `" + pre + "settings <module> <key>` will show what that setting in particular is set to "
 				msg += " right now.\n"
 				msg += " * Finally, `" + pre + "settings <module> <key> <new_value>` will set that setting to a new"
-				msg += " value! But you do gotta be an operator (or even a master for some settings!) to do that one,"
+				msg += " value! But you do gotta be an operator (or even a superop for some settings!) to do that one,"
 				msg += " because otherwise someone could"
 				msg += " accidentally set it to values that don't work very well, which is really scary!"
 			elif help_module == "version":
 				msg = "Oh, that's the command that tells you what version I am!"
 			elif help_module == "quit":
 				msg = "Mmm, `quit` is the command that will make me leave the server right away. It shuts me down"
-				msg += " instantly, which is really really sad! It's a really powerful command, so only my masters and"
-				msg += " operators are allowed to use it, okay?"
+				msg += " instantly, which is really really sad! It's a really powerful command, so only my superops"
+				msg += " are allowed to use it, okay?"
 			elif help_module == "op":
 				msg = "The `op` command turns any user into an operator. But, oh, of course, you have to already be an"
 				msg += " op in order to run it! Otherwise anybody could control me!"
 			elif help_module == "deop":
 				msg = "The `deop` command takes away operator powers from any of my existing operators. B-but I won't"
-				msg += " do that to any of my masters, so you can only do it to normal operators! Also, you have to"
+				msg += " do that to any of my superops, so you can only do it to normal operators! Also, you have to"
 				msg += " already be an operator in order to run this, just so you know!"
 			elif help_module == "showops":
 				msg = "Ah, that's the `showops` command! When you type this in, I'll tell you who my operators and"
-				msg += " masters are, and also a little bit of info on each of them."
+				msg += " superops are, and also a little bit of info on each of them."
 			elif help_module == "redeploy":
 				msg = "The `redeploy` command is a really special command that will cause me to shut down, pull in the"
 				msg += " latest updates from source control, and start back up again! This will only work if I was"
 				msg += " started via the supervisor script `run-masabot.sh`; otherwise the command will just make me"
-				msg += " shutdown, so please be careful! Oh, and remember that only my operators and masters can do"
-				msg += " this!"
+				msg += " shutdown, so please be careful! Oh, and remember that only my superops can do this!"
 			elif help_module == "replchars":
 				msg = "The `replchars` command shows all of the replacements that I do on text before trying to parse"
-				msg += " it into a command that I understand! Oh! And also, my operators and masters can use this"
+				msg += " it into a command that I understand! Oh! And also, my superops can use this"
 				msg += " command with an extra sub-command after it (`add` or `remove`) to change what replacements are"
 				msg += " active:\n\n`replchars` by itself will list out all the replacements.\n`replchars add"
 				msg += " <search> <replacement>` adds a new one.\n`replchars remove <search>` will remove an existing"
@@ -395,7 +396,7 @@ class MasaBot(object):
 				msg += " to any invocations of the `replchars` command.** Additionally, the backslash character, the"
 				msg += " non-curly double quote, and the non-curly single quote are never allowed to be replaced; also,"
 				msg += " the space character can only be replaced in conjuction with other characters, and never by"
-				msg += " itself. **Even if you're a master user or an operator.** I'm really sorry to restrict it like"
+				msg += " itself. **Even if you're a superop user or an operator.** I'm really sorry to restrict it like"
 				msg += " that, but I have to in order to make sure I can keep running properly!"
 			else:
 				if help_module not in self._invocations and help_module not in self._bot_modules:
@@ -410,7 +411,7 @@ class MasaBot(object):
 		await api.reply(msg)
 
 	async def quit(self, api: 'PluginAPI', restart_command="quit"):
-		api.require_master("quit", None)
+		api.require_superop("quit", None)
 		with open('.supervisor/restart-command', 'w') as fp:
 			fp.write(restart_command)
 		await api.reply("Right away, " + api.mention_user() + "! See you later!")
@@ -525,7 +526,7 @@ class MasaBot(object):
 					raise BotSyntaxError("bad context restriction: " + repr(context_restriction))
 
 				if server_id is None:
-					api.require_master(module_name + " settings set " + repr(key), None)
+					api.require_superop(module_name + " settings set " + repr(key), None)
 					if store_key.prompt_before:
 						if not await api.confirm(store_key.prompt_before):
 							await api.reply("Okay! I'll leave that setting alone, then.")
@@ -610,7 +611,7 @@ class MasaBot(object):
 
 			await api.reply(msg)
 		elif action == "add":
-			api.require_master("replchars add", None)
+			api.require_superop("replchars add", None)
 			if search is None:
 				msg = "I need to know the characters you want me to replace, and what you want to replace them with."
 				raise BotSyntaxError(msg)
@@ -670,7 +671,7 @@ class MasaBot(object):
 			await api.reply(msg)
 
 		elif action == "remove":
-			api.require_master("replchars remove", None)
+			api.require_superop("replchars remove", None)
 			if search is None:
 				msg = "I need to know the string you want me to stop replacing."
 				raise BotSyntaxError(msg)
@@ -729,7 +730,7 @@ class MasaBot(object):
 
 			for u in self._operators:
 				op_profile = self._operators[u]
-				if op_profile['role'] == 'master':
+				if op_profile['role'] == 'superop':
 					matching_ops.append(u)
 				elif op_profile['role'] == 'operator':
 					if server_id in op_profile['servers']:
@@ -746,10 +747,10 @@ class MasaBot(object):
 				msg += "* " + op_name + " _(" + op_info['role'] + ")_\n"
 		await api.reply(msg)
 
-	async def pm_master_users(self, message):
-		masters = [x for x in self._operators.keys() if self._operators[x]['role'] == 'master']
-		for m in masters:
-			user = self.client.get_user(m)
+	async def pm_superop_users(self, message):
+		superops = [x for x in self._operators.keys() if self._operators[x]['role'] == 'superop']
+		for so in superops:
+			user = self.client.get_user(so)
 			await user.send(message)
 
 	async def _run_timer(self):
@@ -760,7 +761,7 @@ class MasaBot(object):
 		while not self.client.is_closed:
 			now_time = time.monotonic()
 			for timer in self._timers:
-				timer.tick(now_time, lambda msg: self.pm_master_users(msg))
+				timer.tick(now_time, lambda msg: self.pm_superop_users(msg))
 
 			await asyncio.sleep(tick_span)
 
@@ -777,17 +778,17 @@ class MasaBot(object):
 	def is_op(self, uid: int, in_server: int) -> bool:
 		if uid not in self._operators:
 			return False
-		if self._operators[uid]['role'] == 'master':
+		if self._operators[uid]['role'] == 'superop':
 			return True
 		if self._operators[uid]['role'] == 'operator':
 			if in_server in self._operators[uid]['servers']:
 				return True
 		return False
 
-	def is_master(self, uid: int) -> bool:
+	def is_superop(self, uid: int) -> bool:
 		if uid not in self._operators:
 			return False
-		return self._operators[uid]['role'] == 'master'
+		return self._operators[uid]['role'] == 'superop'
 
 	async def _make_op(self, api: 'PluginAPI', args):
 		server_id = await api.require_server()
@@ -832,8 +833,8 @@ class MasaBot(object):
 			await api.reply("It looks like " + str(mention) + " is already not an op.")
 			return
 		else:
-			if self._operators[mention.id]['role'] == 'master':
-				msg = "Sorry, but " + str(mention) + " is one of my masters, and I could never remove their operator"
+			if self._operators[mention.id]['role'] == 'superop':
+				msg = "Sorry, but " + str(mention) + " is one of my superops, and I could never remove their operator"
 				msg += " status!"
 				await api.reply(msg)
 			else:
@@ -845,7 +846,7 @@ class MasaBot(object):
 				await api.reply("Okay. " + str(mention) + " is no longer an op.")
 
 	async def _redeploy(self, api: 'PluginAPI', reason=None):
-		api.require_master("redeploy", None)
+		api.require_superop("redeploy", None)
 		if reason is not None:
 			with open('.supervisor/reason', 'w') as fp:
 				fp.write(reason)
@@ -1287,7 +1288,7 @@ class MasaBot(object):
 
 		if 'operators' in builtin_state:
 			for op in builtin_state['operators']:
-				# master roles will be loaded later during config reading
+				# superop roles will be loaded later during config reading
 				self._operators[op] = dict(builtin_state['operators'][op])
 
 		if 'invocation_replacements' in builtin_state:
@@ -1340,7 +1341,7 @@ class MasaBot(object):
 	def _save_all(self):
 		state_dict = {
 			'__BOT__': {
-				'operators': {op: self._operators[op] for op in self._operators if self._operators[op]['role'] != 'master'},
+				'operators': {op: self._operators[op] for op in self._operators if self._operators[op]['role'] != 'superop'},
 				'invocation_replacements': dict(self._invocation_replacements),
 				'settings': {
 					'core': {
