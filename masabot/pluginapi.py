@@ -240,10 +240,7 @@ class PluginAPI:
 		If the ID is passed in, always gets that server ID.
 		"""
 		if guild_id is None:
-			if self.context.is_pm:
-				return None
-			else:
-				return self.context.source.guild
+			return self.context.get_guild()
 		else:
 			return self._bot.client.get_guild(guild_id)
 

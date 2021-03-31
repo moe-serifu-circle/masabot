@@ -65,6 +65,18 @@ class TimerTrigger(object):
 		self.timer_duration = datetime.timedelta(days=days, seconds=seconds, minutes=minutes, hours=hours, weeks=weeks)
 
 
+class ReactionTrigger(object):
+	# emoji is list of single emoji by grapheme sequence, not name.
+	# if name is required to recognize (e.g. for a custom emote), put it in custom_emoji list.
+	# blank emoji and blank custom_emoji will receive ALL reactions in the server.
+	#
+	# custom_emoji entries apply only to the ones in this server.
+	def __init(self, emoji: List[str] = None, custom_emoji: List[str] = None):
+		self.trigger_type = 'REACTION'
+		self.emoji = emoji
+		self.custom_emoji = custom_emoji
+
+
 class BotBehaviorModule(object):
 	def __init__(
 			self,
@@ -227,6 +239,10 @@ class BotBehaviorModule(object):
 		pass
 
 	async def on_timer_fire(self, bot: PluginAPI):
+		pass
+
+	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction) -> bool:
+		# return whether it is handled
 		pass
 
 	def _create_resource_dirs(self, resource_path):
