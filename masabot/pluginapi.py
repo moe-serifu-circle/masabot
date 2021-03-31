@@ -145,9 +145,9 @@ class PluginAPI:
 		await dest.send(content=message, file=discord.File(fp, filename=filename))
 		_log.debug(util.add_context(self.context, " sent <FILE>"))
 
-	def require_master(self, command, module, message="Operation requires master status"):
+	def require_superop(self, command, module, message="Operation requires superop status"):
 		"""
-		Ensure that the user that invoked a command has master permission. If the user does not have master
+		Ensure that the user that invoked a command has superop permission. If the user does not have superop
 		permission, a BotPermissionError is raised.
 
 		:param command: A string representing the command that is attempting to be executed. This should include enough
@@ -158,8 +158,8 @@ class PluginAPI:
 		the default, as a suitable error message will be generated from the other properties if this method is called
 		from within a core command function or from within one of a module's on_X methods().
 		"""
-		if not self._bot.is_master(self.context.author.id):
-			raise BotPermissionError(self.context, command, 'master', module, message=message)
+		if not self._bot.is_superop(self.context.author.id):
+			raise BotPermissionError(self.context, command, 'superop', module, message=message)
 
 	async def require_op(
 			self,

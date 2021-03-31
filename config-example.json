@@ -4,7 +4,7 @@
   "announce-channels": [
     "#general"
   ],
-  "masters": [
+  "superops": [
 
   ],
   "modules": {

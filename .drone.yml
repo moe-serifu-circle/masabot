@@ -11,5 +11,5 @@ pipeline:
       - "pkill -P $$"
     when:
       event: [pull_request, push]
-      branch: master
+      branch: main
 

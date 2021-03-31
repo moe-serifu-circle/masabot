@@ -351,7 +351,7 @@ class WatchListModule(BotBehaviorModule):
 	async def authorize(self, bot: PluginAPI):
 		auth_payload = {
 			'client_id': self._anilist_id,
-			'redirect_uri': "https://github.com/moe-serifu-circle/masabot/blob/master/docs/oauth2-authorization-code.md",
+			'redirect_uri': "https://github.com/moe-serifu-circle/masabot/blob/main/docs/oauth2-authorization-code.md",
 			'response_type': 'code'
 		}
 
@@ -381,7 +381,7 @@ class WatchListModule(BotBehaviorModule):
 			'grant_type': 'authorization_code',
 			'client_id': self._anilist_id,
 			'client_secret': self._anilist_secret,
-			'redirect_uri': "https://github.com/moe-serifu-circle/masabot/blob/master/docs/oauth2-authorization-code.md",
+			'redirect_uri': "https://github.com/moe-serifu-circle/masabot/blob/main/docs/oauth2-authorization-code.md",
 			'code': code
 		}
 
