@@ -127,7 +127,7 @@ class MasaBot(object):
 		self._timers = []
 		""":type : list[Timer]"""
 		self._setup_complete = False
-		self._master_timer_task = None
+		self._main_timer_task = None
 
 		# default replacements; will be overridden if present in state file
 		self._invocation_replacements = {
@@ -302,7 +302,7 @@ class MasaBot(object):
 		"""
 		_log.info("Connecting...")
 		# WARNING! WE REMOVED client.close() HERE.
-		self._master_timer_task = self.client.loop.create_task(self._run_timer())
+		self._main_timer_task = self.client.loop.create_task(self._run_timer())
 		self.client.run(self._api_key)
 
 	@property
@@ -416,7 +416,7 @@ class MasaBot(object):
 			fp.write(restart_command)
 		await api.reply("Right away, " + api.mention_user() + "! See you later!")
 		_log.info("Shutting down...")
-		self._master_timer_task.cancel()
+		self._main_timer_task.cancel()
 		await self.client.logout()
 
 	# noinspection PyMethodMayBeStatic
@@ -755,7 +755,7 @@ class MasaBot(object):
 
 	async def _run_timer(self):
 		await self.client.wait_until_ready()
-		_log.debug("Master timer started")
+		_log.debug("Main timer started")
 		tick_span = 60  # seconds
 
 		while not self.client.is_closed:
