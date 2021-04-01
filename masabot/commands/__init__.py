@@ -71,7 +71,7 @@ class ReactionTrigger(object):
 	# blank emoji and blank custom_emoji will receive ALL reactions in the server.
 	#
 	# custom_emoji entries apply only to the ones in this server.
-	def __init(self, emoji: List[str] = None, custom_emoji: List[str] = None):
+	def __init__(self, emoji: List[str] = None, custom_emoji: List[str] = None):
 		self.trigger_type = 'REACTION'
 		self.emoji = emoji
 		self.custom_emoji = custom_emoji
