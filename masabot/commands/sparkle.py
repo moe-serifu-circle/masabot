@@ -56,6 +56,14 @@ class SparkleModule(BotBehaviorModule):
 		if not await bot.get_setting('enabled'):
 			return
 
+		if ':sparkles:' in message.content or '✨' in message.content:
+			spread_chance = await bot.get_setting('spread-chance')
+			if random.random() < spread_chance:
+				from_msg_num = self.find_from_msg(bot, message)
+				if from_msg_num == -1:
+					from_msg_num = 0
+				await self.spread(bot, from_msg_num)
+
 		gid = bot.get_guild().id
 		cid = bot.get_channel().id
 		if gid not in self._message_history:
