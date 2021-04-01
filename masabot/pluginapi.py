@@ -1,4 +1,4 @@
-from typing import Any, Optional, Callable, Union
+from typing import Any, Optional, Callable, Union, List
 
 import asyncio
 # noinspection PyPackageRequirements
@@ -60,8 +60,16 @@ class PluginAPI:
 		"""Get the ID of the user that represents the currently connected bot."""
 		return self._bot.client.user.id
 
-	async def react(self, emoji_text: str):
-		await self.context.message.add_reaction(emoji_text)
+	async def react(self, emoji_text: str, message_id: int = 0):
+		if message_id != 0:
+			msg = self._get_message(message_id)
+		else:
+			msg = self.context.message
+		await msg.add_reaction(emoji_text)
+
+	async def get_messages(self) -> List[int]:
+		"""Get the ID of up to last 50 messages. Newest is at element 0."""
+		return self.context.source.history(limit=50).flatten()
 
 	def reset_server(self):
 		"""
@@ -352,3 +360,10 @@ class PluginAPI:
 
 	async def with_dm_context(self) -> 'PluginAPI':
 		return PluginAPI(self._bot, self._plugin_name, await self.context.to_dm_context())
+
+	async def _get_message(self, id: int) -> Optional[discord.Message]:
+		"""Return a message."""
+		try:
+			return self.context.source.fetch_message(id)
+		except discord.NotFound:
+			return None
