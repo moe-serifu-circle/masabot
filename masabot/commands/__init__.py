@@ -5,6 +5,8 @@ import pathlib
 
 from typing import Optional, Sequence, Tuple, Dict, Union, List, Any
 
+import discord
+
 from .. import util, settings as masabotsettings
 from ..pluginapi import PluginAPI
 
@@ -15,7 +17,8 @@ __all__ = [
 	'roll',
 	'animelist',
 	'noticeme',
-	'ratewaifu'
+	'ratewaifu',
+	'sparkle'
 ]
 
 
@@ -59,6 +62,11 @@ class RegexTrigger(object):
 		self.regex = regex
 
 
+class MessageTrigger(object):
+	def __init__(self):
+		self.trigger_type = 'ANY_MESSAGE'
+
+
 class TimerTrigger(object):
 	def __init__(self, days=0, seconds=0, minutes=0, hours=0, weeks=0):
 		self.trigger_type = 'TIMER'
@@ -73,6 +81,11 @@ class ReactionTrigger(object):
 	# custom_emoji entries apply only to the ones in this server.
 	def __init__(self, emoji: List[str] = None, custom_emoji: List[str] = None):
 		self.trigger_type = 'REACTION'
+
+		if emoji is None:
+			emoji = list()
+		if custom_emoji is None:
+			custom_emoji = list()
 		self.emoji = emoji
 		self.custom_emoji = custom_emoji
 
@@ -83,7 +96,7 @@ class BotBehaviorModule(object):
 			name: str,
 			desc: str,
 			help_text: str,
-			triggers: Sequence[Union[InvocationTrigger, RegexTrigger, MentionTrigger, TimerTrigger]],
+			triggers: Sequence[Union[InvocationTrigger, RegexTrigger, MentionTrigger, TimerTrigger, ReactionTrigger, MessageTrigger]],
 			resource_root: str,
 			has_state: bool = False,
 			settings: Optional[Sequence[masabotsettings.Key]] = None,
@@ -215,6 +228,9 @@ class BotBehaviorModule(object):
 		pass
 
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
+		pass
+
+	async def on_message(self, bot: PluginAPI, metadata: util.MessageMetadata, message: discord.Message):
 		pass
 
 	async def on_mention(
