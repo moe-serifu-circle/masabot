@@ -2,8 +2,7 @@ import asyncio
 
 import discord
 
-from . import BotBehaviorModule, RegexTrigger, InvocationTrigger, ReactionTrigger, MessageTrigger
-from ..util import BotSyntaxError
+from . import BotBehaviorModule, RegexTrigger, ReactionTrigger
 from .. import util, settings
 from ..bot import PluginAPI
 
@@ -23,14 +22,14 @@ class SparkleModule(BotBehaviorModule):
 
 		super().__init__(
 			name="sparkle",
-			desc= "I got a bottle of ✨glitter✨ and I collect it! Sometimes I put it on things!",
+			desc="I got a bottle of ✨glitter✨ and I collect it! Sometimes I put it on things!",
 			help_text=help_text,
 			triggers=[
-				MessageTrigger(),
+				RegexTrigger('.*(sparkle|dazzle|shiny|shine|kirakira|glitter|✨)?.*'),
 				ReactionTrigger(emoji=['✨'])
 			],
 			resource_root=resource_root,
-			has_state=True,
+			has_state=False,
 			server_only_settings=[
 				settings.Key(settings.key_type_toggle, 'enabled', default=False),
 				settings.Key(settings.key_type_percent, 'start-chance', default=0.3),
@@ -48,78 +47,47 @@ class SparkleModule(BotBehaviorModule):
 			]
 		)
 
-		"""[Server_id, Dict[Channel_id, List[message]]]"""
-		self._message_history = dict()
+		# list of messages being currently affected; no message id in this list
+		# will be used to take reactions from.
+		self._inprogs = dict()
 
-	# TODO: abstract out message so we dont need to import discord.py
-	async def on_message(self, bot: PluginAPI, metadata: util.MessageMetadata, message: discord.message):
+	async def on_regex_match(self, bot: PluginAPI, metadata: util.MessageMetadata, *match_groups: str):
 		if not await bot.get_setting('enabled'):
 			return
 
-		if ':sparkles:' in message.content or '✨' in message.content or 'glitter' in message.content or 'sparkle' in message.content:
+		if bot.get_user().id != bot.get_bot_id() and match_groups[1] is not None and len(match_groups[1]) > 0:
 			spread_chance = await bot.get_setting('spread-chance')
 			if random.random() < spread_chance:
-				from_msg_num = self.find_from_msg(bot, message)
-				if from_msg_num == -1:
-					from_msg_num = 0
-				await self.spread(bot, from_msg_num)
+				await self.spread(bot)
+		else:
+			chance = await bot.get_setting('start-chance')
+			if random.random() < chance:
+				await bot.react('✨')
 
-		gid = bot.get_guild().id
-		cid = bot.get_channel().id
-		if gid not in self._message_history:
-			self._message_history[gid] = dict()
-		if cid not in self._message_history[gid]:
-			self._message_history[gid][cid] = list()
-		self._message_history[gid][cid].append(message)
-		if len(self._message_history[gid][cid]) > 1000:
-			self._message_history[gid][cid] = self._message_history[gid][cid][len(self._message_history[gid][cid])-1000:]
-
-		if message.author.id == bot.get_bot_id():
-			return
-		chance = await bot.get_setting('start-chance')
-		if random.random() < chance:
-			await bot.react('✨')
-
-	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction) -> bool:
+	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction):
 		if not await bot.get_setting('enabled'):
 			return False
 
+		# DO NOT start the spread chain on any message that we are currently spreading to
+		if bot.context.message is None:
+			return
+		if bot.context.message.id in self._inprogs:
+			return
 		spread_chance = await bot.get_setting('spread-chance')
 		if random.random() < spread_chance:
-			from_msg_num = self.find_from_msg(bot, reaction.message)
-			if from_msg_num == -1:
-				from_msg_num = 0
-			await self.spread(bot, from_msg_num)
+			await self.spread(bot)
 		return False
 
-	def find_from_msg(self, bot: PluginAPI, msg: discord.Message):
-		msgs = self.get_messages(bot)
-		idx = -1
-		for m in msgs:
-			idx += 1
-			if m.id == msg.id:
-				return idx
-		return -1
-
-	def get_messages(self, bot: PluginAPI):
-		gid = bot.get_guild().id
-		cid = bot.get_channel().id
-		if gid not in self._message_history:
-			return list()
-		if cid not in self._message_history[gid]:
-			return list()
-		return list(reversed(self._message_history[gid][cid]))
-
-	async def spread(self, bot: PluginAPI, from_msg=0):
+	async def spread(self, bot: PluginAPI):
 		spread_min = await bot.get_setting('spread-min')
 		spread_max = await bot.get_setting('spread-max')
 		spread_amount = random.randint(spread_min, spread_max)
-		msgs = self.get_messages(bot)
+		msgs = bot.get_messages(from_current=True, limit=spread_amount+1)
 		if len(msgs) < 1:
 			return
 
-		if spread_amount > len(msgs) - (1 + from_msg):
-			spread_amount = len(msgs) - (1 + from_msg)
+		if spread_amount > len(msgs) - 1:
+			spread_amount = len(msgs) - 1
 
 		with bot.typing():
 			await asyncio.sleep(0.2 + (random.random() * 0.6))
@@ -150,11 +118,15 @@ class SparkleModule(BotBehaviorModule):
 			]
 		))
 
-		for msg in msgs[1+from_msg:spread_amount + 1]:
+		msg_set = msgs[:spread_amount + 1]
+		for m in msg_set:
+			self._inprogs[m.id] = True
+
+		for msg in msg_set:
 			msg_ctx = await bot.with_message_context(msg)
 			await msg_ctx.react('✨')
 
-
-
+		for m in msg_set:
+			del self._inprogs[m.id]
 
 BOT_MODULE_CLASS = SparkleModule

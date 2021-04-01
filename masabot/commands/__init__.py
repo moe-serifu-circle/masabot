@@ -62,11 +62,6 @@ class RegexTrigger(object):
 		self.regex = regex
 
 
-class MessageTrigger(object):
-	def __init__(self):
-		self.trigger_type = 'ANY_MESSAGE'
-
-
 class TimerTrigger(object):
 	def __init__(self, days=0, seconds=0, minutes=0, hours=0, weeks=0):
 		self.trigger_type = 'TIMER'
@@ -74,11 +69,14 @@ class TimerTrigger(object):
 
 
 class ReactionTrigger(object):
-	# emoji is list of single emoji by grapheme sequence, not name.
-	# if name is required to recognize (e.g. for a custom emote), put it in custom_emoji list.
-	# blank emoji and blank custom_emoji will receive ALL reactions in the server.
-	#
-	# custom_emoji entries apply only to the ones in this server.
+	"""
+	emoji is list of single emoji by grapheme sequence, not name.
+	if name is required to recognize (e.g. for a custom emote), put it in custom_emoji list.
+	blank emoji and blank custom_emoji will receive ALL reactions in the server.
+
+	custom_emoji entries apply only to the ones in this server.
+	"""
+
 	def __init__(self, emoji: List[str] = None, custom_emoji: List[str] = None):
 		self.trigger_type = 'REACTION'
 
@@ -96,7 +94,7 @@ class BotBehaviorModule(object):
 			name: str,
 			desc: str,
 			help_text: str,
-			triggers: Sequence[Union[InvocationTrigger, RegexTrigger, MentionTrigger, TimerTrigger, ReactionTrigger, MessageTrigger]],
+			triggers: Sequence[Union[InvocationTrigger, RegexTrigger, MentionTrigger, TimerTrigger, ReactionTrigger]],
 			resource_root: str,
 			has_state: bool = False,
 			settings: Optional[Sequence[masabotsettings.Key]] = None,
@@ -257,8 +255,7 @@ class BotBehaviorModule(object):
 	async def on_timer_fire(self, bot: PluginAPI):
 		pass
 
-	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction) -> bool:
-		# return whether it is handled
+	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction):
 		pass
 
 	def _create_resource_dirs(self, resource_path):

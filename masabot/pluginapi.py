@@ -7,6 +7,7 @@ import logging
 import shlex
 
 from . import util
+from .messagecache import MessageHistoryCache
 from .util import BotModuleError, BotPermissionError
 from .context import BotContext
 
@@ -21,7 +22,7 @@ class PluginAPI:
 
 	It is intended to be created outside of the plugin's control and then passed to plugins.
 	"""
-	def __init__(self, target_bot: Any, for_plugin: Optional[str] = None, context: Optional[BotContext] = None):
+	def __init__(self, target_bot: Any, for_plugin: Optional[str] = None, context: Optional[BotContext] = None, history: Optional[MessageHistoryCache] = None):
 		"""
 		Create a new plugin API object.
 
@@ -31,6 +32,14 @@ class PluginAPI:
 		self._context: Optional[BotContext] = context
 		self._plugin_name = for_plugin
 		self._server_set: Optional[int] = None
+		self._history = history
+
+	@property
+	def history(self) -> MessageHistoryCache:
+		if self._history:
+			return self._history
+		else:
+			raise ValueError("history was never set")
 
 	@property
 	def context(self) -> BotContext:
@@ -335,7 +344,7 @@ class PluginAPI:
 
 	def get_user(self, snowflake_id: Optional[int] = None) -> Optional[discord.User]:
 		"""
-		Get a user from a snowflake ID.
+		Get a user from a snowflake ID. If no ID is provided, gets the message author.
 		:param snowflake_id: The ID.
 		:return: The user.
 		"""
@@ -363,10 +372,34 @@ class PluginAPI:
 				server_id = await self.require_server()
 				return mod_settings.get(server_id, key)
 
-	# no set_setting because settings are now centralized
+	def get_messages(self, from_current: bool = False, limit: int = 0) -> List[discord.Message]:
+		"""Return messages, newest first"""
+		# TODO: work for DMs
+		if self.context.is_pm:
+			return list()
+
+		gid = self.get_guild().id
+		cid = self.get_channel().id
+		full_list = self.history.for_channel(gid, cid)
+
+		if from_current:
+			loc_idx = -1
+			idx = 0
+			for m in full_list:
+				if m.id == self.context.message.id:
+					loc_idx = idx
+					break
+				idx += 1
+			if loc_idx != -1:
+				full_list = full_list[loc_idx:]
+
+		if 0 < limit < len(full_list):
+			full_list = full_list[:limit]
+
+		return full_list
 
 	async def with_dm_context(self) -> 'PluginAPI':
-		return PluginAPI(self._bot, self._plugin_name, await self.context.to_dm_context())
+		return PluginAPI(self._bot, self._plugin_name, await self.context.to_dm_context(), self._history)
 
 	async def with_message_context(self, message: discord.Message) -> 'PluginAPI':
-		return PluginAPI(self._bot, self._plugin_name, BotContext(message))
+		return PluginAPI(self._bot, self._plugin_name, BotContext(message), self._history)
