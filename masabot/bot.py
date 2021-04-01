@@ -13,7 +13,7 @@ import re
 import shlex
 
 from . import configfile, commands, util, version, settings
-from typing import Optional, Dict, Any, List, Sequence, Callable
+from typing import Optional, Dict, Any, List, Sequence
 
 from .messagecache import MessageHistoryCache
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
@@ -230,7 +230,6 @@ class MasaBot(object):
 
 		@self.client.event
 		async def on_message(message):
-			_log.info("MESSAGE AUTHOR: " + str(message.author.id) + " / CLIENT ID: " + str(self.client.user.id))
 			self._message_history_cache.save(message)
 			if message.author.id == self.client.user.id:
 				return  # don't answer own messages
@@ -266,7 +265,20 @@ class MasaBot(object):
 
 			meta = util.MessageMetadata.from_message(reaction.message)
 			rct = await util.create_generic_reaction(reaction)
-			handled = False
+
+			emoji = ''
+			if rct.is_custom:
+				emoji = repr(rct.custom_emoji.name) + " (custom)"
+			else:
+				emoji = repr(rct.unicode_emoji)
+
+			# only log it if we care
+			# TODO: race condition between awaits and the time we actually check for reaction handlers
+			# shouldn't be an issue unless we wish to load/unload modules at runtime
+			if len(self._reaction_handlers['any']) > 0 or (rct.is_custom and rct.custom_emoji.name in self._reaction_handlers['custom']) or (not rct.is_custom and rct.unicode_emoji in self._reaction_handlers['unicode']):
+				log_msg = util.add_context(ctx, "received reaction " + emoji + " on MID " + repr(reaction.message.id))
+				_log.debug(log_msg)
+
 			if rct.is_custom:
 				if rct.custom_emoji.server is not None and rct.custom_emoji.server == ctx.get_guild().id:
 					if rct.custom_emoji.name in self._reaction_handlers['custom']:
@@ -274,21 +286,15 @@ class MasaBot(object):
 							api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 							# dont assign directly so handled stays true
 							await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
-							handled = True
-					for handler in self._reaction_handlers['any']:
-						api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
-						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
-						handled = True
 			else:
 				if rct.unicode_emoji is not None and rct.unicode_emoji in self._reaction_handlers['unicode']:
 					for handler in self._reaction_handlers['unicode'][rct.unicode_emoji]:
 						api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
-						handled = True
-				for handler in self._reaction_handlers['any']:
-					api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
-					await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
-					handled = True
+
+			for handler in self._reaction_handlers['any']:
+				api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
+				await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 
 			# don't mimic own reactions
 			if rct.is_from_this_client:

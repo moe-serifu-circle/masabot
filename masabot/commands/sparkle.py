@@ -25,7 +25,7 @@ class SparkleModule(BotBehaviorModule):
 			desc="I got a bottle of ✨glitter✨ and I collect it! Sometimes I put it on things!",
 			help_text=help_text,
 			triggers=[
-				RegexTrigger('.*(sparkle|dazzle|shiny|shine|kirakira|glitter|✨)?.*'),
+				RegexTrigger('(sparkle|dazzle|shiny|shine|kirakira|glitter|✨)?'),
 				ReactionTrigger(emoji=['✨'])
 			],
 			resource_root=resource_root,
@@ -72,6 +72,8 @@ class SparkleModule(BotBehaviorModule):
 		if bot.context.message is None:
 			return
 		if bot.context.message.id in self._inprogs:
+			if reaction.is_from_this_client:
+				del self._inprogs[bot.context.message.id]
 			return
 		spread_chance = await bot.get_setting('spread-chance')
 		if random.random() < spread_chance:
@@ -126,7 +128,8 @@ class SparkleModule(BotBehaviorModule):
 			msg_ctx = await bot.with_message_context(msg)
 			await msg_ctx.react('✨')
 
-		for m in msg_set:
-			del self._inprogs[m.id]
+		# event timing gets weird with reactions and we might receive them after clearing _inprogs.
+		# to avoid, just only remove from inprogs when we receive our own react instead of here
+
 
 BOT_MODULE_CLASS = SparkleModule
