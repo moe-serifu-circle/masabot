@@ -200,6 +200,10 @@ class SparkleModule(BotBehaviorModule):
 				"Ahahahaha you'll never clean THIS up. >:D",
 				"Where did I get this glitter from? It's a secret.",
 				"Help I'm trapped in a Masabot and the only thing I can do is write this message and dump glitter!",
+				"Smoke glitter every day!",
+				"10 points for Hufflepuff",
+				"+1 Team Valor",
+				"-1 Team Mystic",
 			]
 		))
 
