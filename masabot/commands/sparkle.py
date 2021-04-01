@@ -25,7 +25,7 @@ class SparkleModule(BotBehaviorModule):
 			desc="I got a bottle of ✨glitter✨ and I collect it! Sometimes I put it on things!",
 			help_text=help_text,
 			triggers=[
-				RegexTrigger('(sparkle|sparkly|dazzle|shiny|shine|kirakira|glitter|✨)?'),
+				RegexTrigger('([Ss][Pp][Aa][Rr][Kk][Ll][Ee]|[Ss][Pp][Aa][Rr][Kk][Ll][Yy]|[Dd][Aa][Zz][Zz][Ll][Ee]|[Ss][Hh][Ii][Nn][Yy]|[Ss][Hh][Ii][Nn][Ee]|[Kk][Ii][Rr][Aa]-?[Kk][Ii][Rr][Aa]|[Gg][Ll][Ii][Tt][Tt][Ee][Rr]|✨)?'),
 				ReactionTrigger(emoji=['✨'])
 			],
 			resource_root=resource_root,
