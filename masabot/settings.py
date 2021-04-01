@@ -117,6 +117,21 @@ class _FloatKeyType(_KeyType):
 		return float_val
 
 
+class _ToggleKeyType(_KeyType):
+	def __init__(self):
+		super().__init__(name='toggle', default_default=False)
+
+	def parse(self, value: str) -> bool:
+		value = str(value).lower()
+		if value == 'on' or value == 'yes' or value == '1' or value == 'true' or value == 't' or value == 'y':
+			bool_val = True
+		elif value == 'off' or value == 'no' or value == '0' or value == 'false' or value == 'f' or value == 'n':
+			bool_val = False
+		else:
+			raise ValueError("That setting has to be set to either 'true' or 'false'!")
+		return bool_val
+
+
 class _FloatRangeKeyType(_KeyType):
 	def __init__(self, min_allowed: Optional[float] = None, max_allowed: Optional[float] = None):
 		if min_allowed is not None and max_allowed is not None and float(min_allowed) >= float(max_allowed):
@@ -180,6 +195,7 @@ key_type_int = _IntKeyType()
 key_type_percent = _PercentKeyType()
 key_type_string = _StringKeyType()
 key_type_float = _FloatKeyType()
+key_type_toggle = _ToggleKeyType()
 
 
 def key_type_int_range(min: Optional[int] = None, max: Optional[int] = None):

@@ -3,7 +3,7 @@ import urllib.parse
 import enum
 # noinspection PyPackageRequirements
 import discord
-from typing import Optional, Sequence, Iterable, Union, Any
+from typing import Optional, Sequence, Iterable, Union, Any, List, Dict
 
 discord_char_limit = 2000
 
@@ -168,6 +168,54 @@ class MentionMatch:
 	@property
 	def start(self) -> int:
 		return self.pos[0]
+
+
+class CustomEmoji(object):
+	"""domain specific emoji info to abstract away discord.py"""
+	def __init__(self, id: int, name: str, server: Optional[int] = None):
+		self.id: int = id
+		self.server: int = server
+		self.name: str = name
+
+
+class Reaction(object):
+	"""domain specific reaction info to abstract away discord.py access"""
+	def __init__(self):
+		self.is_custom: bool = False
+		self.count: int = 0
+		self.users: List[int] = []
+		self.message: discord.Message
+
+		self.unicode_emoji: Optional[str] = None
+		self.custom_emoji: Optional[CustomEmoji] = None
+
+
+async def create_generic_reaction(react: discord.Reaction) -> Reaction:
+	users = await react.users().flatten()
+	r = Reaction()
+	r.message = react.message
+	r.is_custom = react.custom_emoji
+	for u in users:
+		r.users.append(u.id)
+
+	if isinstance(react.emoji, discord.PartialEmoji):
+		if react.emoji.is_unicode_emoji():
+			r.unicode_emoji = react.emoji.name
+		else:
+			r.custom_emoji = CustomEmoji(react.emoji.id, react.emoji.name)
+	elif isinstance(react.emoji, discord.Emoji):
+		r.unicode_emoji = None
+		r.custom_emoji = CustomEmoji(react.emoji.id, react.emoji.name, react.emoji.guild_id)
+	else:
+		# otherwise, it is a str
+		r.unicode_emoji = react.emoji
+
+	return r
+
+
+
+
+
 
 
 def find_mentions(

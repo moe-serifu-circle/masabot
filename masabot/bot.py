@@ -23,6 +23,19 @@ _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
 
+random_status_list = [
+			"with her internal systems",
+			"looking at the world!",
+			"with the new Discord API",
+			"Turing test practice",
+			"with YouTube",
+			"Epic Bot Adventure!",
+			"Botting About",
+			"My blood type is B!",
+			"World domination planning",
+		]
+
+
 def _fmt_channel(ch):
 	"""
 	Print a channel in human-readable format.
@@ -116,6 +129,8 @@ class MasaBot(object):
 		self._mention_handlers = {'users': {}, 'channels': {}, 'roles': {}}
 		self._self_mention_handlers = []
 		self._any_mention_handlers = []
+		self._any_message_handlers = []
+		self._reaction_handlers = {'unicode': {}, 'custom': {}, 'any': []}
 		self._regex_handlers = {}
 		self._operators: Dict[int, Dict[str, Any]] = {}
 		self.module_settings: Dict[str, settings.SettingsStore] = {}
@@ -124,6 +139,7 @@ class MasaBot(object):
 		self.core_settings.register_key(
 			settings.Key(settings.key_type_percent, 'mimic-reaction-chance', default=0.05)
 		)
+		self.core_settings.register_key(settings.Key(settings.key_type_percent, 'presence-chance', default=0.001))
 		self._timers = []
 		""":type : list[Timer]"""
 		self._setup_complete = False
@@ -174,17 +190,7 @@ class MasaBot(object):
 
 		self._sent_announcement = False
 
-		random_status_list = [
-			"with her internal systems",
-			"looking at the world!",
-			"with the new Discord API",
-			"Turing test practice",
-			"with YouTube",
-			"Epic Bot Adventure!",
-			"Botting About",
-			"My blood type is B!",
-			"World domination planning",
-		]
+
 
 		@self.client.event
 		async def on_ready():
@@ -197,7 +203,7 @@ class MasaBot(object):
 					avatar_data = avatar_fp.read()
 				await self.client.user.edit(avatar=avatar_data)
 
-			await self.client.change_presence(activity=discord.Game(name=random.choice(random_status_list)))
+			await self.randomize_presence()
 
 			_log.info("Connected to servers:")
 			for g in self.client.guilds:
@@ -215,6 +221,11 @@ class MasaBot(object):
 
 		@self.client.event
 		async def on_message(message):
+			for handler in self._any_message_handlers:
+				meta = util.MessageMetadata.from_message(message)
+				context = BotContext(message)
+				api = PluginAPI(self, handler.name, context)
+				await self._execute_action(api, handler.on_message(api, meta, message), handler)
 			if message.author.id == self.client.user.id:
 				return  # don't answer own messages
 			if message.content.startswith(self.prefix):
@@ -231,21 +242,50 @@ class MasaBot(object):
 		async def on_guild_join(guild: discord.Guild):
 			_log.info("joined guild {:s} (ID {:d})".format(guild.name, guild.id))
 			self._save_all()
+			await self.randomize_presence(self.core_settings.get_global('presence-chance'))
 
 		@self.client.event
 		async def on_guild_remove(guild: discord.Guild):
 			_log.info("left guild {:s} (ID {:d})".format(guild.name, guild.id))
 			self._save_all()
+			await self.randomize_presence(self.core_settings.get_global('presence-chance'))
 
 		# noinspection PyUnusedLocal
 		@self.client.event
 		async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 			ctx = BotContext(reaction.message)
+			# TODO: make reaction triggers work in DMs
 			if ctx.is_pm:
 				return
 
 			if reaction.me:
-				return  # don't mimic own reactions
+				return  # don't care about own reactions
+
+			meta = util.MessageMetadata.from_message(reaction.message)
+			rct = await util.create_generic_reaction(reaction)
+			handled = False
+			if rct.is_custom:
+				if rct.custom_emoji.server is not None and rct.custom_emoji.server == ctx.get_guild().id:
+					if rct.custom_emoji.name in self._reaction_handlers['custom']:
+						for handler in self._reaction_handlers['custom'][rct.custom_emoji.name]:
+							api = PluginAPI(self, handler.name, ctx)
+							# dont assign directly so handled stays true
+							await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+							handled = True
+					for handler in self._reaction_handlers['any']:
+						api = PluginAPI(self, handler.name, ctx)
+						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+						handled = True
+			else:
+				if rct.unicode_emoji is not None and rct.unicode_emoji in self._reaction_handlers['unicode']:
+					for handler in self._reaction_handlers['unicode'][rct.unicode_emoji]:
+						api = PluginAPI(self, handler.name, ctx)
+						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+						handled = True
+				for handler in self._reaction_handlers['any']:
+					api = PluginAPI(self, handler.name, ctx)
+					await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+					handled = True
 
 			if random.random() < self.core_settings.get(ctx.source.guild.id, 'mimic-reaction-chance'):
 				# give a slight delay
@@ -264,7 +304,10 @@ class MasaBot(object):
 						restart_command_file.write("quit")
 					await self.client.close()
 			else:
-				message = args[0]
+				if isinstance(args[0], discord.Reaction):
+					message = args[0].message
+				else:
+					message = args[0]
 				pager = DiscordPager("_(error continued)_")
 				e = traceback.format_exc()
 				logging.exception("Exception in main loop")
@@ -295,6 +338,10 @@ class MasaBot(object):
 		except Exception:
 			_log.exception("could not set module state from state file; defaults will be used")
 		_log.info("Modules are now ready")
+
+	async def randomize_presence(self, chance=1.0):
+		if random.random() < chance:
+			await self.client.change_presence(activity=discord.Game(name=random.choice(random_status_list)))
 
 	def run(self):
 		"""
@@ -970,14 +1017,19 @@ class MasaBot(object):
 		names = []
 		_log.debug("Loading modules...")
 		for module_str in commands.__all__:
+			new_message_handlers = list(self._any_message_handlers)
 			new_invoke_handlers = _copy_handler_dict(self._invocations)
 			new_regex_handlers = _copy_handler_dict(self._regex_handlers)
+
+			# really confused by what the mention handler initialization is doing it seems it'd break on a lot
+			# TODO: take another look at the below
 			new_mention_handlers = {
 				'any': list(self._any_mention_handlers),
 				'self': list(self._self_mention_handlers),
 				'specific': _copy_handler_dict(self._mention_handlers)
 			}
 			new_timer_handlers = list(self._timers)
+			new_reaction_handlers = _copy_handler_dict(self._reaction_handlers)
 			mod = importlib.import_module("masabot.commands." + module_str)
 			bot_module = mod.BOT_MODULE_CLASS('resources')
 			if bot_module.name.lower() == "core":
@@ -993,6 +1045,10 @@ class MasaBot(object):
 					self._add_new_regex_handler(bot_module, t, new_regex_handlers)
 				elif t.trigger_type == 'TIMER':
 					self._add_new_timer_handler(bot_module, t, new_timer_handlers)
+				elif t.trigger_type == 'REACTION':
+					self._add_new_reaction_handler(bot_module, t, new_reaction_handlers)
+				elif t.trigger_type == 'ANY_MESSAGE':
+					new_message_handlers.append(bot_module)
 
 			self._bot_modules[bot_module.name] = bot_module
 			self._invocations = new_invoke_handlers
@@ -1000,6 +1056,8 @@ class MasaBot(object):
 			self._mention_handlers = new_mention_handlers['specific']
 			self._self_mention_handlers = new_mention_handlers['self']
 			self._any_mention_handlers = new_mention_handlers['any']
+			self._any_message_handlers = new_message_handlers
+			self._reaction_handlers = new_reaction_handlers
 			names.append(bot_module.name)
 			_log.debug("Added module '" + bot_module.name + "'")
 		_log.debug("Done loading modules")
@@ -1082,6 +1140,33 @@ class MasaBot(object):
 				else:
 					current_handlers['specific']['roles'][sid] = []
 				current_handlers['specific']['roles'][sid].append(bot_module)
+
+	# noinspection PyMethodMayBeStatic
+	def _add_new_reaction_handler(self, bot_module, trig, current_handlers):
+		"""
+		Checks a reaction handler and adds it to the active set of handlers.
+
+		:type bot_module: commands.BotBehaviorModule
+		:param bot_module: The module registering a reaction handler.
+		:type trig: commands.ReactionTrigger
+		:param trig: The trigger that specifies the reactions to be handled.
+		:type current_handlers: dict[str, list[commands.BotBehaviorModule] | dict[str, commands.BotBehaviorModule]]
+		:param current_handlers: The mention handlers that already exist. The new handler will be added to the end of
+		the relevant one.
+		"""
+
+		rts = trig
+		if len(rts.custom_emoji) == 0 and len(rts.emoji) == 0:
+			current_handlers['any'].append(bot_module)
+		else:
+			for custom_name in rts.custom_emoji:
+				if custom_name not in current_handlers['custom']:
+					current_handlers['custom'][custom_name] = list()
+				current_handlers['custom'][custom_name].append(bot_module)
+			for unicode_grapheme in rts.emoji:
+				if unicode_grapheme not in current_handlers['unicode']:
+					current_handlers['unicode'][unicode_grapheme] = list()
+				current_handlers['unicode'][unicode_grapheme].append(bot_module)
 
 	# noinspection PyMethodMayBeStatic
 	def _add_new_regex_handler(self, bot_module, trig, current_handlers):
@@ -1230,6 +1315,7 @@ class MasaBot(object):
 					await self._execute_action(api, h.on_regex_match(api, meta, *match_groups), h)
 
 	async def _execute_action(self, api: PluginAPI, action, mod=None):
+		await self.randomize_presence(self.core_settings.get_global('presence-chance'))
 		try:
 			mod_name = repr(mod.name) if mod is not None else "core"
 			_log.debug("Executing registered action in " + mod_name + " module...")

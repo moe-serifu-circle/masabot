@@ -70,6 +70,12 @@ class BotContext(object):
 				raise ValueError(str(ch_id) + " is not a channel in this context")
 			return ch_match.name
 
+	def get_guild(self) -> Optional[discord.Guild]:
+		if self.is_pm:
+			return None
+		else:
+			return self.source.guild
+
 	async def to_dm_context(self):
 		"""
 		Create a copy of this context for sending DMs to the author.

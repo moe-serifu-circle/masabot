@@ -1,4 +1,4 @@
-from typing import Any, Optional, Callable, Union
+from typing import Any, Optional, Callable, Union, List, Tuple
 
 import asyncio
 # noinspection PyPackageRequirements
@@ -53,7 +53,10 @@ class PluginAPI:
 		for g in self._bot.connected_guilds:
 			for ch in g.channels:
 				if ch.type == discord.ChannelType.text and ('#' + ch.name) in self._bot.announce_channels:
-					await ch.send(message)
+					try:
+						await ch.send(message)
+					except discord.Forbidden:
+						pass
 					_log.debug(util.add_context(ch, "sent: {!r}", message))
 
 	def get_bot_id(self) -> int:
@@ -61,7 +64,8 @@ class PluginAPI:
 		return self._bot.client.user.id
 
 	async def react(self, emoji_text: str):
-		await self.context.message.add_reaction(emoji_text)
+		msg = self.context.message
+		await msg.add_reaction(emoji_text)
 
 	def reset_server(self):
 		"""
@@ -233,6 +237,17 @@ class PluginAPI:
 	def typing(self):
 		return self.context.source.typing()
 
+	def get_channel(self, server_channel_id: Optional[Tuple[int, int]] = None) -> Optional[discord.TextChannel]:
+		"""Return the current channel. None is returned if there is no current channel; consider doing bot_api.require_server()
+		for cases where a server ID is needed, followed by a query to get_channel.
+
+		If the ID is passed in, always gets that server/channel ID.
+		"""
+		if server_channel_id is None:
+			return self.context.source
+		else:
+			return self.get_guild(server_channel_id[0]).get_channel(server_channel_id[1])
+
 	def get_guild(self, guild_id: Optional[int] = None) -> Optional[discord.Guild]:
 		"""Return the current guild. None is returned if there is no current guild; consider doing bot_api.require_server()
 		for cases where a server ID is needed.
@@ -240,10 +255,7 @@ class PluginAPI:
 		If the ID is passed in, always gets that server ID.
 		"""
 		if guild_id is None:
-			if self.context.is_pm:
-				return None
-			else:
-				return self.context.source.guild
+			return self.context.get_guild()
 		else:
 			return self._bot.client.get_guild(guild_id)
 
@@ -355,3 +367,6 @@ class PluginAPI:
 
 	async def with_dm_context(self) -> 'PluginAPI':
 		return PluginAPI(self._bot, self._plugin_name, await self.context.to_dm_context())
+
+	async def with_message_context(self, message: discord.Message) -> 'PluginAPI':
+		return PluginAPI(self._bot, self._plugin_name, BotContext(message))
