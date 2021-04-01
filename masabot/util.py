@@ -184,6 +184,7 @@ class Reaction(object):
 		self.is_custom: bool = False
 		self.count: int = 0
 		self.users: List[int] = []
+		self.is_from_this_client: bool = False
 		self.message: discord.Message
 
 		self.unicode_emoji: Optional[str] = None
@@ -194,6 +195,7 @@ async def create_generic_reaction(react: discord.Reaction) -> Reaction:
 	users = await react.users().flatten()
 	r = Reaction()
 	r.message = react.message
+	r.is_from_this_client = react.me
 	r.is_custom = react.custom_emoji
 	for u in users:
 		r.users.append(u.id)

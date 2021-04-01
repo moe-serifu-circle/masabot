@@ -14,6 +14,8 @@ import shlex
 
 from . import configfile, commands, util, version, settings
 from typing import Optional, Dict, Any, List, Sequence
+
+from .messagecache import MessageHistoryCache
 from .util import BotSyntaxError, BotModuleError, BotPermissionError, MessageMetadata, DiscordPager
 from .context import BotContext
 from .pluginapi import PluginAPI
@@ -129,7 +131,6 @@ class MasaBot(object):
 		self._mention_handlers = {'users': {}, 'channels': {}, 'roles': {}}
 		self._self_mention_handlers = []
 		self._any_mention_handlers = []
-		self._any_message_handlers = []
 		self._reaction_handlers = {'unicode': {}, 'custom': {}, 'any': []}
 		self._regex_handlers = {}
 		self._operators: Dict[int, Dict[str, Any]] = {}
@@ -139,7 +140,12 @@ class MasaBot(object):
 		self.core_settings.register_key(
 			settings.Key(settings.key_type_percent, 'mimic-reaction-chance', default=0.05)
 		)
-		self.core_settings.register_key(settings.Key(settings.key_type_percent, 'presence-chance', default=0.001))
+		self.core_settings.register_key(
+			settings.Key(settings.key_type_percent, 'presence-chance', default=0.001)
+		)
+		self.core_settings.register_key(
+			settings.Key(settings.key_type_int, 'history-limit', default=1000)
+		)
 		self._timers = []
 		""":type : list[Timer]"""
 		self._setup_complete = False
@@ -158,6 +164,8 @@ class MasaBot(object):
 		for m in conf['superops']:
 			self._operators[m] = {'role': 'superop'}
 		self._api_key = conf['discord-api-key']
+		"""[Server_id, Dict[Channel_id, List[message]]]"""
+
 		self.prefix = conf['prefix']
 		# TODO: could announce_channels be removed from the bot and put into the API instead?
 		self.announce_channels = conf['announce-channels']
@@ -186,11 +194,12 @@ class MasaBot(object):
 			except Exception:
 				_log.exception("Could not load state file contents; skipping")
 
+		def get_limit():
+			return self.core_settings.get_global('history-limit')
+		self._message_history_cache = MessageHistoryCache(get_limit)
+
 		self.client = discord.Client(status="being cute with discord.py 1.x")
-
 		self._sent_announcement = False
-
-
 
 		@self.client.event
 		async def on_ready():
@@ -221,11 +230,7 @@ class MasaBot(object):
 
 		@self.client.event
 		async def on_message(message):
-			for handler in self._any_message_handlers:
-				meta = util.MessageMetadata.from_message(message)
-				context = BotContext(message)
-				api = PluginAPI(self, handler.name, context)
-				await self._execute_action(api, handler.on_message(api, meta, message), handler)
+			self._message_history_cache.save(message)
 			if message.author.id == self.client.user.id:
 				return  # don't answer own messages
 			if message.content.startswith(self.prefix):
@@ -258,35 +263,42 @@ class MasaBot(object):
 			if ctx.is_pm:
 				return
 
-			if reaction.me:
-				return  # don't care about own reactions
-
 			meta = util.MessageMetadata.from_message(reaction.message)
 			rct = await util.create_generic_reaction(reaction)
-			handled = False
+
+			emoji = ''
+			if rct.is_custom:
+				emoji = repr(rct.custom_emoji.name) + " (custom)"
+			else:
+				emoji = repr(rct.unicode_emoji)
+
+			# only log it if we care
+			# TODO: race condition between awaits and the time we actually check for reaction handlers
+			# shouldn't be an issue unless we wish to load/unload modules at runtime
+			if len(self._reaction_handlers['any']) > 0 or (rct.is_custom and rct.custom_emoji.name in self._reaction_handlers['custom']) or (not rct.is_custom and rct.unicode_emoji in self._reaction_handlers['unicode']):
+				log_msg = util.add_context(ctx, "received reaction " + emoji + " on MID " + repr(reaction.message.id))
+				_log.debug(log_msg)
+
 			if rct.is_custom:
 				if rct.custom_emoji.server is not None and rct.custom_emoji.server == ctx.get_guild().id:
 					if rct.custom_emoji.name in self._reaction_handlers['custom']:
 						for handler in self._reaction_handlers['custom'][rct.custom_emoji.name]:
-							api = PluginAPI(self, handler.name, ctx)
+							api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 							# dont assign directly so handled stays true
 							await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
-							handled = True
-					for handler in self._reaction_handlers['any']:
-						api = PluginAPI(self, handler.name, ctx)
-						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
-						handled = True
 			else:
 				if rct.unicode_emoji is not None and rct.unicode_emoji in self._reaction_handlers['unicode']:
 					for handler in self._reaction_handlers['unicode'][rct.unicode_emoji]:
-						api = PluginAPI(self, handler.name, ctx)
+						api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
-						handled = True
-				for handler in self._reaction_handlers['any']:
-					api = PluginAPI(self, handler.name, ctx)
-					await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
-					handled = True
 
+			for handler in self._reaction_handlers['any']:
+				api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
+				await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+
+			# don't mimic own reactions
+			if rct.is_from_this_client:
+				return
 			if random.random() < self.core_settings.get(ctx.source.guild.id, 'mimic-reaction-chance'):
 				# give a slight delay
 				delay = 1 + (random.random() * 3)  # random amount from 1 to 4 seconds
@@ -385,7 +397,7 @@ class MasaBot(object):
 			for m_name in self._bot_modules:
 				m = self._bot_modules[m_name]
 				invokes = ','.join('`' + pre + t.invocation + '`' for t in m.triggers if t.trigger_type == "INVOCATION")
-				invokes = ' (' + invokes + ')' if invokes is not '' else ''
+				invokes = ' (' + invokes + ')' if invokes != '' else ''
 				msg += '* `' + m.name + "`" + invokes + " - " + m.description + "\n"
 
 			msg += "\nFor more info, you can type `" + pre + "help` followed by the name of a module or built-in"
@@ -603,6 +615,7 @@ class MasaBot(object):
 					log_message += module_name + ":"
 				log_message += repr(key) + " from " + repr(old_value) + " to new value " + repr(updated_value)
 				_log.debug(log_message)
+				# TODO: BAD. genericize this! this is working around not having mutation hooks
 				self._save_all()
 				await api.reply("Certainly! `" + key + "` has been updated to " + repr(updated_value) + "!")
 				if store_key.call_module_on_alter:
@@ -1017,7 +1030,6 @@ class MasaBot(object):
 		names = []
 		_log.debug("Loading modules...")
 		for module_str in commands.__all__:
-			new_message_handlers = list(self._any_message_handlers)
 			new_invoke_handlers = _copy_handler_dict(self._invocations)
 			new_regex_handlers = _copy_handler_dict(self._regex_handlers)
 
@@ -1047,8 +1059,6 @@ class MasaBot(object):
 					self._add_new_timer_handler(bot_module, t, new_timer_handlers)
 				elif t.trigger_type == 'REACTION':
 					self._add_new_reaction_handler(bot_module, t, new_reaction_handlers)
-				elif t.trigger_type == 'ANY_MESSAGE':
-					new_message_handlers.append(bot_module)
 
 			self._bot_modules[bot_module.name] = bot_module
 			self._invocations = new_invoke_handlers
@@ -1056,7 +1066,6 @@ class MasaBot(object):
 			self._mention_handlers = new_mention_handlers['specific']
 			self._self_mention_handlers = new_mention_handlers['self']
 			self._any_mention_handlers = new_mention_handlers['any']
-			self._any_message_handlers = new_message_handlers
 			self._reaction_handlers = new_reaction_handlers
 			names.append(bot_module.name)
 			_log.debug("Added module '" + bot_module.name + "'")
@@ -1199,7 +1208,7 @@ class MasaBot(object):
 		log_msg += " from " + str(context.author.id) + "/" + context.author_name()
 		_log.debug(log_msg)
 
-		core_api = PluginAPI(self, None, context)
+		core_api = PluginAPI(self, None, context, self._message_history_cache)
 
 		try:
 			tokens = self._message_to_tokens(message)
@@ -1245,7 +1254,7 @@ class MasaBot(object):
 			await self._execute_action(core_api, self._run_settings_command(core_api, args))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
-				api = PluginAPI(self, handler.name, context)
+				api = PluginAPI(self, handler.name, context, self._message_history_cache)
 				await self._execute_action(api, handler.on_invocation(api, meta, cmd, *args), handler)
 		else:
 			_log.debug("Ignoring unknown command " + repr(cmd))
@@ -1266,7 +1275,7 @@ class MasaBot(object):
 		if len(valid_mention_handlers) > 0:
 			_log.debug(log_msg + ": passing to generic mention handlers")
 			for h in valid_mention_handlers:
-				api = PluginAPI(self, h.name, context)
+				api = PluginAPI(self, h.name, context, self._message_history_cache)
 				await self._execute_action(api, h.on_mention(api, meta, message.content, mentions), h)
 				handled_already.append(h.name)
 
@@ -1274,7 +1283,7 @@ class MasaBot(object):
 			for h in self._self_mention_handlers:
 				if h.name not in handled_already:
 					_log.debug(log_msg + ": passing to self-mention handler " + repr(h.name))
-					api = PluginAPI(self, h.name, context)
+					api = PluginAPI(self, h.name, context, self._message_history_cache)
 					await self._execute_action(api, h.on_mention(api, meta, message.content, mentions), h)
 					handled_already.append(h.name)
 
@@ -1292,7 +1301,7 @@ class MasaBot(object):
 				for h in self._mention_handlers[subidx][m]:
 					if h.name not in handled_already:
 						_log.debug(log_msg + ": passing to " + str(m) + " mention handler " + repr(h.name))
-						api = PluginAPI(self, h.name, context)
+						api = PluginAPI(self, h.name, context, self._message_history_cache)
 						await self._execute_action(api, h.on_mention(api, meta, message.content, list(mentions)), h)
 						handled_already.append(h.name)
 
@@ -1311,7 +1320,7 @@ class MasaBot(object):
 				for i in range(regex.groups+1):
 					match_groups.append(m.group(i))
 				for h in h_list:
-					api = PluginAPI(self, h.name, context)
+					api = PluginAPI(self, h.name, context, self._message_history_cache)
 					await self._execute_action(api, h.on_regex_match(api, meta, *match_groups), h)
 
 	async def _execute_action(self, api: PluginAPI, action, mod=None):
