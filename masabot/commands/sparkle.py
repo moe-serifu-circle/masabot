@@ -56,7 +56,7 @@ class SparkleModule(BotBehaviorModule):
 		if not await bot.get_setting('enabled'):
 			return
 
-		if ':sparkles:' in message.content or '✨' in message.content:
+		if ':sparkles:' in message.content or '✨' in message.content or 'glitter' in message.content or 'sparkle' in message.content:
 			spread_chance = await bot.get_setting('spread-chance')
 			if random.random() < spread_chance:
 				from_msg_num = self.find_from_msg(bot, message)
