@@ -1,9 +1,9 @@
 FROM alpine:3.13.4
 
 # masabot mountpoints -
-# /app/config - provide a custom config.json in root of this volume
-# /app/resource - REQUIRED FOR RESOURCE PERSISTENCE
-# /app/logs - capture logging
+# /config - provide a custom config.json in root of this volume
+# /app/resources - REQUIRED FOR RESOURCE PERSISTENCE
+# /logs - capture logging
 
 # supervisor is python based; installing it should handle py
 # dep as well. but it will not auto-install pip, which we need

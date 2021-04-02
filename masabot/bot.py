@@ -134,11 +134,13 @@ class Timer(object):
 
 class MasaBot(object):
 
-	def __init__(self, config_file):
+	def __init__(self, config_file, logdir):
 		"""
 		Initialize the bot API.
 		:type config_file: str
 		:param config_file: The path to the configuration file for the bot.
+		:type logdir: str
+		:param logdir: The path to a directory to store bot-defined logs in. Not currently used.
 		"""
 		_log.debug("Initializing MasaBot")
 		self._bot_modules = {}
@@ -1494,10 +1496,10 @@ class MasaBot(object):
 		_log.debug("Saved state to disk")
 
 
-def start():
+def start(configpath, logdir):
 	if not os.path.exists('resources'):
 		os.mkdir('resources')
-	bot = MasaBot("config.json")
+	bot = MasaBot(configpath, logdir)
 	try:
 		bot.run()
 	except KeyboardInterrupt:
