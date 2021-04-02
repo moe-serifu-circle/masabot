@@ -42,4 +42,4 @@ COPY config-example.json /config/config.json
 # permissions
 RUN chmod +x /app/bootstrap.sh && chmod +x /app/kill-on-failure.sh
 
-CMD ["/usr/bin/bash"]
+ENTRYPOINT ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]

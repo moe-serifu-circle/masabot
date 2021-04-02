@@ -17,10 +17,11 @@ fi
 cp config.json config/config.json
 
 docker build . -t "masabot:$1"
+docker stop masabot
 docker rm masabot
 docker run \
   -v config:/config \
   -v resources:/app/resources \
   -v logs:/logs \
   --name masabot \
-  -i "masabot:$1"
+  "masabot:$1"
