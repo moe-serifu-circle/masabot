@@ -35,6 +35,22 @@ random_status_list = [
 			"Botting About",
 			"My blood type is B!",
 			"World domination planning",
+			"Looking for more glitter",
+			"being cute ^_^",
+			"VNs with sketchy covers",
+			"pranxis",
+			"with clown friends",
+			"outside",
+			"in the road",
+			"THREAT SCAN",
+			"lunch! ^_^",
+			"anime",
+			"Sword Art Online",
+			"DDR",
+			"Bugsnax",
+			"GameCube",
+			"ACNH",
+			"yuru camp",
 		]
 
 
@@ -198,7 +214,13 @@ class MasaBot(object):
 			return self.core_settings.get_global('history-limit')
 		self._message_history_cache = MessageHistoryCache(get_limit)
 
-		self.client = discord.Client(status="being cute with discord.py 1.x")
+		intents = discord.Intents.default()
+		intents.dm_typing = False
+		intents.typing = False
+		intents.bans = False
+		intents.voice_states = False
+		intents.members = True
+		self.client = discord.Client(status="being cute with discord.py 1.x", intents=intents)
 		self._sent_announcement = False
 
 		@self.client.event
