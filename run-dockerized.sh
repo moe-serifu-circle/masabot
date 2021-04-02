@@ -16,8 +16,11 @@ fi
 [ -d "logs" ] || mkdir logs
 cp config.json config/config.json
 
+docker build . -t "masabot:$1"
+docker rm masabot
 docker run \
   -v config:/config \
   -v resources:/app/resources \
-  -v logs:/logs
-  "masabot:$1" masabot
+  -v logs:/logs \
+  --name masabot \
+  -i "masabot:$1"
