@@ -334,7 +334,7 @@ class MasaBot(object):
 				# assume that we did not come from on_message
 				_log.exception("Exception in startup")
 				if not self._setup_complete:
-					with open('.supervisor/restart-command', 'w') as restart_command_file:
+					with open('ipc/restart-command', 'w') as restart_command_file:
 						restart_command_file.write("quit")
 					await self.client.close()
 			else:
@@ -493,7 +493,7 @@ class MasaBot(object):
 
 	async def quit(self, api: 'PluginAPI', restart_command="quit"):
 		api.require_superop("quit", None)
-		with open('.supervisor/restart-command', 'w') as fp:
+		with open('ipc/restart-command', 'w') as fp:
 			fp.write(restart_command)
 		await api.reply("Right away, " + api.mention_user() + "! See you later!")
 		_log.info("Shutting down...")
@@ -930,7 +930,7 @@ class MasaBot(object):
 	async def _redeploy(self, api: 'PluginAPI', reason=None):
 		api.require_superop("redeploy", None)
 		if reason is not None:
-			with open('.supervisor/reason', 'w') as fp:
+			with open('ipc/reason', 'w') as fp:
 				fp.write(reason)
 		_log.info("Going down for a redeploy")
 		msg = "Oh! It looks like " + api.context.author_name() + " has triggered a redeploy. I'll be going down now, but"
@@ -955,28 +955,28 @@ class MasaBot(object):
 		:rtype: (bool, str)
 		:return: A tuple containing whether the shutdown was clean and the reason for unclean shutdown
 		"""
-		if not os.path.exists('.supervisor/unclean-shutdown'):
+		if not os.path.exists('ipc/unclean-shutdown'):
 			return True, None
-		with open('.supervisor/unclean-shutdown') as fp:
+		with open('ipc/unclean-shutdown') as fp:
 			info = json.load(fp)
-		os.remove('.supervisor/unclean-shutdown')
+		os.remove('ipc/unclean-shutdown')
 		reason = info.get('reason', None)
 		return False, reason
 
 	async def _check_supervisor_files(self):
-		# NOTE: this function does not check for .supervisor/unclean-shutdown; that functionality is elsewhere
-		if not os.path.exists('.supervisor/status'):
+		# NOTE: this function does not check for ipc/unclean-shutdown; that functionality is elsewhere
+		if not os.path.exists('ipc/status'):
 			return
 		_log.debug("Returning from redeploy...")
-		with open('.supervisor/status', 'r') as fp:
+		with open('ipc/status', 'r') as fp:
 			status = json.load(fp)
-		if os.path.exists('.supervisor/reason'):
-			with open('.supervisor/reason', 'r') as fp:
+		if os.path.exists('ipc/reason'):
+			with open('ipc/reason', 'r') as fp:
 				reason = fp.read()
-			os.remove('.supervisor/reason')
+			os.remove('ipc/reason')
 		else:
 			reason = None
-		os.remove('.supervisor/status')
+		os.remove('ipc/status')
 		action = status['action']
 		msg = None
 		if action == 'redeploy' or action == 'deploy':
@@ -1502,7 +1502,7 @@ def start():
 		bot.run()
 	except KeyboardInterrupt:
 		# this is a normal shutdown, so notify any supervisor by writing to the restart-command file
-		with open('.supervisor/restart-command', 'w') as fp:
+		with open('ipc/restart-command', 'w') as fp:
 			fp.write("quit")
 		raise
 

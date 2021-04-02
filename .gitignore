@@ -1,6 +1,7 @@
 config.json
 *.p
 .supervisor/
+ipc/
 resources/
 *.log
 *.log.*
