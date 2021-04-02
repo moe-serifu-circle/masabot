@@ -6,6 +6,9 @@ resources/
 *.log
 *.log.*
 .vscode/
+volumes
+logs/
+config/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
