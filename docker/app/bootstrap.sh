@@ -3,15 +3,18 @@
 set -e
 
 # Config must exist
-if [ ! -f "/config/config.json "]
+if [ ! -f "/config/config.json" ]
 then
   echo "[BOOTSTRAP] ERROR: Missing configuration file in /config/config.json" >&2
   echo "[BOOTSTRAP] ERROR: Start with -v host-dir:/config where host-dir is a path on host containing config.json" >&2
   exit 1
 fi
 
+cat /config/config.json
+cat /config/config.json | jq -r '."discord-api-key"'
+
 # Config must contain discord-api-key
-apikey="$(cat /config/config.json | jq -r '.discord-api-key')"
+apikey="$(cat /config/config.json | jq -r '."discord-api-key"')"
 if [ -z "$apikey" ]
 then
   echo "[BOOTSTRAP] ERROR: Configuration file is missing Discord API key" >&2

@@ -14,14 +14,15 @@ fi
 
 [ -d "config" ] || mkdir config
 [ -d "logs" ] || mkdir logs
-cp config.json config/config.json
+#cat config.json
+#cp config.json config/config.json
 
 docker build . -t "masabot:$1"
 docker stop masabot
 docker rm masabot
 docker run \
-  -v config:/config \
-  -v resources:/app/resources \
-  -v logs:/logs \
+  -v "$(pwd)/config":/config \
+  -v "$(pwd)/resources":/app/resources \
+  -v "$(pwd)/logs:/logs" \
   --name masabot \
   "masabot:$1"

@@ -20,6 +20,9 @@ COPY requirements.txt /
 RUN pip install -r requirements.txt && rm requirements.txt
 RUN apk del libffi-dev python3-dev build-base py3-pip zlib-dev jpeg-dev && rm -rf ~/.cache/pip
 
+# non dev dependencies
+RUN apk add jq
+
 # output for masabot logging file
 RUN mkdir /logs
 
@@ -37,7 +40,7 @@ COPY docker/ /
 COPY fonts /app/fonts
 COPY masabot.py /app/masabot.py
 COPY masabot /app/masabot
-COPY config-example.json /config/config.json
+#COPY config-example.json /config/config.json
 
 # permissions
 RUN chmod +x /app/bootstrap.sh && chmod +x /app/kill-on-failure.sh
