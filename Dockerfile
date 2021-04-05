@@ -13,38 +13,28 @@ FROM alpine:3.13.4
 # libffi-dev - needed specifically for building pynacl for voice support
 # zlib-dev, jpeg-dev - Needed for Pillow build
 # zlib, libjpeg - needed for Pillow use
-RUN apk add supervisor=4.2.1-r0 py3-pip zlib jpeg build-base python3-dev libffi-dev zlib-dev jpeg-dev
-RUN mkdir /var/log/supervisor
+RUN apk add supervisor=4.2.1-r0 py3-pip zlib jpeg jq build-base python3-dev libffi-dev zlib-dev jpeg-dev
 
 # install masabot dependencies
 COPY requirements.txt /
-RUN pip install -r requirements.txt && rm requirements.txt
-#RUN apk del libffi-dev python3-dev build-base py3-pip zlib-dev jpeg-dev && rm -rf ~/.cache/pip
+RUN pip install -r requirements.txt && rm requirements.txt && apk del libffi-dev zlib-dev jpeg-dev build-base python3-dev
 
-# non dev dependencies
-RUN apk add jq
-
-# output for masabot logging file
-RUN mkdir /logs
-
-# output for masabot
-RUN mkdir /state && touch /state/.not-mounted
-
-# masabot install locations (ipc is the new '.supervisor' since we are now using real supervisor and not the half-baked old impl.)
-RUN mkdir /app && mkdir /app/ipc
-
-# detect if user has mounted to resources so we can warn them if they didnt
-RUN mkdir /app/resources && touch /app/resources/.not-mounted
-
-# masabot config default location
-RUN mkdir /config
+# masa dirs for mountpoints && dir for supervisor
+RUN mkdir /logs && \
+    mkdir /state && \
+    touch /state/.not-mounted && \
+    mkdir /config && \
+    mkdir /app && \
+    mkdir /app/ipc && \
+    mkdir /app/resources && \
+    touch /app/resources/.not-mounted && \
+    mkdir /var/log/supervisor
 
 # copy in files
 COPY docker/ /
 COPY fonts /app/fonts
 COPY masabot.py /app/masabot.py
 COPY masabot /app/masabot
-#COPY config-example.json /config/config.json
 
 # permissions
 RUN chmod +x /app/bootstrap.sh && chmod +x /app/kill-on-failure.sh
