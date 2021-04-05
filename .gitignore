@@ -1,9 +1,15 @@
 config.json
 *.p
 .supervisor/
+ipc/
 resources/
 *.log
 *.log.*
+.vscode/
+volumes
+logs/
+state/
+config/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

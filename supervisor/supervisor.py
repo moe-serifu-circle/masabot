@@ -68,29 +68,29 @@ def get_activation_command(virtualenv_dir=None):
 
 def run_venv_shell(exe, path=None):
 	lines = []
-	cmd = get_activation_command(path) + ' ' + cmd_end() + ' ' + exe + ' >' + os.path.join('.supervisor', 'temp')
+	cmd = get_activation_command(path) + ' ' + cmd_end() + ' ' + exe + ' >' + os.path.join('ipc', 'temp')
 	cmd += ' 2>&1'
 
 	try:
 		subprocess.check_output(cmd, shell=True, universal_newlines=True)
 	except subprocess.CalledProcessError as e:
-		with open(os.path.join('.supervisor', 'temp'), 'r') as fp:
+		with open(os.path.join('ipc', 'temp'), 'r') as fp:
 			e.output = fp.read()
-		os.remove(os.path.join('.supervisor', 'temp'))
+		os.remove(os.path.join('ipc', 'temp'))
 		raise
 
-	with open(os.path.join('.supervisor', 'temp'), 'r') as fp:
+	with open(os.path.join('ipc', 'temp'), 'r') as fp:
 		for line in fp:
 			lines.append(line.strip('\n'))
 
-	os.remove(os.path.join('.supervisor', 'temp'))
+	os.remove(os.path.join('ipc', 'temp'))
 	return lines
 
 
 def deploy(is_redeploy=False, virtual_environment_path=None):
 	installed = []
-	if os.path.exists(os.path.join('.supervisor', 'installed-packages')):
-		with open(os.path.join('.supervisor', 'installed-packages'), 'r') as fp:
+	if os.path.exists(os.path.join('ipc', 'installed-packages')):
+		with open(os.path.join('ipc', 'installed-packages'), 'r') as fp:
 			for line in fp:
 				installed.append(line.strip())
 
@@ -158,7 +158,7 @@ def deploy(is_redeploy=False, virtual_environment_path=None):
 		output_dict['message'] = "Some package removal(s) failed."
 		output_dict['success'] = False
 
-	with open(os.path.join('.supervisor', 'installed-packages'), 'w') as fp:
+	with open(os.path.join('ipc', 'installed-packages'), 'w') as fp:
 		for inst in installed:
 			fp.write(inst + '\n')
 
@@ -189,5 +189,5 @@ if __name__ == "__main__":
 		print("Unknown subcommand '" + sys.argv[1] + "'", file=sys.stderr)
 		sys.exit(3)
 
-	with open(os.path.join('.supervisor', 'status'), 'w') as status_file_fp:
+	with open(os.path.join('ipc', 'status'), 'w') as status_file_fp:
 		json.dump(output, status_file_fp)

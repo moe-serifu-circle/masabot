@@ -1,5 +1,7 @@
 import logging.handlers
 import sys
+import argparse
+import os.path
 
 from . import bot
 
@@ -9,10 +11,16 @@ _log.setLevel(logging.DEBUG)
 
 
 def run():
-	_setup_logger()
+	parser = argparse.ArgumentParser(description="Discord bot")
+	parser.add_argument('-c', '--config', help="path to config file", default="config.json")
+	parser.add_argument('-l', '--logdir', help="directory to store log files in", default=".")
+	parser.add_argument('-s', '--state', help="path to file to load and save state in", default="state.p")
+	args = parser.parse_args()
+
+	_setup_logger(args.logdir)
 	# noinspection PyBroadException
 	try:
-		bot.start()
+		bot.start(args.config, args.logdir, args.state)
 	except Exception:
 		_log.exception("Exception in main thread")
 
@@ -84,7 +92,7 @@ class _ExactLevelFilter(logging.Filter):
 			return 0
 
 
-def _setup_logger():
+def _setup_logger(logdir='.'):
 	stderr_handler = logging.StreamHandler(stream=sys.stderr)
 	stderr_handler.setLevel(logging.WARNING)
 	stderr_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
@@ -98,7 +106,7 @@ def _setup_logger():
 	logging.getLogger().addHandler(stdout_handler)
 
 	file_handler = logging.handlers.RotatingFileHandler(
-		filename='masabot.log', maxBytes=26214400, backupCount=5, encoding='utf8'
+		filename=os.path.join(logdir, 'masabot.log'), maxBytes=26214400, backupCount=5, encoding='utf8'
 	)
 	file_handler.setFormatter(logging.Formatter(fmt="%(asctime)-22s: [%(levelname)-10s] %(message)s"))
 	file_handler.setLevel(logging.DEBUG)

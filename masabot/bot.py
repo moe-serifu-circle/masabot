@@ -7,6 +7,7 @@ import json
 import traceback
 import os
 import asyncio
+import sys
 import time
 import random
 import re
@@ -134,13 +135,16 @@ class Timer(object):
 
 class MasaBot(object):
 
-	def __init__(self, config_file):
+	def __init__(self, config_file, logdir, state_file):
 		"""
 		Initialize the bot API.
 		:type config_file: str
 		:param config_file: The path to the configuration file for the bot.
+		:type logdir: str
+		:param logdir: The path to a directory to store bot-defined logs in. Not currently used.
 		"""
 		_log.debug("Initializing MasaBot")
+		self._state_file = state_file
 		self._bot_modules = {}
 		""":type : dict[str, commands.BotBehaviorModule]"""
 		self._invocations: Dict[str, Sequence[commands.BotBehaviorModule]] = {}
@@ -162,6 +166,7 @@ class MasaBot(object):
 		self.core_settings.register_key(
 			settings.Key(settings.key_type_int, 'history-limit', default=1000)
 		)
+		self._return_code = 0
 		self._timers = []
 		""":type : list[Timer]"""
 		self._setup_complete = False
@@ -196,7 +201,7 @@ class MasaBot(object):
 		state_dict = {}
 		# noinspection PyBroadException
 		try:
-			with open('state.p', 'rb') as fp:
+			with open(self._state_file, 'rb') as fp:
 				state_dict = pickle.load(fp)
 		except FileNotFoundError:
 			_log.warning("No state file found; default settings will be used")
@@ -334,7 +339,7 @@ class MasaBot(object):
 				# assume that we did not come from on_message
 				_log.exception("Exception in startup")
 				if not self._setup_complete:
-					with open('.supervisor/restart-command', 'w') as restart_command_file:
+					with open('ipc/restart-command', 'w') as restart_command_file:
 						restart_command_file.write("quit")
 					await self.client.close()
 			else:
@@ -362,7 +367,8 @@ class MasaBot(object):
 
 		# noinspection PyBroadException
 		try:
-			self._set_settings_in_loaded_modules(state_dict['__BOT__']['settings']['modules'])
+			if '__BOT__' in state_dict:
+				self._set_settings_in_loaded_modules(state_dict['__BOT__']['settings']['modules'])
 		except Exception:
 			_log.exception("could not set module settings from state file; defaults will be used")
 
@@ -385,6 +391,7 @@ class MasaBot(object):
 		# WARNING! WE REMOVED client.close() HERE.
 		self._main_timer_task = self.client.loop.create_task(self._run_timer())
 		self.client.run(self._api_key)
+		return self._return_code
 
 	@property
 	def connected_guilds(self) -> Sequence[discord.Guild]:
@@ -493,7 +500,7 @@ class MasaBot(object):
 
 	async def quit(self, api: 'PluginAPI', restart_command="quit"):
 		api.require_superop("quit", None)
-		with open('.supervisor/restart-command', 'w') as fp:
+		with open('ipc/restart-command', 'w') as fp:
 			fp.write(restart_command)
 		await api.reply("Right away, " + api.mention_user() + "! See you later!")
 		_log.info("Shutting down...")
@@ -930,13 +937,14 @@ class MasaBot(object):
 	async def _redeploy(self, api: 'PluginAPI', reason=None):
 		api.require_superop("redeploy", None)
 		if reason is not None:
-			with open('.supervisor/reason', 'w') as fp:
+			with open('ipc/reason', 'w') as fp:
 				fp.write(reason)
 		_log.info("Going down for a redeploy")
 		msg = "Oh! It looks like " + api.context.author_name() + " has triggered a redeploy. I'll be going down now, but"
 		msg += " don't worry! I'll be right back!"
 		await api.announce(msg)
 		await self.quit(api, "redeploy")
+		self._return_code = 1
 
 	# noinspection PyMethodMayBeStatic
 	def _check_supervisor_unclean_shutdown(self):
@@ -955,28 +963,28 @@ class MasaBot(object):
 		:rtype: (bool, str)
 		:return: A tuple containing whether the shutdown was clean and the reason for unclean shutdown
 		"""
-		if not os.path.exists('.supervisor/unclean-shutdown'):
+		if not os.path.exists('ipc/unclean-shutdown'):
 			return True, None
-		with open('.supervisor/unclean-shutdown') as fp:
+		with open('ipc/unclean-shutdown') as fp:
 			info = json.load(fp)
-		os.remove('.supervisor/unclean-shutdown')
+		os.remove('ipc/unclean-shutdown')
 		reason = info.get('reason', None)
 		return False, reason
 
 	async def _check_supervisor_files(self):
-		# NOTE: this function does not check for .supervisor/unclean-shutdown; that functionality is elsewhere
-		if not os.path.exists('.supervisor/status'):
+		# NOTE: this function does not check for ipc/unclean-shutdown; that functionality is elsewhere
+		if not os.path.exists('ipc/status'):
 			return
 		_log.debug("Returning from redeploy...")
-		with open('.supervisor/status', 'r') as fp:
+		with open('ipc/status', 'r') as fp:
 			status = json.load(fp)
-		if os.path.exists('.supervisor/reason'):
-			with open('.supervisor/reason', 'r') as fp:
+		if os.path.exists('ipc/reason'):
+			with open('ipc/reason', 'r') as fp:
 				reason = fp.read()
-			os.remove('.supervisor/reason')
+			os.remove('ipc/reason')
 		else:
 			reason = None
-		os.remove('.supervisor/status')
+		os.remove('ipc/status')
 		action = status['action']
 		msg = None
 		if action == 'redeploy' or action == 'deploy':
@@ -1488,23 +1496,26 @@ class MasaBot(object):
 					if mod_state is not None:
 						servers_dict[g.id] = mod_state
 
-		with open("state.p", "wb") as fp:
+		with open(self._state_file, "wb") as fp:
 			pickle.dump(state_dict, fp)
 
 		_log.debug("Saved state to disk")
 
 
-def start():
+def start(configpath, logdir, statepath):
 	if not os.path.exists('resources'):
 		os.mkdir('resources')
-	bot = MasaBot("config.json")
+	bot = MasaBot(configpath, logdir, statepath)
+	retval = 0
 	try:
-		bot.run()
+		retval = bot.run()
 	except KeyboardInterrupt:
 		# this is a normal shutdown, so notify any supervisor by writing to the restart-command file
-		with open('.supervisor/restart-command', 'w') as fp:
+		with open('ipc/restart-command', 'w') as fp:
 			fp.write("quit")
 		raise
+	if retval != 0:
+		sys.exit(retval)
 
 
 def _copy_handler_dict(dict_to_copy):

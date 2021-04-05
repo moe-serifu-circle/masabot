@@ -50,11 +50,11 @@ fi
 
 . "$virtualenv_path/activate"
 
-if [ -d ".supervisor" ]
+if [ -d "ipc" ]
 then
-    rm -rf ".supervisor"/*
+    rm -rf "ipc"/*
 else
-    mkdir ".supervisor"
+    mkdir "ipc"
 fi
 
 python supervisor/supervisor.py initial-deploy "$virtual_dir"
@@ -62,10 +62,10 @@ python supervisor/supervisor.py initial-deploy "$virtual_dir"
 while [ -n "$running" ]
 do
     python masabot.py
-    if [ -f ".supervisor/restart-command" ]
+    if [ -f "ipc/restart-command" ]
     then
-        cmd="$(cat ".supervisor/restart-command")"
-        rm -rf ".supervisor/restart-command"
+        cmd="$(cat "ipc/restart-command")"
+        rm -rf "ipc/restart-command"
         if [ "$cmd" = "redeploy" ]
         then
             git pull
@@ -78,6 +78,6 @@ do
     else
         echo "Unclean shutdown; restarting bot in 30 seconds..."
         sleep 30
-        echo '{"reason":"Exited without receiving quit command"}' >> ".supervisor/unclean-shutdown"
+        echo '{"reason":"Exited without receiving quit command"}' >> "ipc/unclean-shutdown"
     fi
 done
