@@ -14,10 +14,10 @@ FROM alpine:3.13.4
 # zlib-dev, jpeg-dev - Needed for Pillow build
 # zlib, libjpeg - needed for Pillow use
 RUN apk add supervisor=4.2.1-r0 py3-pip zlib jpeg jq build-base python3-dev libffi-dev zlib-dev jpeg-dev
-
+RUN apk add freetype freetype-dev
 # install masabot dependencies
 COPY requirements.txt /
-RUN pip install -r requirements.txt && rm requirements.txt && apk del libffi-dev zlib-dev jpeg-dev build-base python3-dev
+RUN pip install -r requirements.txt && rm requirements.txt && apk del freetype-dev libffi-dev zlib-dev jpeg-dev build-base python3-dev
 
 # masa dirs for mountpoints && dir for supervisor
 RUN mkdir /logs && \
