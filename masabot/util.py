@@ -3,7 +3,7 @@ import urllib.parse
 import enum
 # noinspection PyPackageRequirements
 import discord
-from typing import Optional, Sequence, Iterable, Union, Any, List, Dict
+from typing import Optional, Sequence, Iterable, Union, Any, List
 
 discord_char_limit = 2000
 
@@ -186,15 +186,15 @@ class Reaction(object):
 		self.count: int = 0
 		self.author = None
 		self.users: List[int] = []
+		self.message: Optional[discord.Message] = None
+		self.user = None
 		self.is_from_this_client: bool = False
-		self.message: discord.Message
 		self.action = None
 
 		self.unicode_emoji: Optional[str] = None
 		self.custom_emoji: Optional[CustomEmoji] = None
 
-		# TODO: WHY IS THIS HERE IF self.message IS HERE?!
-		self.original: discord.Message = None
+		self.original: Optional[discord.Reaction] = None
 
 	@property
 	def index(self):
@@ -231,11 +231,6 @@ async def create_generic_reaction(react: discord.Reaction, user: Optional[discor
 		r.unicode_emoji = react.emoji
 
 	return r
-
-
-
-
-
 
 
 def find_mentions(

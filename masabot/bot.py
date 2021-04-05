@@ -325,7 +325,7 @@ class MasaBot(object):
 				api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 				await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 
-			await self._mimic_reaction()
+			await self._mimic_reaction(ctx, rct)
 
 		# noinspection PyUnusedLocal
 		@self.client.event
@@ -416,7 +416,7 @@ class MasaBot(object):
 			_log.exception("could not set module state from state file; defaults will be used")
 		_log.info("Modules are now ready")
 
-	async def _mimic_reaction(ctx: BotContext, rct: util.Reaction):
+	async def _mimic_reaction(self, ctx: BotContext, rct: util.Reaction):
 		# don't mimic own reactions
 		if rct.is_from_this_client:
 			return
@@ -424,7 +424,7 @@ class MasaBot(object):
 			# give a slight delay
 			delay = 1 + (random.random() * 3)  # random amount from 1 to 4 seconds
 			await asyncio.sleep(delay)
-			await reaction.message.add_reaction(reaction)
+			await rct.message.add_reaction(rct.original)
 
 	async def randomize_presence(self, chance=1.0):
 		if random.random() < chance:

@@ -22,7 +22,13 @@ class PluginAPI:
 
 	It is intended to be created outside of the plugin's control and then passed to plugins.
 	"""
-	def __init__(self, target_bot: Any, for_plugin: Optional[str] = None, context: Optional[BotContext] = None, history: Optional[MessageHistoryCache] = None):
+	def __init__(
+			self,
+			target_bot: Any,
+			for_plugin: Optional[str] = None,
+			context: Optional[BotContext] = None,
+			history: Optional[MessageHistoryCache] = None
+	):
 		"""
 		Create a new plugin API object.
 
@@ -213,21 +219,21 @@ class PluginAPI:
 		:param timeout: The number of seconds to wait before timing out the prompt.
 		:return: The message selected by the user, or None if the prompt times out.
 		"""
-		sid = await bot.require_server()
+		sid = await self.require_server()
 		full_message = prompt + "\n\n(React with ✅ on the message you want to select)"
 		await self.reply(full_message)
-		_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " started for message selection"))
+		log_msg = "prompt for " + self.context.author_name() + " started for message selection"
+		_log.debug(util.add_context(self.context, log_msg))
 
-		def check_react(r, u):
-			if r.message.channel.guild.id != sid:
+		def check_react(rc, u):
+			if rc.message.channel.guild.id != sid:
 				return False
 			if u.id != self.context.author.id:
 				return False
-			if str(r.emoji) != '✅':
+			if str(rc.emoji) != '✅':
 				return False
 			return True
 
-		message = None
 		try:
 			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
 			message = r.message
@@ -251,19 +257,18 @@ class PluginAPI:
 		:param timeout: The number of seconds to wait before timing out the prompt.
 		:return: The message selected by the user, or None if the prompt times out.
 		"""
-		sid = await bot.require_server()
 		full_message = prompt + "\n\n(React to this message with your answer)"
 		msg = await self.reply(full_message)
-		_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " started for emoji-by-reaction selection"))
+		log_msg = "prompt for " + self.context.author_name() + " started for emoji-by-reaction selection"
+		_log.debug(util.add_context(self.context, log_msg))
 
-		def check_react(r, u):
-			if r.message.id != msg.id:
+		def check_react(rc, u):
+			if rc.message.id != msg.id:
 				return False
 			if u.id != self.context.author.id:
 				return False
 			return True
 
-		react = None		
 		try:
 			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
 			react = await util.create_generic_reaction(r)
@@ -272,8 +277,8 @@ class PluginAPI:
 		if react is None:
 			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
 		else:
-			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received MID:")
-			log_msg += repr(message.id)
+			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received emoji:")
+			log_msg += repr(react.index)
 			_log.debug(log_msg)
 		return react
 
@@ -289,10 +294,10 @@ class PluginAPI:
 		:param timeout: The number of seconds to wait before timing out the prompt.
 		:return: The message selected by the user, or None if the prompt times out.
 		"""
-		sid = await bot.require_server()
 		full_message = prompt + "\n\n(React to this message with your answer)"
 		msg = await self.reply(full_message)
-		_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " started for emoji-by-reaction selection"))
+		log_msg = "prompt for " + self.context.author_name() + " started for emoji-by-reaction selection"
+		_log.debug(util.add_context(self.context, log_msg))
 		for opt in options:
 			if isinstance(opt, str):
 				await msg.add_reaction(opt)
@@ -300,15 +305,14 @@ class PluginAPI:
 				emoji = self._bot.client.get_emoji(opt)
 				await msg.add_reaction(emoji)
 
-		def check_react(r, u):
+		def check_react(rc, u):
 			if r.message.id != msg.id:
 				return False
 			if u.id != self.context.author.id:
 				return False
-			pre_parse = util.create_generic_reaction(r)
+			pre_parse = await util.create_generic_reaction(rc)
 			return pre_parse.index in options
 
-		react = None
 		try:
 			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
 			react = await util.create_generic_reaction(r)
@@ -317,8 +321,8 @@ class PluginAPI:
 		if react is None:
 			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
 		else:
-			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received MID:")
-			log_msg += repr(message.id)
+			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received emoji:")
+			log_msg += repr(react.index)
 			_log.debug(log_msg)
 		return react
 
@@ -370,7 +374,8 @@ class PluginAPI:
 		return self.context.source.typing()
 
 	def get_channel(self, server_channel_id: Optional[Tuple[int, int]] = None) -> Optional[discord.TextChannel]:
-		"""Return the current channel. None is returned if there is no current channel; consider doing bot_api.require_server()
+		"""Return the current channel. None is returned if there is no current channel;
+		consider doing bot_api.require_server()
 		for cases where a server ID is needed, followed by a query to get_channel.
 
 		If the ID is passed in, always gets that server/channel ID.
@@ -507,6 +512,9 @@ class PluginAPI:
 			elif context_restriction == 'server':
 				server_id = await self.require_server()
 				return mod_settings.get(server_id, key)
+
+	async def get_emoji(self, eid) -> discord.Emoji:
+		return await self._bot.client.get_emoji(eid)
 
 	def get_messages(self, from_current: bool = False, limit: int = 0) -> List[discord.Message]:
 		"""Return messages, newest first"""
