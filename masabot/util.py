@@ -204,6 +204,15 @@ class Reaction(object):
 			return self.unicode_emoji
 
 
+def reaction_index(react: discord.Reaction):
+	if isinstance(react.emoji, discord.PartialEmoji):
+		return react.emoji.id
+	elif isinstance(react.emoji, discord.Emoji):
+		return react.emoji.id
+	else:
+		return react.emoji
+
+
 async def create_generic_reaction(react: discord.Reaction, user: Optional[discord.User] = None) -> Reaction:
 	users = await react.users().flatten()
 	r = Reaction()

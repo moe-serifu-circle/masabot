@@ -310,8 +310,7 @@ class PluginAPI:
 				return False
 			if u.id != self.context.author.id:
 				return False
-			pre_parse = await util.create_generic_reaction(rc)
-			return pre_parse.index in options
+			return util.reaction_index(rc) in options
 
 		try:
 			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
