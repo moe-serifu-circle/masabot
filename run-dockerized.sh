@@ -14,6 +14,7 @@ fi
 
 [ -d "config" ] || mkdir config
 [ -d "logs" ] || mkdir logs
+[ -d "state" ] || mkdir state
 #cat config.json
 #cp config.json config/config.json
 
@@ -24,5 +25,6 @@ docker run \
   -v "$(pwd)/config":/config \
   -v "$(pwd)/resources":/app/resources \
   -v "$(pwd)/logs:/logs" \
+  -v "$(pwd)/state:/state"
   --name masabot \
   "masabot:$1"

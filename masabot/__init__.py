@@ -14,12 +14,13 @@ def run():
 	parser = argparse.ArgumentParser(description="Discord bot")
 	parser.add_argument('-c', '--config', help="path to config file", default="config.json")
 	parser.add_argument('-l', '--logdir', help="directory to store log files in", default=".")
+	parser.add_argument('-s', '--state', help="path to file to load and save state in", default="state.p")
 	args = parser.parse_args()
 
 	_setup_logger(args.logdir)
 	# noinspection PyBroadException
 	try:
-		bot.start(args.config, args.logdir)
+		bot.start(args.config, args.logdir, args.state)
 	except Exception:
 		_log.exception("Exception in main thread")
 

@@ -4,6 +4,7 @@ FROM alpine:3.13.4
 # /config - provide a custom config.json in root of this volume
 # /app/resources - REQUIRED FOR RESOURCE PERSISTENCE
 # /logs - capture logging
+# /state - state.p will be read from/saved in this directory
 
 # supervisor is python based; installing it should handle py
 # dep as well. but it will not auto-install pip, which we need
@@ -18,13 +19,16 @@ RUN mkdir /var/log/supervisor
 # install masabot dependencies
 COPY requirements.txt /
 RUN pip install -r requirements.txt && rm requirements.txt
-RUN apk del libffi-dev python3-dev build-base py3-pip zlib-dev jpeg-dev && rm -rf ~/.cache/pip
+#RUN apk del libffi-dev python3-dev build-base py3-pip zlib-dev jpeg-dev && rm -rf ~/.cache/pip
 
 # non dev dependencies
 RUN apk add jq
 
 # output for masabot logging file
 RUN mkdir /logs
+
+# output for masabot
+RUN mkdir /state && touch /state/.not-mounted
 
 # masabot install locations (ipc is the new '.supervisor' since we are now using real supervisor and not the half-baked old impl.)
 RUN mkdir /app && mkdir /app/ipc
@@ -45,4 +49,4 @@ COPY masabot /app/masabot
 # permissions
 RUN chmod +x /app/bootstrap.sh && chmod +x /app/kill-on-failure.sh
 
-ENTRYPOINT ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
+ENTRYPOINT ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]

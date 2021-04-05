@@ -10,9 +10,6 @@ then
   exit 1
 fi
 
-cat /config/config.json
-cat /config/config.json | jq -r '."discord-api-key"'
-
 # Config must contain discord-api-key
 apikey="$(cat /config/config.json | jq -r '."discord-api-key"')"
 if [ -z "$apikey" ]

@@ -15,4 +15,4 @@ Copy-Item -Path .\config.json -Destination .\config\config.json
 
 docker build . -t "masabot:$tag"
 docker rm -f masabot
-docker run -v ${wd}/config:/config -v ${wd}/resources:/app/resources -v ${wd}/logs:/logs --name masabot masabot:$tag
+docker run -v ${wd}/config:/config -v ${wd}/state:/state -v ${wd}/resources:/app/resources -v ${wd}/logs:/logs --name masabot masabot:$tag

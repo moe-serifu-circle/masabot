@@ -134,7 +134,7 @@ class Timer(object):
 
 class MasaBot(object):
 
-	def __init__(self, config_file, logdir):
+	def __init__(self, config_file, logdir, state_file):
 		"""
 		Initialize the bot API.
 		:type config_file: str
@@ -143,6 +143,7 @@ class MasaBot(object):
 		:param logdir: The path to a directory to store bot-defined logs in. Not currently used.
 		"""
 		_log.debug("Initializing MasaBot")
+		self._state_file = state_file
 		self._bot_modules = {}
 		""":type : dict[str, commands.BotBehaviorModule]"""
 		self._invocations: Dict[str, Sequence[commands.BotBehaviorModule]] = {}
@@ -198,7 +199,7 @@ class MasaBot(object):
 		state_dict = {}
 		# noinspection PyBroadException
 		try:
-			with open('state.p', 'rb') as fp:
+			with open(self._state_file, 'rb') as fp:
 				state_dict = pickle.load(fp)
 		except FileNotFoundError:
 			_log.warning("No state file found; default settings will be used")
@@ -364,7 +365,8 @@ class MasaBot(object):
 
 		# noinspection PyBroadException
 		try:
-			self._set_settings_in_loaded_modules(state_dict['__BOT__']['settings']['modules'])
+			if '__BOT__' in state_dict:
+				self._set_settings_in_loaded_modules(state_dict['__BOT__']['settings']['modules'])
 		except Exception:
 			_log.exception("could not set module settings from state file; defaults will be used")
 
@@ -1490,16 +1492,16 @@ class MasaBot(object):
 					if mod_state is not None:
 						servers_dict[g.id] = mod_state
 
-		with open("state.p", "wb") as fp:
+		with open(self._state_file, "wb") as fp:
 			pickle.dump(state_dict, fp)
 
 		_log.debug("Saved state to disk")
 
 
-def start(configpath, logdir):
+def start(configpath, logdir, statepath):
 	if not os.path.exists('resources'):
 		os.mkdir('resources')
-	bot = MasaBot(configpath, logdir)
+	bot = MasaBot(configpath, logdir, statepath)
 	try:
 		bot.run()
 	except KeyboardInterrupt:
