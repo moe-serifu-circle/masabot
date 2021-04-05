@@ -77,7 +77,7 @@ class ReactionTrigger(object):
 	custom_emoji entries apply only to the ones in this server.
 	"""
 
-	def __init__(self, emoji: List[str] = None, custom_emoji: List[str] = None):
+	def __init__(self, emoji: List[str] = None, custom_emoji: List[str] = None, reacts: bool = True, unreacts: bool = False):
 		self.trigger_type = 'REACTION'
 
 		if emoji is None:
@@ -86,6 +86,8 @@ class ReactionTrigger(object):
 			custom_emoji = list()
 		self.emoji = emoji
 		self.custom_emoji = custom_emoji
+		self.include_react_remove = unreacts
+		self.include_react_add = reacts
 
 
 class BotBehaviorModule(object):

@@ -181,35 +181,53 @@ class CustomEmoji(object):
 class Reaction(object):
 	"""domain specific reaction info to abstract away discord.py access"""
 	def __init__(self):
+		self.is_usable: bool = False
 		self.is_custom: bool = False
 		self.count: int = 0
+		self.author = None
 		self.users: List[int] = []
 		self.is_from_this_client: bool = False
 		self.message: discord.Message
+		self.action = None
 
 		self.unicode_emoji: Optional[str] = None
 		self.custom_emoji: Optional[CustomEmoji] = None
 
+		# TODO: WHY IS THIS HERE IF self.message IS HERE?!
+		self.original: discord.Message = None
 
-async def create_generic_reaction(react: discord.Reaction) -> Reaction:
+	@property
+	def index(self):
+		if self.is_custom:
+			return self.custom_emoji.id
+		else:
+			return self.unicode_emoji
+
+
+async def create_generic_reaction(react: discord.Reaction, user: Optional[discord.User] = None) -> Reaction:
 	users = await react.users().flatten()
 	r = Reaction()
 	r.message = react.message
+	r.original = react
+	r.user = user
 	r.is_from_this_client = react.me
 	r.is_custom = react.custom_emoji
 	for u in users:
 		r.users.append(u.id)
 
 	if isinstance(react.emoji, discord.PartialEmoji):
+		r.is_usable = False
 		if react.emoji.is_unicode_emoji():
 			r.unicode_emoji = react.emoji.name
 		else:
 			r.custom_emoji = CustomEmoji(react.emoji.id, react.emoji.name)
 	elif isinstance(react.emoji, discord.Emoji):
+		r.is_usable = react.emoji.available
 		r.unicode_emoji = None
 		r.custom_emoji = CustomEmoji(react.emoji.id, react.emoji.name, react.emoji.guild_id)
 	else:
 		# otherwise, it is a str
+		r.is_usable = True
 		r.unicode_emoji = react.emoji
 
 	return r
