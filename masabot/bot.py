@@ -7,6 +7,7 @@ import json
 import traceback
 import os
 import asyncio
+import sys
 import time
 import random
 import re
@@ -165,6 +166,7 @@ class MasaBot(object):
 		self.core_settings.register_key(
 			settings.Key(settings.key_type_int, 'history-limit', default=1000)
 		)
+		self._return_code = 0
 		self._timers = []
 		""":type : list[Timer]"""
 		self._setup_complete = False
@@ -389,6 +391,7 @@ class MasaBot(object):
 		# WARNING! WE REMOVED client.close() HERE.
 		self._main_timer_task = self.client.loop.create_task(self._run_timer())
 		self.client.run(self._api_key)
+		return self._return_code
 
 	@property
 	def connected_guilds(self) -> Sequence[discord.Guild]:
@@ -941,6 +944,7 @@ class MasaBot(object):
 		msg += " don't worry! I'll be right back!"
 		await api.announce(msg)
 		await self.quit(api, "redeploy")
+		self._return_code = 1
 
 	# noinspection PyMethodMayBeStatic
 	def _check_supervisor_unclean_shutdown(self):
@@ -1502,13 +1506,16 @@ def start(configpath, logdir, statepath):
 	if not os.path.exists('resources'):
 		os.mkdir('resources')
 	bot = MasaBot(configpath, logdir, statepath)
+	retval = 0
 	try:
-		bot.run()
+		retval = bot.run()
 	except KeyboardInterrupt:
 		# this is a normal shutdown, so notify any supervisor by writing to the restart-command file
 		with open('ipc/restart-command', 'w') as fp:
 			fp.write("quit")
 		raise
+	if retval != 0:
+		sys.exit(retval)
 
 
 def _copy_handler_dict(dict_to_copy):
