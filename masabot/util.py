@@ -172,36 +172,243 @@ class MentionMatch:
 
 class CustomEmoji(object):
 	"""domain specific emoji info to abstract away discord.py"""
-	def __init__(self, id: int, name: str, server: Optional[int] = None):
+	def __init__(self, id: int, name: str, guild: Optional[int] = None):
 		self.id: int = id
-		self.server: int = server
+		self.guild: int = guild
 		self.name: str = name
 
 
 class Reaction(object):
+
 	"""domain specific reaction info to abstract away discord.py access"""
 	def __init__(self):
-		self.is_usable: bool = False
-		self.is_custom: bool = False
-		self.count: int = 0
-		self.author = None
-		self.users: List[int] = []
-		self.message: Optional[discord.Message] = None
-		self.user = None
-		self.bot_in_users: bool = False
-		self.action = None
+		self.user_id: int = 0
+		"""The user who actually did the removal or add."""
 
-		self.unicode_emoji: Optional[str] = None
-		self.custom_emoji: Optional[CustomEmoji] = None
+		self.message_id: int = 0
+		"""Message reaction was on."""
 
-		self.original: Optional[discord.Reaction] = None
+		self.channel_id: int = 0
+		"""Channel where message is. Will be 0 if message is not in a guild channel."""
+
+		self.guild_id: int = 0
+		"""Guild where message is. Will be 0 if message is not in a guild channel."""
+
+		self.action: str = 'add'
+		"""Either 'add' or 'remove'."""
+
+		self.cached: bool = False
+		"""Whether a fetch has been run for the data. If it has, the Optional properties will return data again."""
+
+		self._member: Optional[discord.Member] = None
+		self._user: Optional[discord.User] = None
+		self._source_message: Optional[discord.Message] = None
+		self._custom_emoji: Optional[CustomEmoji] = None
+		self._unicode_emoji: Optional[str] = None
+		self._reactors: Optional[List[int]] = None
+
+	def is_in_guild(self) -> bool:
+		"""
+		Return whether the reaction is from a guild channel. If not, guild_id and channel_id will be zeroed and invalid.
+		"""
+		return self.guild_id is not None
+
+	async def fetch(self, client: discord.Client):
+		"""
+		Get all info from discord if not obtained yet and cache it. Will set cached to True after execution.
+		If cached is already True, calling this method has no effect.
+		"""
+		if self.cached:
+			return
+
+		# get actual source message
+		if self._source_message is None:
+			if self.channel_id != 0:
+				msg = await client.get_channel(self.channel_id).fetch_message(self.message_id)
+				self._source_message = msg
+			else:
+				msg = await client.get_channel(self.user_id).fetch_message(self.message_id)
+				self._source_message = msg
+
+		# get reactors
+		reactions = self._source_message.reactions
+		target_reaction = None
+		for rct in reactions:
+			if rct.custom_emoji != self.is_custom:
+				continue
+			if rct.custom_emoji:
+				if rct.custom_emoji.id == self.emoji:
+					target_reaction = rct
+					break
+			elif rct.emoji == self.emoji:
+				target_reaction = rct
+				break
+		if target_reaction is not None:
+			users = await target_reaction.users().flatten()
+			self._reactors = list([u.id for u in users])
+
+		# get emoji server ID
+		if self.is_custom and self._custom_emoji.guild is None:
+			emj = client.get_emoji(self._custom_emoji.id)
+			self._custom_emoji.guild = emj.guild_id
+
+		if self._member is None and self.is_in_guild():
+			self._member = client.get_guild(self.guild_id).get_member(self.user_id)
+		if self._user is None:
+			self._user = client.get_user(self.user_id)
+
+		self.cached = True
 
 	@property
-	def index(self):
+	def member(self) -> Optional[discord.Member]:
+		"""
+		Get the guild member who did the reaction. Does not necessarily require cached to be true to return
+		valid value. If cached is True, this will be non-None as long as the reaction is in a guild. If cached
+		is false, this will be non-None only if the reaction is in a guild and the reaction is an add as per
+		the discord.py API docs.
+		"""
+		return self._member
+
+	@property
+	def user(self) -> Optional[discord.User]:
+		"""
+		Get the guild member who did the reaction. Does not necessarily require cached to be true to return
+		valid value. If cached is True, this is guaranteed to be non-None.
+		"""
+		return self._user
+
+	@property
+	def reactors(self) -> Optional[List[int]]:
+		"""
+		Get the list of IDs of users who currently have added the same reaction to the same message. Will be None if
+		cached is False; call fetch() at least once before this method to ensure that this is the case.
+
+		As the call to get message info may come after the actual reaction event, this is not guaranteed to include
+		self.user_id even if is_add is True.
+		"""
+		if not self.cached:
+			return None
+		return self._reactors
+
+	@property
+	def source_message(self) -> Optional[discord.Message]:
+		"""Get the message that the reaction occured on. Only available if cached; run fetch() once to make cached True."""
+		if self.cached:
+			return self._source_message
+		return None
+
+	@property
+	def is_usable(self) -> Optional[bool]:
+		"""Whether the reaction can be used. Always True for unicode emoji, False if custom and not in the same server,
+		or None if custom and not cached."""
+		if self.cached:
+			if self._custom_emoji is not None:
+				return self._custom_emoji.guild == self.guild_id
+			else:
+				return True
+		elif self._custom_emoji is None:
+			return True
+		return None
+
+	@property
+	def is_custom(self) -> bool:
+		"""Whether it is a custom emoji."""
+		return self._custom_emoji is not None
+
+	@property
+	def count(self) -> Optional[int]:
+		"""Number of users who reacted with the same emoji. Will be None if not cached; run fetch() at least once to do
+		so."""
+		if not self.cached:
+			return None
+		return len(self._reactors)
+
+	@property
+	def is_add(self) -> bool:
+		"""Return whether this reaction is an Add."""
+		return self.action.lower() == 'add'
+
+	@property
+	def is_remove(self) -> bool:
+		"""Return whether this reaction is a Removal."""
+		return self.action.lower() == 'remove'
+
+	@property
+	def emoji(self):
+		"""
+		Return the emoji in the reaction event. If it is a custom emoji, this will be an
+		int with the emoji ID. If it is a standard unicode emoji, this will be a str
+		containing the emoji text.
+		"""
 		if self.is_custom:
-			return self.custom_emoji.id
+			return self._custom_emoji.id
 		else:
-			return self.unicode_emoji
+			return self._unicode_emoji
+
+	@staticmethod
+	def from_raw(r: discord.RawReactionActionEvent) -> 'Reaction':
+		rct = Reaction()
+		rct.message_id = r.message_id
+		rct.user_id = r.user_id
+		rct.channel_id = r.channel_id
+		rct.guild_id = r.guild_id
+		if r.event_type == 'REACTION_ADD':
+			rct.action = 'add'
+		elif r.event_type == 'REACTION_REMOVE':
+			rct.action = 'remove'
+		else:
+			raise TypeError("cannot convert unknown-type of RawReactionActionEvent: " + str(rct.action))
+		rct.cached = False
+
+		rct._member = r.member
+
+		# r.emoji is a discord.PartialEmoji
+		if r.emoji.is_custom_emoji():
+			# cant get server from raw event, need fetch for that.
+			rct._custom_emoji = CustomEmoji(r.emoji.id, r.emoji.name)
+		else:
+			rct._unicode_emoji = r.emoji.name
+
+		return rct
+
+	@staticmethod
+	async def from_discord(r: discord.Reaction, u: Optional[discord.User] = None, removal: bool = False) -> 'Reaction':
+		rct = Reaction()
+		rct.message_id = r.message.id
+		rct._source_message = r.message
+		rct.user_id = u.id
+		rct._user = u
+
+		if r.message.channel is not None:
+			rct.channel_id = r.message.channel.id
+
+		if r.message.guild is not None:
+			rct.guild_id = r.message.guild.id
+			rct._member = r.message.guild.get_member(u.id)
+
+		if removal:
+			rct.action = 'remove'
+		else:
+			rct.action = 'add'
+
+		rct.cached = True
+
+		# stuff that would normally be done in fetch
+		users = await r.users().flatten()
+		rct._reactors = list([u.id for u in users])
+
+		if isinstance(r.emoji, discord.PartialEmoji):
+			if r.emoji.is_unicode_emoji():
+				rct._unicode_emoji = r.emoji.name
+			else:
+				rct._custom_emoji = CustomEmoji(r.emoji.id, r.emoji.name, rct.guild_id)
+		elif isinstance(r.emoji, discord.Emoji):
+			rct._custom_emoji = CustomEmoji(r.emoji.id, r.emoji.name, r.emoji.guild_id)
+		else:
+			# otherwise, it is a str
+			rct._unicode_emoji = r.emoji
+
+		return r
 
 
 def reaction_index(react: discord.Reaction):
@@ -211,35 +418,6 @@ def reaction_index(react: discord.Reaction):
 		return react.emoji.id
 	else:
 		return react.emoji
-
-
-async def create_generic_reaction(react: discord.Reaction, user: Optional[discord.User] = None) -> Reaction:
-	users = await react.users().flatten()
-	r = Reaction()
-	r.message = react.message
-	r.original = react
-	r.user = user
-	r.includes_this_client = react.me
-	r.is_custom = react.custom_emoji
-	for u in users:
-		r.users.append(u.id)
-
-	if isinstance(react.emoji, discord.PartialEmoji):
-		r.is_usable = False
-		if react.emoji.is_unicode_emoji():
-			r.unicode_emoji = react.emoji.name
-		else:
-			r.custom_emoji = CustomEmoji(react.emoji.id, react.emoji.name)
-	elif isinstance(react.emoji, discord.Emoji):
-		r.is_usable = react.emoji.available
-		r.unicode_emoji = None
-		r.custom_emoji = CustomEmoji(react.emoji.id, react.emoji.name, react.emoji.guild_id)
-	else:
-		# otherwise, it is a str
-		r.is_usable = True
-		r.unicode_emoji = react.emoji
-
-	return r
 
 
 def find_mentions(
