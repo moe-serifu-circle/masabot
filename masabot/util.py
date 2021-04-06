@@ -188,7 +188,7 @@ class Reaction(object):
 		self.users: List[int] = []
 		self.message: Optional[discord.Message] = None
 		self.user = None
-		self.is_from_this_client: bool = False
+		self.bot_in_users: bool = False
 		self.action = None
 
 		self.unicode_emoji: Optional[str] = None
@@ -219,7 +219,7 @@ async def create_generic_reaction(react: discord.Reaction, user: Optional[discor
 	r.message = react.message
 	r.original = react
 	r.user = user
-	r.is_from_this_client = react.me
+	r.includes_this_client = react.me
 	r.is_custom = react.custom_emoji
 	for u in users:
 		r.users.append(u.id)

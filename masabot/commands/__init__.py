@@ -18,7 +18,8 @@ __all__ = [
 	'animelist',
 	'noticeme',
 	'ratewaifu',
-	'sparkle'
+	'sparkle',
+	'rolemanager'
 ]
 
 

@@ -93,6 +93,8 @@ class RoleManagerModule(BotBehaviorModule):
 		}
 
 	def set_state(self, server: int, state: Dict):
+		import pprint
+		_log.debug("STATE SET: guild " + str(server) + ": " + pprint.pformat(state))
 		self._role_messages[server] = state['messages']
 
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
@@ -102,7 +104,7 @@ class RoleManagerModule(BotBehaviorModule):
 			await self.remove_reactionrole(bot)
 
 	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction):
-		if reaction.is_from_this_client:
+		if reaction.user.id == bot.get_bot_id():
 			return
 		guild = bot.get_guild()
 
@@ -162,9 +164,9 @@ class RoleManagerModule(BotBehaviorModule):
 
 	async def add_reactionrole(self, bot: PluginAPI):
 		await bot.require_op("rr-add")
-		msg = await bot.select_message("Okay, sure! Which message in this server should I remove a reaction role from?")
+		msg = await bot.select_message("Okay, sure! Which message in this server should I add a reaction role to?")
 		if msg is None:
-			raise BotModuleError("I'm sorry but I don't know what message you want to set up the reactions on! Use !rr-add to try again.'")
+			raise BotModuleError("I'm sorry but I don't know what message you want to set up the reactions on! Use !rr-add to try again.")
 
 		rolemsg = await bot.prompt("Got it! And what role do you want to add?")
 		if rolemsg is None:
@@ -215,6 +217,7 @@ async def add_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int):
 		await mem.add_roles(role, reason="Reaction roles request")
 		await mem.send("Okay! I've added the role `@" + role.name + "` to you in " + g.name + "! To remove it, just remove your reaction!")
 
+
 async def remove_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int):
 	g = bot.get_guild()
 	role = g.get_role(role_id)
@@ -226,9 +229,9 @@ async def remove_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int
 	if mem is None:
 		raise BotModuleError("User is not a member of this guild: UID " + str(reaction.user.id))
 
-	if role not in mem.roles:
-		await mem.add_roles(role, reason="Reaction roles request")
-		await mem.send("Okay! I've added the role `@" + role.name + "` to you in " + g.name + "! To remove it, just remove your reaction!")
+	if role in mem.roles:
+		await mem.remove_rolesroles(role, reason="Reaction roles request")
+		await mem.send("Okay! I've removed the role `@" + role.name + "` from you in " + g.name + "! To add it again, just react again!")
 
 
 BOT_MODULE_CLASS = RoleManagerModule

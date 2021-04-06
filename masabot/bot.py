@@ -387,17 +387,24 @@ class MasaBot(object):
 				pager = DiscordPager("_(error continued)_")
 				e = traceback.format_exc()
 				logging.exception("Exception in main loop")
-				msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
-				pager.add_line(msg_start)
-				pager.add_line()
-				pager.start_code_block()
-				for line in e.splitlines():
-					pager.add_line(line)
-				pager.end_code_block()
-				pages = pager.get_pages()
-				for p in pages:
-					await message.channel.send(p)
-				_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
+
+				# is it an access issue?
+				if isinstance(e, discord.errors.Forbidden):
+					msg = "**Permissions Error?** What is that? I don't know, but Discord told me that when I tried to do something! Do I need special permissions on my role to do that?"
+					await message.channel.send(msg)
+					_log.debug(_fmt_send(message.channel, msg))
+				else:
+					msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
+					pager.add_line(msg_start)
+					pager.add_line()
+					pager.start_code_block()
+					for line in e.splitlines():
+						pager.add_line(line)
+					pager.end_code_block()
+					pages = pager.get_pages()
+					for p in pages:
+						await message.channel.send(p)
+					_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		_log.info("Loading module config and state...")
 		self._configure_loaded_modules(conf['modules'])
@@ -418,7 +425,7 @@ class MasaBot(object):
 
 	async def _mimic_reaction(self, ctx: BotContext, rct: util.Reaction):
 		# don't mimic own reactions
-		if rct.is_from_this_client:
+		if rct.bot_in_users:
 			return
 		if random.random() < self.core_settings.get(ctx.source.guild.id, 'mimic-reaction-chance'):
 			# give a slight delay
