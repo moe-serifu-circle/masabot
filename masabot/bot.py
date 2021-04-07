@@ -153,6 +153,7 @@ class MasaBot(object):
 		self._any_mention_handlers = []
 		self._reaction_add_handlers = {'unicode': {}, 'custom': {}, 'any': []}
 		self._reaction_remove_handlers = {'unicode': {}, 'custom': {}, 'any': []}
+		self._reaction_subscriptions = {}
 		self._regex_handlers = {}
 		self._operators: Dict[int, Dict[str, Any]] = {}
 		self.module_settings: Dict[str, settings.SettingsStore] = {}
@@ -423,6 +424,7 @@ class MasaBot(object):
 			self._set_state_in_loaded_modules(state_dict)
 		except Exception:
 			_log.exception("could not set module state from state file; defaults will be used")
+
 		_log.info("Modules are now ready")
 
 	async def _mimic_reaction(self, ctx: BotContext, rct: util.Reaction):
@@ -1480,6 +1482,9 @@ class MasaBot(object):
 		if 'invocation_replacements' in builtin_state:
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
 
+		if 'reaction_subscriptions' in builtin_state:
+			self._reaction_subscriptions = dict(builtin_state['reaction_subscriptions'])
+
 		settings_data = builtin_state['settings']
 
 		core_settings = settings_data['core']
@@ -1524,11 +1529,31 @@ class MasaBot(object):
 
 			self.module_settings[module_name] = store
 
+	def register_message_reaction_subscriber(self, mod: str, mid: int):
+		if mid not in self._reaction_subscriptions:
+			self._reaction_subscriptions[mid] = dict()
+		if mod not in self._reaction_subscriptions[mid]:
+			self._reaction_subscriptions[mid][mod] = True
+			self._save_all()
+
+	def unregister_message_reaction_subscriber(self, mod: str, mid: int):
+		if mid not in self._reaction_subscriptions:
+			return
+		if mod not in self._reaction_subscriptions[mid]:
+			return
+		del self._reaction_subscriptions[mid][mod]
+
+		if len(self._reaction_subscriptions[mid]) == 0:
+			del self._reaction_subscriptions[mid]
+
+		self._save_all()
+
 	def _save_all(self):
 		state_dict = {
 			'__BOT__': {
 				'operators': {op: self._operators[op] for op in self._operators if self._operators[op]['role'] != 'superop'},
 				'invocation_replacements': dict(self._invocation_replacements),
+				'reaction_subscriptions': dict(self._reaction_subscriptions),
 				'settings': {
 					'core': {
 						'global': self.core_settings.get_global_state(),

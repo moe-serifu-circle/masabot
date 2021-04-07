@@ -78,6 +78,24 @@ class PluginAPI:
 		"""Get the ID of the user that represents the currently connected bot."""
 		return self._bot.client.user.id
 
+	def subscribe_reactions(self, mid: int):
+		"""
+		Set a message (by message ID) as sending further reactions only to it. If already called, the claimant will be
+		added to the list of subscribers and will still receive notifications. It is safe to call this method even if
+		has already been called.
+
+		Subscriptions will persist across restarts.
+		"""
+		self._bot.register_message_reaction_subscriber(self._plugin_name, mid)
+
+	def unsubscribe_reactions(self, mid: int):
+		"""
+		Unregisters this module as being a reaction subscriber to the given message. If it is the only subscriber, the
+		message will be changed back to broadcast and all modules will receive reaction events from it once more
+		regardless of whether they are subscribed if they are triggered by ReactionTrigger.
+		"""
+		self._bot.unregister_message_reaction_subscriber(self._plugin_name, mid)
+
 	async def react(self, emoji_text: str):
 		msg = self.context.message
 		await msg.add_reaction(emoji_text)
