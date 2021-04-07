@@ -380,8 +380,8 @@ class MasaBot(object):
 						restart_command_file.write("quit")
 					await self.client.close()
 			else:
-				if isinstance(args[0], discord.Reaction):
-					message = args[0].message
+				if isinstance(args[0], discord.RawReactionActionEvent):
+					message = None
 				else:
 					message = args[0]
 				pager = DiscordPager("_(error continued)_")
@@ -391,7 +391,8 @@ class MasaBot(object):
 				# is it an access issue?
 				if isinstance(e, discord.errors.Forbidden):
 					msg = "**Permissions Error?** What is that? I don't know, but Discord told me that when I tried to do something! Do I need special permissions on my role to do that?"
-					await message.channel.send(msg)
+					if message is not None:
+						await message.channel.send(msg)
 					_log.debug(_fmt_send(message.channel, msg))
 				else:
 					msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
@@ -402,8 +403,9 @@ class MasaBot(object):
 						pager.add_line(line)
 					pager.end_code_block()
 					pages = pager.get_pages()
-					for p in pages:
-						await message.channel.send(p)
+					if message is not None:
+						for p in pages:
+							await message.channel.send(p)
 					_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		_log.info("Loading module config and state...")

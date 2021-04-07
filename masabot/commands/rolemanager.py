@@ -71,6 +71,7 @@ class RoleManagerModule(BotBehaviorModule):
 				ReactionTrigger(reacts=True, unreacts=True),
 				InvocationTrigger('rr-add'),
 				InvocationTrigger('rr-remove'),
+				InvocationTrigger('rr-clear'),
 			],
 			resource_root=resource_root,
 			has_state=False
@@ -102,19 +103,29 @@ class RoleManagerModule(BotBehaviorModule):
 			await self.add_reactionrole(bot)
 		elif command == 'rr-remove':
 			await self.remove_reactionrole(bot)
+		elif command == 'rr-clear':
+			await self.clear_reactionroles(bot)
 
 	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction):
-		if reaction.user.id == bot.get_bot_id():
+		import pprint
+		_log.debug('received reaction: ' + repr(reaction))
+		_log.debug('CUR ROLE MSGS: ' + pprint.pformat(self._role_messages))
+		_log.debug('MY ID: ' + str(bot.get_bot_id()))
+
+		if reaction.user_id == bot.get_bot_id():
 			return
 		guild = bot.get_guild()
 
 		msg = reaction.source_message
 		if guild.id not in self._role_messages:
 			return
+		_log.debug("guild in role messages")
 		if msg.id not in self._role_messages[guild.id]:
 			return
+		_log.debug("msg in role messages")
 		if reaction.emoji not in self._role_messages[guild.id][msg.id]:
 			return
+		_log.debug("reaction part of role")
 
 		# checks done, this is a managed reaction role.
 		rid = self._role_messages[guild.id][msg.id][reaction.emoji]
@@ -135,7 +146,9 @@ class RoleManagerModule(BotBehaviorModule):
 		
 		msg = await bot.select_message("Oh, I have a few of those. Can you tell me the message I should remove a role from?")
 		if msg is None:
-			raise BotModuleError("I'm sorry, but I can't remove a role unless you tell me which message to remove it from! Do `!rr-remove` to try again.")
+			full_msg = "I'm sorry, but I can't remove a role unless you tell me which message to remove it from!"
+			full_msg += " Do `!rr-remove` to try again."
+			raise BotModuleError(full_msg)
 
 		if msg.id not in self._role_messages[sid]:
 			raise BotModuleError("That is not a message in this server!")
@@ -155,7 +168,9 @@ class RoleManagerModule(BotBehaviorModule):
 		bot.save()
 		self.has_state = False
 
-		await bot.reply("Yes! The role is no more! Oh, but any roles that people already had from that will not be automatically removed.")
+		full_msg = "Yes! The role is no more!"
+		full_msg += " Oh, but any roles that people already had from that will not be automatically removed."
+		await bot.reply(full_msg)
 
 	async def add_reactionrole(self, bot: PluginAPI):
 		await bot.require_op("rr-add")
@@ -171,6 +186,7 @@ class RoleManagerModule(BotBehaviorModule):
 			raise BotModuleError("It doesn't look like that's a role, and I need a role to continue! Use !rr-add to try again.")
 
 		react = await bot.prompt_for_emote("Okay! And what emoji should people react with to get that role?")
+
 		if react is None:
 			raise BotModuleError("I'm sorry but I don't know what emoji you want me to add. Use !rr-add to try again.")
 		if not react.is_usable:
@@ -188,13 +204,47 @@ class RoleManagerModule(BotBehaviorModule):
 
 		self._role_messages[msg.channel.guild.id][msg.id][react.emoji] = role.id
 
-		await bot.context.message.add_reaction(react.emoji_value)
+		await msg.add_reaction(react.emoji_value)
 
 		self.has_state = True
 		bot.save()
 		self.has_state = False
 
 		await bot.reply("I have successfully set up that reaction role!")
+
+	async def clear_reactionroles(self, bot: PluginAPI):
+		await bot.require_op('rr-clear')
+
+		opts = list(self._role_messages[bot.get_guild().id].keys())
+		# TODO: abstract away the concept of "more than one option" and also abstract concept of auto-choosing 1 if only
+		# one and not presenting choice if choices are empty.
+		if len(opts) < 1:
+			await bot.reply("I don't have any reaction roles defined on any messages! You can use !rr-add to make one.")
+			return
+		elif len(opts) == 1:
+			sel = opts[0]
+		else:
+			opt1 = opts[0]
+			opt2 = opts[1]
+			other_opts = []
+			if len(opts) > 2:
+				other_opts = opts[2:]
+			q = "Which message ID should I clear all reaction roles from?"
+			sel = await bot.prompt_for_option(q, opt1, opt2, *other_opts)
+			if sel is None:
+				raise BotModuleError("Sorry, but I need to know what MID you want me to operate on!")
+
+		conf = await bot.confirm("Just to double check, you want me to delete ALL reaction roles on that message, right?")
+		if conf:
+			del self._role_messages[bot.get_guild().id][sel]
+
+			self.has_state = True
+			bot.save()
+			self.has_state = False
+
+			await bot.reply("Okay! They have been removed.")
+		else:
+			await bot.reply("I'll leave the role reactions alone for now.")
 
 
 async def add_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int):
@@ -225,7 +275,7 @@ async def remove_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int
 		raise BotModuleError("User is not a member of this guild: UID " + str(reaction.user.id))
 
 	if role in mem.roles:
-		await mem.remove_rolesroles(role, reason="Reaction roles request")
+		await mem.remove_roles(role, reason="Reaction roles request")
 		await mem.send("Okay! I've removed the role `@" + role.name + "` from you in " + g.name + "! To add it again, just react again!")
 
 

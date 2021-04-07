@@ -181,20 +181,53 @@ class CustomEmoji(object):
 class Reaction(object):
 
 	"""domain specific reaction info to abstract away discord.py access"""
-	def __init__(self):
-		self.user_id: int = 0
+	def __init__(
+			self,
+			emoji: Optional[Union[str, int]] = None,
+			action: str = 'add',
+			uid: int = 0,
+			mid: int = 0,
+			cid: int = 0,
+			gid: int = 0
+	):
+		"""
+		Create a new Reaction for use with Bot API functions. Most created by the masabot core will have info
+		automatically pre-populated before plugins see them. If creating a Reaction for the Bot API, at minimum
+		the emoji is required.
+
+		In order to fully populate the Reaction with data such that all properties are valid, API calls must be made.
+		This is accomplished by calling fetch() on the created Reaction, and passing in a discord.Client. This is done
+		deliberately to make it difficult for a module to directly invoke API-calling methods. However, for most
+		purposes that a module will have (finding reactions, setting them, reacting to messages), calling fetch is not
+		required.
+
+		In order to query whether fetch() has been called, use Reaction.cached. If True, fetch has been called at least
+		once and all properties are valid.
+
+		:param emoji: The emoji being reacted with. Can either be a string containing the unicode codepoints for the
+		emoji, or the ID of a custom emoji.
+		:param action: What action the Reaction is produced in response to. Must be 'add' or 'remove'. Not required if
+		creating a Reaction in a module.
+		:param uid: The ID of the user who did the action, if applicable.
+		:param mid: The ID of the message that the reaction was on, if applicable.
+		:param cid: The ID of the channel that the message referred to by mid is present in, if applicable.
+		:param gid: The ID of the guild that the channel referred to by cid is present in, if applicable.
+		"""
+		self.user_id = uid
 		"""The user who actually did the removal or add."""
 
-		self.message_id: int = 0
+		self.message_id = mid
 		"""Message reaction was on."""
 
-		self.channel_id: int = 0
+		self.channel_id = cid
 		"""Channel where message is. Will be 0 if message is not in a guild channel."""
 
-		self.guild_id: int = 0
+		self.guild_id = gid
 		"""Guild where message is. Will be 0 if message is not in a guild channel."""
 
-		self.action: str = 'add'
+		if action.lower() != 'add' and action.lower() != 'remove':
+			raise TypeError("action must be 'add' or 'remove', but was: {!r}".format(action))
+		self.action = action
 		"""Either 'add' or 'remove'."""
 
 		self.cached: bool = False
@@ -206,6 +239,50 @@ class Reaction(object):
 		self._custom_emoji: Optional[CustomEmoji] = None
 		self._unicode_emoji: Optional[str] = None
 		self._reactors: Optional[List[int]] = None
+
+		if emoji is not None:
+			if isinstance(emoji, str):
+				self._unicode_emoji = emoji
+			else:
+				self._custom_emoji = CustomEmoji(id=emoji, name='') #  TODO: make name be optional in CustomEmoji
+
+	def __str__(self):
+		if self.is_custom:
+			emoji_str = '(custom; ID:' + str(self.emoji) + ')'
+		else:
+			emoji_str = self.emoji
+
+		if self.cached:
+			reactors_str = str(self.reactors)
+		else:
+			reactors_str = '(None; not cached)'
+
+		s = '<Reaction:'
+		s += ' emoji={:s},'
+		s += ' user_id={:d},'
+		s += ' message_id={:d},'
+		s += ' channel_id={:d},'
+		s += ' guild_id={:d},'
+		s += ' action={:s},'
+		s += ' cached={:b},'
+		s += ' reactors={:s}>'
+
+		full = s.format(
+			emoji_str,
+			self.user_id,
+			self.message_id,
+			self.channel_id,
+			self.guild_id,
+			self.action,
+			self.cached,
+			reactors_str
+		)
+
+		return full
+
+	def __repr__(self):
+		s = 'Reaction({!r}, {!r}, {!r}, {!r}, {!r}, {!r})'
+		return s.format(self.emoji, self.action.lower(), self.user_id, self.message_id, self.channel_id, self.guild_id)
 
 	def custom_name(self) -> str:
 		"""Return the name of the custom emoji. If not custom, returns ''."""
@@ -221,6 +298,9 @@ class Reaction(object):
 
 	@property
 	def emoji_value(self) -> Optional[Union[discord.PartialEmoji, str]]:
+		"""
+		Return the value that must be given to discord to represent an emoji.
+		"""
 		if self.is_custom:
 			if not self.cached:
 				return None
@@ -229,57 +309,12 @@ class Reaction(object):
 		else:
 			return self.emoji
 
+	@property
 	def is_in_guild(self) -> bool:
 		"""
 		Return whether the reaction is from a guild channel. If not, guild_id and channel_id will be zeroed and invalid.
 		"""
 		return self.guild_id is not None
-
-	async def fetch(self, client: discord.Client):
-		"""
-		Get all info from discord if not obtained yet and cache it. Will set cached to True after execution.
-		If cached is already True, calling this method has no effect.
-		"""
-		if self.cached:
-			return
-
-		# get actual source message
-		if self._source_message is None:
-			if self.channel_id != 0:
-				msg = await client.get_channel(self.channel_id).fetch_message(self.message_id)
-				self._source_message = msg
-			else:
-				msg = await client.get_channel(self.user_id).fetch_message(self.message_id)
-				self._source_message = msg
-
-		# get reactors
-		reactions = self._source_message.reactions
-		target_reaction = None
-		for rct in reactions:
-			if rct.custom_emoji != self.is_custom:
-				continue
-			if rct.custom_emoji:
-				if rct.custom_emoji.id == self.emoji:
-					target_reaction = rct
-					break
-			elif rct.emoji == self.emoji:
-				target_reaction = rct
-				break
-		if target_reaction is not None:
-			users = await target_reaction.users().flatten()
-			self._reactors = list([u.id for u in users])
-
-		# get emoji server ID
-		if self.is_custom and self._custom_emoji.guild is None:
-			emj = client.get_emoji(self._custom_emoji.id)
-			self._custom_emoji.guild = emj.guild_id
-
-		if self._member is None and self.is_in_guild():
-			self._member = client.get_guild(self.guild_id).get_member(self.user_id)
-		if self._user is None:
-			self._user = client.get_user(self.user_id)
-
-		self.cached = True
 
 	@property
 	def member(self) -> Optional[discord.Member]:
@@ -323,14 +358,13 @@ class Reaction(object):
 	def is_usable(self) -> Optional[bool]:
 		"""Whether the reaction can be used. Always True for unicode emoji, False if custom and not in the same server,
 		or None if custom and not cached."""
-		if self.cached:
-			if self._custom_emoji is not None:
-				return self._custom_emoji.guild == self.guild_id
-			else:
-				return True
-		elif self._custom_emoji is None:
+		if not self.is_custom:
 			return True
-		return None
+
+		if not self.cached:
+			return None
+
+		return self._custom_emoji.guild == self.guild_id
 
 	@property
 	def is_custom(self) -> bool:
@@ -366,6 +400,52 @@ class Reaction(object):
 			return self._custom_emoji.id
 		else:
 			return self._unicode_emoji
+
+	async def fetch(self, client: discord.Client):
+		"""
+		Get all info from discord if not obtained yet and cache it. Will set cached to True after execution.
+		If cached is already True, calling this method has no effect.
+		"""
+		if self.cached:
+			return
+
+		# get actual source message
+		if self._source_message is None:
+			if self.channel_id != 0:
+				msg = await client.get_channel(self.channel_id).fetch_message(self.message_id)
+				self._source_message = msg
+			else:
+				msg = await client.get_channel(self.user_id).fetch_message(self.message_id)
+				self._source_message = msg
+
+		# get reactors
+		reactions = self._source_message.reactions
+		target_reaction = None
+		for rct in reactions:
+			if rct.custom_emoji != self.is_custom:
+				continue
+			if rct.custom_emoji:
+				if rct.custom_emoji.id == self.emoji:
+					target_reaction = rct
+					break
+			elif rct.emoji == self.emoji:
+				target_reaction = rct
+				break
+		if target_reaction is not None:
+			users = await target_reaction.users().flatten()
+			self._reactors = list([u.id for u in users])
+
+		# get emoji server ID
+		if self.is_custom and self._custom_emoji.guild is None:
+			emj = client.get_emoji(self._custom_emoji.id)
+			self._custom_emoji.guild = emj.guild_id
+
+		if self._member is None and self.is_in_guild:
+			self._member = client.get_guild(self.guild_id).get_member(self.user_id)
+		if self._user is None:
+			self._user = client.get_user(self.user_id)
+
+		self.cached = True
 
 	@staticmethod
 	def from_raw(r: discord.RawReactionActionEvent) -> 'Reaction':
@@ -430,7 +510,7 @@ class Reaction(object):
 			# otherwise, it is a str
 			rct._unicode_emoji = r.emoji
 
-		return r
+		return rct
 
 
 def reaction_index(react: discord.Reaction):

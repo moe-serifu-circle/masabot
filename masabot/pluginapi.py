@@ -280,6 +280,8 @@ class PluginAPI:
 			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received emoji:")
 			log_msg += repr(react.emoji)
 			_log.debug(log_msg)
+
+
 		return react
 
 	async def prompt_for_emote_option(self, prompt: str, options: List, timeout: int = 60) -> util.Reaction:
@@ -417,10 +419,10 @@ class PluginAPI:
 	async def prompt_for_option(
 			self,
 			message: str,
-			option_1: str = "yes",
-			option_2: str = "no",
+			option_1: Any = "yes",
+			option_2: Any = "no",
 			*additional_options
-	) -> Optional[str]:
+	) -> Optional[Any]:
 		"""
 		Prompt the user to select an option. Not case-sensitive; all options are converted to lower-case. Times out
 		after 60 seconds, and returns None then.
@@ -431,22 +433,23 @@ class PluginAPI:
 		:param additional_options: Any additional options.
 		:return: The option selected by the user, or None if the prompt times out.
 		"""
-		if option_1.lower() == option_2.lower():
+		if str(option_1).lower() == str(option_2).lower():
 			raise ValueError("option 1 and 2 are equal")
 
 		all_options = {
-			self._bot.prefix + self._bot.prefix + option_1.lower(): option_1.lower(),
-			self._bot.prefix + self._bot.prefix + option_2.lower(): option_2.lower()
+			self._bot.prefix + self._bot.prefix + str(option_1).lower(): option_1,
+			self._bot.prefix + self._bot.prefix + str(option_2).lower(): option_2
 		}
 
 		full_message = message + "\n\nSelect one of the following options: \n"
-		full_message += "* `" + self._bot.prefix + self._bot.prefix + option_1.lower() + "`\n"
-		full_message += "* `" + self._bot.prefix + self._bot.prefix + option_2.lower() + "`\n"
+		full_message += "* `" + self._bot.prefix + self._bot.prefix + str(option_1).lower() + "`\n"
+		full_message += "* `" + self._bot.prefix + self._bot.prefix + str(option_2).lower() + "`\n"
 		for op in additional_options:
-			if op.lower() in all_options:
+			if str(op).lower() in all_options:
 				raise ValueError("Multiple equal options for '" + op.lower() + "'")
-			full_message += "* `" + self._bot.prefix + self._bot.prefix + op + "`\n"
-			all_options[self._bot.prefix + self._bot.prefix + op.lower()] = op.lower()
+			response = self._bot.prefix + self._bot.prefix + str(op).lower()
+			full_message += "* `" + response + "`\n"
+			all_options[response] = op
 
 		await self.reply(full_message)
 		_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " started"))
