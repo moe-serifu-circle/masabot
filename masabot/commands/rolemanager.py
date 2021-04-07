@@ -108,20 +108,20 @@ class RoleManagerModule(BotBehaviorModule):
 			return
 		guild = bot.get_guild()
 
-		msg = reaction.message
+		msg = reaction.source_message
 		if guild.id not in self._role_messages:
 			return
 		if msg.id not in self._role_messages[guild.id]:
 			return
-		if reaction.index not in self._role_messages[guild.id][msg.id]:
+		if reaction.emoji not in self._role_messages[guild.id][msg.id]:
 			return
 
 		# checks done, this is a managed reaction role.
-		rid = self._role_messages[guild.id][msg.id][reaction.index]
+		rid = self._role_messages[guild.id][msg.id][reaction.emoji]
 
-		if reaction.action == 'remove':
+		if reaction.is_remove:
 			await remove_user_role(bot, reaction, rid)
-		elif reaction.action == 'add':
+		else:
 			await add_user_role(bot, reaction, rid)
 
 	async def remove_reactionrole(self, bot: PluginAPI):
@@ -148,13 +148,8 @@ class RoleManagerModule(BotBehaviorModule):
 		if r is None:
 			raise BotModuleError("I need to know the role you want me to remove >.< Do `!rr-remove` to try again.")
 
-		del self._role_messages[sid][msg.id][r.index]
-
-		if isinstance(r.index, str):
-			await msg.remove_reaction(r.index)
-		else:
-			emoji = await bot.get_emoji(r.index)
-			await msg.remove_reaction(emoji)
+		del self._role_messages[sid][msg.id][r.emoji]
+		await msg.remove_reaction(r.emoji_value)
 
 		self.has_state = True
 		bot.save()
@@ -186,14 +181,14 @@ class RoleManagerModule(BotBehaviorModule):
 		if msg.id not in self._role_messages[msg.channel.guild.id]:
 			self._role_messages[msg.channel.guild.id][msg.id] = dict()
 
-		if react.index in self._role_messages[msg.channel.guild.id][msg.id]:
-			rid = self._role_messages[msg.channel.guild.id][msg.id][react.index]
+		if react.emoji in self._role_messages[msg.channel.guild.id][msg.id]:
+			rid = self._role_messages[msg.channel.guild.id][msg.id][react.emoji]
 			existing_role = util.Mention(util.MentionType.ROLE, rid, False)
 			raise BotModuleError("That emoji is already in use for the role " + str(existing_role) + "! Use !rr-add to try again.")
 
-		self._role_messages[msg.channel.guild.id][msg.id][react.index] = role.id
+		self._role_messages[msg.channel.guild.id][msg.id][react.emoji] = role.id
 
-		await bot.context.message.add_reaction(react.original)
+		await bot.context.message.add_reaction(react.emoji_value)
 
 		self.has_state = True
 		bot.save()

@@ -286,39 +286,38 @@ class MasaBot(object):
 		# noinspection PyUnusedLocal
 		@self.client.event
 		async def on_raw_reaction_add(evt: discord.RawReactionActionEvent):
-
-			ctx = BotContext(reaction.message)
+			rct = util.Reaction.from_raw(evt)
+			await rct.fetch(self.client)
+			ctx = BotContext(rct.source_message)
 			# TODO: make reaction triggers work in DMs
 			if ctx.is_pm:
 				return
 
-			meta = util.MessageMetadata.from_message(reaction.message)
-			rct = await util.create_generic_reaction(reaction, user)
-			rct.action = 'add'
+			meta = util.MessageMetadata.from_message(rct.source_message)
 
 			emoji = ''
 			if rct.is_custom:
-				emoji = repr(rct.custom_emoji.name) + " (custom)"
+				emoji = repr(rct.custom_name) + " (custom)"
 			else:
-				emoji = repr(rct.unicode_emoji)
+				emoji = repr(rct.emoji)
 
 			# only log it if we care
 			# TODO: race condition between awaits and the time we actually check for reaction handlers
 			# shouldn't be an issue unless we wish to load/unload modules at runtime
-			if len(self._reaction_add_handlers['any']) > 0 or (rct.is_custom and rct.custom_emoji.name in self._reaction_add_handlers['custom']) or (not rct.is_custom and rct.unicode_emoji in self._reaction_add_handlers['unicode']):
-				log_msg = util.add_context(ctx, "received reaction " + emoji + " on MID " + repr(reaction.message.id))
+			if len(self._reaction_add_handlers['any']) > 0 or (rct.is_custom and rct.custom_name in self._reaction_add_handlers['custom']) or (not rct.is_custom and rct.emoji in self._reaction_add_handlers['unicode']):
+				log_msg = util.add_context(ctx, "received reaction " + emoji + " on MID " + repr(rct.message_id))
 				_log.debug(log_msg)
 
 			if rct.is_custom:
-				if rct.custom_emoji.server is not None and rct.custom_emoji.server == ctx.get_guild().id:
-					if rct.custom_emoji.name in self._reaction_add_handlers['custom']:
-						for handler in self._reaction_add_handlers['custom'][rct.custom_emoji.name]:
+				if rct.custom_guild == ctx.get_guild().id:
+					if rct.custom_name in self._reaction_add_handlers['custom']:
+						for handler in self._reaction_add_handlers['custom'][rct.custom_name]:
 							api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 							# dont assign directly so handled stays true
 							await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 			else:
-				if rct.unicode_emoji is not None and rct.unicode_emoji in self._reaction_add_handlers['unicode']:
-					for handler in self._reaction_add_handlers['unicode'][rct.unicode_emoji]:
+				if rct.emoji in self._reaction_add_handlers['unicode']:
+					for handler in self._reaction_add_handlers['unicode'][rct.emoji]:
 						api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 
@@ -330,39 +329,39 @@ class MasaBot(object):
 
 		# noinspection PyUnusedLocal
 		@self.client.event
-		async def on_reaction_remove(reaction: discord.Reaction, user: discord.User):
-			ctx = BotContext(reaction.message)
+		async def on_raw_reaction_remove(evt: discord.RawReactionActionEvent):
+			rct = util.Reaction.from_raw(evt)
+			await rct.fetch(self.client)
+			ctx = BotContext(rct.source_message)
 			# TODO: make reaction triggers work in DMs
 			if ctx.is_pm:
 				return
 
-			meta = util.MessageMetadata.from_message(reaction.message)
-			rct = await util.create_generic_reaction(reaction, user)
-			rct.action = 'remove'
+			meta = util.MessageMetadata.from_message(rct.source_message)
 
 			emoji = ''
 			if rct.is_custom:
-				emoji = repr(rct.custom_emoji.name) + " (custom)"
+				emoji = repr(rct.custom_name) + " (custom)"
 			else:
-				emoji = repr(rct.unicode_emoji)
+				emoji = repr(rct.emoji)
 
 			# only log it if we care
 			# TODO: race condition between awaits and the time we actually check for reaction handlers
 			# shouldn't be an issue unless we wish to load/unload modules at runtime
-			if len(self._reaction_remove_handlers['any']) > 0 or (rct.is_custom and rct.custom_emoji.name in self._reaction_remove_handlers['custom']) or (not rct.is_custom and rct.unicode_emoji in self._reaction_remove_handlers['unicode']):
-				log_msg = util.add_context(ctx, "received reaction removal of " + emoji + " on MID " + repr(reaction.message.id))
+			if len(self._reaction_remove_handlers['any']) > 0 or (rct.is_custom and rct.custom_name in self._reaction_remove_handlers['custom']) or (not rct.is_custom and rct.emoji in self._reaction_remove_handlers['unicode']):
+				log_msg = util.add_context(ctx, "received reaction removal of " + emoji + " on MID " + repr(rct.message_id))
 				_log.debug(log_msg)
 
 			if rct.is_custom:
-				if rct.custom_emoji.server is not None and rct.custom_emoji.server == ctx.get_guild().id:
-					if rct.custom_emoji.name in self._reaction_remove_handlers['custom']:
-						for handler in self._reaction_remove_handlers['custom'][rct.custom_emoji.name]:
+				if rct.custom_guild == ctx.get_guild().id:
+					if rct.custom_name in self._reaction_remove_handlers['custom']:
+						for handler in self._reaction_remove_handlers['custom'][rct.custom_name]:
 							api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 							# dont assign directly so handled stays true
 							await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 			else:
-				if rct.unicode_emoji is not None and rct.unicode_emoji in self._reaction_remove_handlers['unicode']:
-					for handler in self._reaction_remove_handlers['unicode'][rct.unicode_emoji]:
+				if rct.emoji in self._reaction_remove_handlers['unicode']:
+					for handler in self._reaction_remove_handlers['unicode'][rct.emoji]:
 						api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 
@@ -426,13 +425,13 @@ class MasaBot(object):
 
 	async def _mimic_reaction(self, ctx: BotContext, rct: util.Reaction):
 		# don't mimic own reactions
-		if rct.bot_in_users:
+		if self.client.user.id in rct.reactors:
 			return
 		if random.random() < self.core_settings.get(ctx.source.guild.id, 'mimic-reaction-chance'):
 			# give a slight delay
 			delay = 1 + (random.random() * 3)  # random amount from 1 to 4 seconds
 			await asyncio.sleep(delay)
-			await rct.message.add_reaction(rct.original)
+			await rct.source_message.add_reaction(rct.emoji_value)
 
 	async def randomize_presence(self, chance=1.0):
 		if random.random() < chance:

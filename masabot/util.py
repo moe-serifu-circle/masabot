@@ -207,6 +207,28 @@ class Reaction(object):
 		self._unicode_emoji: Optional[str] = None
 		self._reactors: Optional[List[int]] = None
 
+	def custom_name(self) -> str:
+		"""Return the name of the custom emoji. If not custom, returns ''."""
+		if self.is_custom:
+			return self._custom_emoji.name
+		return ''
+
+	def custom_guild(self) -> int:
+		"""Return the guild ID of the custom emoji. If not custom, returns 0."""
+		if self.is_custom:
+			return self._custom_emoji.guild
+		return 0
+
+	@property
+	def emoji_value(self) -> Optional[Union[discord.PartialEmoji, str]]:
+		if self.is_custom:
+			if not self.cached:
+				return None
+			p = discord.PartialEmoji(name=self.custom_name(), id=self.emoji)
+			return p
+		else:
+			return self.emoji
+
 	def is_in_guild(self) -> bool:
 		"""
 		Return whether the reaction is from a guild channel. If not, guild_id and channel_id will be zeroed and invalid.

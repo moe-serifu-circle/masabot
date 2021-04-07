@@ -271,14 +271,14 @@ class PluginAPI:
 
 		try:
 			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
-			react = await util.create_generic_reaction(r)
+			react = await util.Reaction.from_discord(r, user)
 		except asyncio.TimeoutError:
 			react = None
 		if react is None:
 			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
 		else:
 			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received emoji:")
-			log_msg += repr(react.index)
+			log_msg += repr(react.emoji)
 			_log.debug(log_msg)
 		return react
 
@@ -314,14 +314,14 @@ class PluginAPI:
 
 		try:
 			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
-			react = await util.create_generic_reaction(r)
+			react = await util.Reaction.from_discord(r, user)
 		except asyncio.TimeoutError:
 			react = None
 		if react is None:
 			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
 		else:
 			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received emoji:")
-			log_msg += repr(react.index)
+			log_msg += repr(react.emoji)
 			_log.debug(log_msg)
 		return react
 

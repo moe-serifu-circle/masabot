@@ -72,7 +72,7 @@ class SparkleModule(BotBehaviorModule):
 		if bot.context.message is None:
 			return
 		if bot.context.message.id in self._inprogs:
-			if reaction.bot_in_users:
+			if bot.get_bot_id() in reaction.reactors:
 				del self._inprogs[bot.context.message.id]
 			return
 		spread_chance = await bot.get_setting('spread-chance')
