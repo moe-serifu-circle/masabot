@@ -302,6 +302,26 @@ class MasaBot(object):
 			else:
 				emoji = repr(rct.emoji)
 
+			# first, check if it is a subscribed message. no other actions will occur if so
+			if rct.message_id in self._reaction_subscriptions:
+				log_msg = util.add_context(
+					ctx,
+					"Received reaction addition of " + emoji + " on subscribe-mode MID " + repr(rct.message_id)
+				)
+				_log.debug(log_msg)
+				for mod in self._reaction_subscriptions[rct.message_id]:
+					handler = self._bot_modules[mod]
+					api = PluginAPI(self, mod, ctx, self._message_history_cache)
+					await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+
+				# NO MORE HANDLING; immediately return
+				log_msg = util.add_context(
+					ctx,
+					"Message is in subscribe mode, so not passing event to other reaction listeners"
+				)
+				_log.debug(log_msg)
+				return
+
 			# only log it if we care
 			# TODO: race condition between awaits and the time we actually check for reaction handlers
 			# shouldn't be an issue unless we wish to load/unload modules at runtime
@@ -345,6 +365,26 @@ class MasaBot(object):
 				emoji = repr(rct.custom_name) + " (custom)"
 			else:
 				emoji = repr(rct.emoji)
+
+			# first, check if it is a subscribed message. no other actions will occur if so
+			if rct.message_id in self._reaction_subscriptions:
+				log_msg = util.add_context(
+					ctx,
+					"Received reaction removal of " + emoji + " on subscribe-mode MID " + repr(rct.message_id)
+				)
+				_log.debug(log_msg)
+				for mod in self._reaction_subscriptions[rct.message_id]:
+					handler = self._bot_modules[mod]
+					api = PluginAPI(self, mod, ctx, self._message_history_cache)
+					await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+
+				# NO MORE HANDLING; immediately return
+				log_msg = util.add_context(
+					ctx,
+					"Message is in subscribe mode, so not passing event to other reaction listeners"
+				)
+				_log.debug(log_msg)
+				return
 
 			# only log it if we care
 			# TODO: race condition between awaits and the time we actually check for reaction handlers
