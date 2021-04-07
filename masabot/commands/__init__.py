@@ -99,7 +99,7 @@ class BotBehaviorModule(object):
 			help_text: str,
 			triggers: Sequence[Union[InvocationTrigger, RegexTrigger, MentionTrigger, TimerTrigger, ReactionTrigger]],
 			resource_root: str,
-			has_state: bool = False,
+			save_state_on_trigger: bool = False,
 			settings: Optional[Sequence[masabotsettings.Key]] = None,
 			global_settings: Optional[Sequence[masabotsettings.Key]] = None,
 			server_only_settings: Optional[Sequence[masabotsettings.Key]] = None,
@@ -114,8 +114,9 @@ class BotBehaviorModule(object):
 		this particular module is displayed.
 		:param triggers: All possible triggers that cause this module to be executed.
 		:param resource_root: The root directory that resources are to be placed in.
-		:param has_state: Whether this module has state. If this is true, then the module should define get_state()
-		set_state() methods for saving state to a dict and setting state from a dict.
+		:param save_state_on_trigger: Whether this module wishes to have state auto-saved on every handle. If this is true, then the
+		module should define get_state() and set_state() methods for saving state to a dict and setting state from a
+		dict (also global versions of those, get_global_state() and set_global_state()).
 		:param settings: Settings keys that this module uses. There will be a value for each key for every server that
 		the bot runs in, as well as a separate 'global' value that is used in non-server contexts.
 		:param global_settings: Settings keys that this module uses that have only a single value across all servers that this
@@ -126,7 +127,7 @@ class BotBehaviorModule(object):
 		self.help_text = help_text
 		self.description = desc
 		self.name = name
-		self.has_state = has_state
+		self.save_state_on_trigger = save_state_on_trigger
 		self.triggers = triggers
 		self.per_server_settings_keys: List[masabotsettings.Key] = []
 		self.global_settings_keys: List[masabotsettings.Key] = []

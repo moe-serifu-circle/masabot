@@ -74,7 +74,7 @@ class RoleManagerModule(BotBehaviorModule):
 				InvocationTrigger('rr-clear'),
 			],
 			resource_root=resource_root,
-			has_state=False
+			save_state_on_trigger=False,
 			# sic; we set has_state to False but still handle state as we manually manipulate
 			# that with setting has_state prior to calling api.save() as a temporary hack
 		)
@@ -164,9 +164,7 @@ class RoleManagerModule(BotBehaviorModule):
 		del self._role_messages[sid][msg.id][r.emoji]
 		await msg.remove_reaction(r.emoji_value)
 
-		self.has_state = True
 		bot.save()
-		self.has_state = False
 
 		full_msg = "Yes! The role is no more!"
 		full_msg += " Oh, but any roles that people already had from that will not be automatically removed."
@@ -206,9 +204,7 @@ class RoleManagerModule(BotBehaviorModule):
 
 		await msg.add_reaction(react.emoji_value)
 
-		self.has_state = True
 		bot.save()
-		self.has_state = False
 
 		await bot.reply("I have successfully set up that reaction role!")
 

@@ -29,7 +29,7 @@ class TranslationModule(BotBehaviorModule):
 				InvocationTrigger('tl'),
 			],
 			resource_root=resource_root,
-			has_state=False
+			save_state_on_trigger=False
 		)
 
 		self._translator = googletrans.Translator()

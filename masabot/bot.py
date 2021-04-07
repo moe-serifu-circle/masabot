@@ -1481,7 +1481,7 @@ class MasaBot(object):
 			await api.reply(msg + str(e))
 
 		# TODO: notify somewhere that having state as opposed to settings implies a save on every handle.
-		if mod is not None and mod.has_state:
+		if mod is not None and mod.save_state_on_trigger:
 			self._save_all()
 
 	def _message_to_tokens(self, message):
@@ -1610,17 +1610,16 @@ class MasaBot(object):
 
 		for m_name in self._bot_modules:
 			mod = self._bot_modules[m_name]
-			if mod.has_state:
-				state_dict[mod.name] = {
-					'global': mod.get_global_state(),
-					'servers': {}
-				}
-				servers_dict = state_dict[mod.name]['servers']
-				""":type: Dict[int, Dict]"""
-				for g in self.connected_guilds:
-					mod_state = mod.get_state(g.id)
-					if mod_state is not None:
-						servers_dict[g.id] = mod_state
+			state_dict[mod.name] = {
+				'global': mod.get_global_state(),
+				'servers': {}
+			}
+			servers_dict = state_dict[mod.name]['servers']
+			""":type: Dict[int, Dict]"""
+			for g in self.connected_guilds:
+				mod_state = mod.get_state(g.id)
+				if mod_state is not None:
+					servers_dict[g.id] = mod_state
 
 		with open(self._state_file, "wb") as fp:
 			pickle.dump(state_dict, fp)

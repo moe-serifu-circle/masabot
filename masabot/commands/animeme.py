@@ -58,7 +58,7 @@ class AnimemeModule(BotBehaviorModule):
 				InvocationTrigger('animeme-list')
 			],
 			resource_root=resource_root,
-			has_state=True,
+			save_state_on_trigger=True,
 			settings=[
 				settings.Key(settings.key_type_int_range(min=0), 'kerning', default=2),
 				settings.Key(settings.key_type_float_range(min=0.0), 'spacing', default=1.5),

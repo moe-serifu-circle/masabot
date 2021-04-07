@@ -29,7 +29,7 @@ class SparkleModule(BotBehaviorModule):
 				ReactionTrigger(emoji=['✨'])
 			],
 			resource_root=resource_root,
-			has_state=False,
+			save_state_on_trigger=False,
 			server_only_settings=[
 				settings.Key(settings.key_type_toggle, 'enabled', default=False),
 				settings.Key(settings.key_type_percent, 'start-chance', default=0.3),
