@@ -96,8 +96,6 @@ class RoleManagerModule(BotBehaviorModule):
 		}
 
 	def set_state(self, server: int, state: Dict):
-		import pprint
-		_log.debug("STATE SET: guild " + str(server) + ": " + pprint.pformat(state))
 		self._role_messages[server] = state['messages']
 
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
@@ -109,11 +107,6 @@ class RoleManagerModule(BotBehaviorModule):
 			await self.clear_reactionroles(bot)
 
 	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction):
-		import pprint
-		_log.debug('received reaction: ' + repr(reaction))
-		_log.debug('CUR ROLE MSGS: ' + pprint.pformat(self._role_messages))
-		_log.debug('MY ID: ' + str(bot.get_bot_id()))
-
 		if reaction.user_id == bot.get_bot_id():
 			return
 		guild = bot.get_guild()
@@ -121,13 +114,10 @@ class RoleManagerModule(BotBehaviorModule):
 		msg = reaction.source_message
 		if guild.id not in self._role_messages:
 			return
-		_log.debug("guild in role messages")
 		if msg.id not in self._role_messages[guild.id]:
 			return
-		_log.debug("msg in role messages")
 		if reaction.emoji not in self._role_messages[guild.id][msg.id]:
 			return
-		_log.debug("reaction part of role")
 
 		# checks done, this is a managed reaction role.
 		rid = self._role_messages[guild.id][msg.id][reaction.emoji]

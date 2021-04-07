@@ -330,15 +330,10 @@ class PluginAPI:
 				await msg.add_reaction(emoji)
 
 		def check_react(rc):
-			_log.debug("CHECKING REACTION: " + str(rc))
 			if rc.message_id != msg.id:
-				_log.debug("NOT SAME MSG ID, WANTED " + str(msg.id))
 				return False
 			if rc.user_id != self.context.author.id:
-				_log.debug("NOT SAME USER ID, WANTED " + str(self.context.author.id))
 				return False
-			_log.debug("OPTIONS: " + repr(options))
-			_log.debug("INDEX: " + repr(util.reaction_index(rc)))
 			return util.reaction_index(rc) in options
 
 		try:
