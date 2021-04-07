@@ -5,6 +5,8 @@ from . import BotBehaviorModule, ReactionTrigger, InvocationTrigger
 from .. import util
 from ..bot import PluginAPI
 
+import discord
+
 import logging
 
 from ..util import BotModuleError
@@ -136,8 +138,9 @@ class RoleManagerModule(BotBehaviorModule):
 			await add_user_role(bot, reaction, rid)
 
 	async def remove_reactionrole(self, bot: PluginAPI):
-		sid = bot.require_server()
+		sid = await bot.require_server()
 		await bot.require_op("rr-remove")
+
 		if sid not in self._role_messages or len(self._role_messages[sid]) < 1:
 			masamsg = "I would, but there's just one problem! I'm not running any role reactions in this server,"
 			masamsg += " but you can add some with `!rr-add`."
@@ -151,7 +154,7 @@ class RoleManagerModule(BotBehaviorModule):
 			raise BotModuleError(full_msg)
 
 		if msg.id not in self._role_messages[sid]:
-			raise BotModuleError("That is not a message in this server!")
+			raise BotModuleError("That is not a message with role reactions in this server!")
 
 		reacts = self._role_messages[sid][msg.id].keys()
 		if len(reacts) < 1:
@@ -162,7 +165,12 @@ class RoleManagerModule(BotBehaviorModule):
 			raise BotModuleError("I need to know the role you want me to remove >.< Do `!rr-remove` to try again.")
 
 		del self._role_messages[sid][msg.id][r.emoji]
-		await msg.remove_reaction(r.emoji_value)
+		if len(self._role_messages[sid][msg.id]) == 0:
+			del self._role_messages[sid][msg.id]
+			bot.unsubscribe_reactions(msg.id)
+			if len(self._role_messages[sid]) == 0:
+				del self._role_messages[sid]
+		await msg.remove_reaction(r.emoji_value, discord.Object(bot.get_bot_id()))
 
 		bot.save()
 
@@ -174,7 +182,9 @@ class RoleManagerModule(BotBehaviorModule):
 		await bot.require_op("rr-add")
 		msg = await bot.select_message("Okay, sure! Which message in this server should I add a reaction role to?")
 		if msg is None:
-			raise BotModuleError("I'm sorry but I don't know what message you want to set up the reactions on! Use !rr-add to try again.")
+			err_msg = "I'm sorry but I don't know what message you want to set up the reactions on!"
+			err_msg += " Use !rr-add to try again."
+			raise BotModuleError(err_msg)
 
 		rolemsg = await bot.prompt("Got it! And what role do you want to add?")
 		if rolemsg is None:
@@ -188,18 +198,21 @@ class RoleManagerModule(BotBehaviorModule):
 		if react is None:
 			raise BotModuleError("I'm sorry but I don't know what emoji you want me to add. Use !rr-add to try again.")
 		if not react.is_usable:
-			raise BotModuleError("Oh no, it looks like I can't use that emote, is it from another server? Use !rr-add to try again.")
+			err_msg = "Oh no, it looks like I can't use that emote, is it from another server?"
+			err_msg += " Use !rr-add to try again."
+			raise BotModuleError(err_msg)
 
 		if msg.channel.guild.id not in self._role_messages:
 			self._role_messages[msg.channel.guild.id] = dict()
 		if msg.id not in self._role_messages[msg.channel.guild.id]:
 			self._role_messages[msg.channel.guild.id][msg.id] = dict()
+			bot.subscribe_reactions(msg.id)
 
 		if react.emoji in self._role_messages[msg.channel.guild.id][msg.id]:
 			rid = self._role_messages[msg.channel.guild.id][msg.id][react.emoji]
 			existing_role = util.Mention(util.MentionType.ROLE, rid, False)
-			raise BotModuleError("That emoji is already in use for the role " + str(existing_role) + "! Use !rr-add to try again.")
-
+			msg = "That emoji is already in use for the role " + str(existing_role) + "! Use !rr-add to try again."
+			raise BotModuleError(msg)
 		self._role_messages[msg.channel.guild.id][msg.id][react.emoji] = role.id
 
 		await msg.add_reaction(react.emoji_value)
@@ -233,11 +246,8 @@ class RoleManagerModule(BotBehaviorModule):
 		conf = await bot.confirm("Just to double check, you want me to delete ALL reaction roles on that message, right?")
 		if conf:
 			del self._role_messages[bot.get_guild().id][sel]
-
-			self.has_state = True
 			bot.save()
-			self.has_state = False
-
+			bot.unsubscribe_reactions(sel)
 			await bot.reply("Okay! They have been removed.")
 		else:
 			await bot.reply("I'll leave the role reactions alone for now.")
@@ -256,7 +266,9 @@ async def add_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int):
 
 	if role not in mem.roles:
 		await mem.add_roles(role, reason="Reaction roles request")
-		await mem.send("Okay! I've added the role `@" + role.name + "` to you in " + g.name + "! To remove it, just remove your reaction!")
+		reply_msg = "Okay! I've added the role `@" + role.name + "` to you in " + g.name + "!"
+		reply_msg += " To remove it, just remove your reaction!"
+		await mem.send(reply_msg)
 
 
 async def remove_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int):
@@ -272,7 +284,9 @@ async def remove_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int
 
 	if role in mem.roles:
 		await mem.remove_roles(role, reason="Reaction roles request")
-		await mem.send("Okay! I've removed the role `@" + role.name + "` from you in " + g.name + "! To add it again, just react again!")
+		reply_msg = "Okay! I've removed the role `@" + role.name + "` from you in " + g.name + "!"
+		reply_msg += " To have it added again, you can react once more!"
+		await mem.send(reply_msg)
 
 
 BOT_MODULE_CLASS = RoleManagerModule

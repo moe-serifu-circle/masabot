@@ -425,7 +425,7 @@ class Reaction(object):
 			if rct.custom_emoji != self.is_custom:
 				continue
 			if rct.custom_emoji:
-				if rct.custom_emoji.id == self.emoji:
+				if rct.emoji.id == self.emoji:
 					target_reaction = rct
 					break
 			elif rct.emoji == self.emoji:
@@ -513,13 +513,19 @@ class Reaction(object):
 		return rct
 
 
-def reaction_index(react: discord.Reaction):
-	if isinstance(react.emoji, discord.PartialEmoji):
-		return react.emoji.id
-	elif isinstance(react.emoji, discord.Emoji):
-		return react.emoji.id
+def reaction_index(react: Union[discord.Reaction, discord.RawReactionActionEvent]):
+	if isinstance(react, discord.RawReactionActionEvent):
+		if react.emoji.is_custom_emoji():
+			return react.emoji.id
+		else:
+			return react.emoji.name
 	else:
-		return react.emoji
+		if isinstance(react.emoji, discord.PartialEmoji):
+			return react.emoji.id
+		elif isinstance(react.emoji, discord.Emoji):
+			return react.emoji.id
+		else:
+			return react.emoji
 
 
 def find_mentions(

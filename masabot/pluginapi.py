@@ -243,18 +243,22 @@ class PluginAPI:
 		log_msg = "prompt for " + self.context.author_name() + " started for message selection"
 		_log.debug(util.add_context(self.context, log_msg))
 
-		def check_react(rc, u):
-			if rc.message.channel.guild.id != sid:
+		def check_react(rc: discord.RawReactionActionEvent):
+			if rc.guild_id != sid:
 				return False
-			if u.id != self.context.author.id:
+			if rc.user_id != self.context.author.id:
 				return False
-			if str(rc.emoji) != '✅':
+			if not rc.emoji.is_unicode_emoji:
+				return False
+			if not rc.emoji.name == '✅':
 				return False
 			return True
 
 		try:
-			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
-			message = r.message
+			r = await self._bot.client.wait_for('raw_reaction_add', timeout=timeout, check=check_react)
+			rct = util.Reaction.from_raw(r)
+			await rct.fetch(self._bot.client)
+			message = rct.source_message
 		except asyncio.TimeoutError:
 			message = None
 		if message is None:
@@ -280,16 +284,17 @@ class PluginAPI:
 		log_msg = "prompt for " + self.context.author_name() + " started for emoji-by-reaction selection"
 		_log.debug(util.add_context(self.context, log_msg))
 
-		def check_react(rc, u):
-			if rc.message.id != msg.id:
+		def check_react(rc):
+			if rc.message_id != msg.id:
 				return False
-			if u.id != self.context.author.id:
+			if rc.user_id != self.context.author.id:
 				return False
 			return True
 
 		try:
-			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
-			react = await util.Reaction.from_discord(r, user)
+			r = await self._bot.client.wait_for('raw_reaction_add', timeout=timeout, check=check_react)
+			react = util.Reaction.from_raw(r)
+			await react.fetch(self._bot.client)
 		except asyncio.TimeoutError:
 			react = None
 		if react is None:
@@ -298,7 +303,6 @@ class PluginAPI:
 			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received emoji:")
 			log_msg += repr(react.emoji)
 			_log.debug(log_msg)
-
 
 		return react
 
@@ -325,16 +329,22 @@ class PluginAPI:
 				emoji = self._bot.client.get_emoji(opt)
 				await msg.add_reaction(emoji)
 
-		def check_react(rc, u):
-			if r.message.id != msg.id:
+		def check_react(rc):
+			_log.debug("CHECKING REACTION: " + str(rc))
+			if rc.message_id != msg.id:
+				_log.debug("NOT SAME MSG ID, WANTED " + str(msg.id))
 				return False
-			if u.id != self.context.author.id:
+			if rc.user_id != self.context.author.id:
+				_log.debug("NOT SAME USER ID, WANTED " + str(self.context.author.id))
 				return False
+			_log.debug("OPTIONS: " + repr(options))
+			_log.debug("INDEX: " + repr(util.reaction_index(rc)))
 			return util.reaction_index(rc) in options
 
 		try:
-			r, user = await self._bot.client.wait_for('reaction_add', timeout=timeout, check=check_react)
-			react = await util.Reaction.from_discord(r, user)
+			r = await self._bot.client.wait_for('raw_reaction_add', timeout=timeout, check=check_react)
+			react = util.Reaction.from_raw(r)
+			await react.fetch(self._bot.client)
 		except asyncio.TimeoutError:
 			react = None
 		if react is None:
