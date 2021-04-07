@@ -39,7 +39,7 @@ random_status_list = [
 			"Looking for more glitter",
 			"being cute ^_^",
 			"VNs with sketchy covers",
-			"pranxis",
+			"at pranxis",
 			"with clown friends",
 			"outside",
 			"in the road",
@@ -52,6 +52,7 @@ random_status_list = [
 			"GameCube",
 			"ACNH",
 			"yuru camp",
+			"Friday Night Funkin'",
 		]
 
 
@@ -151,7 +152,9 @@ class MasaBot(object):
 		self._mention_handlers = {'users': {}, 'channels': {}, 'roles': {}}
 		self._self_mention_handlers = []
 		self._any_mention_handlers = []
-		self._reaction_handlers = {'unicode': {}, 'custom': {}, 'any': []}
+		self._reaction_add_handlers = {'unicode': {}, 'custom': {}, 'any': []}
+		self._reaction_remove_handlers = {'unicode': {}, 'custom': {}, 'any': []}
+		self._reaction_subscriptions = {}
 		self._regex_handlers = {}
 		self._operators: Dict[int, Dict[str, Any]] = {}
 		self.module_settings: Dict[str, settings.SettingsStore] = {}
@@ -284,53 +287,129 @@ class MasaBot(object):
 
 		# noinspection PyUnusedLocal
 		@self.client.event
-		async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
-			ctx = BotContext(reaction.message)
+		async def on_raw_reaction_add(evt: discord.RawReactionActionEvent):
+			rct = util.Reaction.from_raw(evt)
+			await rct.fetch(self.client)
+			ctx = BotContext(rct.source_message)
 			# TODO: make reaction triggers work in DMs
 			if ctx.is_pm:
 				return
 
-			meta = util.MessageMetadata.from_message(reaction.message)
-			rct = await util.create_generic_reaction(reaction)
+			meta = util.MessageMetadata.from_message(rct.source_message)
 
 			emoji = ''
 			if rct.is_custom:
-				emoji = repr(rct.custom_emoji.name) + " (custom)"
+				emoji = repr(rct.custom_name) + " (custom)"
 			else:
-				emoji = repr(rct.unicode_emoji)
+				emoji = repr(rct.emoji)
+
+			# first, check if it is a subscribed message. no other actions will occur if so
+			if rct.message_id in self._reaction_subscriptions:
+				log_msg = util.add_context(
+					ctx,
+					"Received reaction addition of " + emoji + " on subscribe-mode MID " + repr(rct.message_id)
+				)
+				_log.debug(log_msg)
+				for mod in self._reaction_subscriptions[rct.message_id]:
+					handler = self._bot_modules[mod]
+					api = PluginAPI(self, mod, ctx, self._message_history_cache)
+					await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+
+				# NO MORE HANDLING; immediately return
+				log_msg = util.add_context(
+					ctx,
+					"Message is in subscribe mode, so not passing event to other reaction listeners"
+				)
+				_log.debug(log_msg)
+				return
 
 			# only log it if we care
 			# TODO: race condition between awaits and the time we actually check for reaction handlers
 			# shouldn't be an issue unless we wish to load/unload modules at runtime
-			if len(self._reaction_handlers['any']) > 0 or (rct.is_custom and rct.custom_emoji.name in self._reaction_handlers['custom']) or (not rct.is_custom and rct.unicode_emoji in self._reaction_handlers['unicode']):
-				log_msg = util.add_context(ctx, "received reaction " + emoji + " on MID " + repr(reaction.message.id))
+			if len(self._reaction_add_handlers['any']) > 0 or (rct.is_custom and rct.custom_name in self._reaction_add_handlers['custom']) or (not rct.is_custom and rct.emoji in self._reaction_add_handlers['unicode']):
+				log_msg = util.add_context(ctx, "received reaction " + emoji + " on MID " + repr(rct.message_id))
 				_log.debug(log_msg)
 
 			if rct.is_custom:
-				if rct.custom_emoji.server is not None and rct.custom_emoji.server == ctx.get_guild().id:
-					if rct.custom_emoji.name in self._reaction_handlers['custom']:
-						for handler in self._reaction_handlers['custom'][rct.custom_emoji.name]:
+				if rct.custom_guild == ctx.get_guild().id:
+					if rct.custom_name in self._reaction_add_handlers['custom']:
+						for handler in self._reaction_add_handlers['custom'][rct.custom_name]:
 							api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 							# dont assign directly so handled stays true
 							await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 			else:
-				if rct.unicode_emoji is not None and rct.unicode_emoji in self._reaction_handlers['unicode']:
-					for handler in self._reaction_handlers['unicode'][rct.unicode_emoji]:
+				if rct.emoji in self._reaction_add_handlers['unicode']:
+					for handler in self._reaction_add_handlers['unicode'][rct.emoji]:
 						api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 
-			for handler in self._reaction_handlers['any']:
+			for handler in self._reaction_add_handlers['any']:
 				api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
 				await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 
-			# don't mimic own reactions
-			if rct.is_from_this_client:
+			await self._mimic_reaction(ctx, rct)
+
+		# noinspection PyUnusedLocal
+		@self.client.event
+		async def on_raw_reaction_remove(evt: discord.RawReactionActionEvent):
+			rct = util.Reaction.from_raw(evt)
+			await rct.fetch(self.client)
+			ctx = BotContext(rct.source_message)
+			# TODO: make reaction triggers work in DMs
+			if ctx.is_pm:
 				return
-			if random.random() < self.core_settings.get(ctx.source.guild.id, 'mimic-reaction-chance'):
-				# give a slight delay
-				delay = 1 + (random.random() * 3)  # random amount from 1 to 4 seconds
-				await asyncio.sleep(delay)
-				await reaction.message.add_reaction(reaction)
+
+			meta = util.MessageMetadata.from_message(rct.source_message)
+
+			emoji = ''
+			if rct.is_custom:
+				emoji = repr(rct.custom_name) + " (custom)"
+			else:
+				emoji = repr(rct.emoji)
+
+			# first, check if it is a subscribed message. no other actions will occur if so
+			if rct.message_id in self._reaction_subscriptions:
+				log_msg = util.add_context(
+					ctx,
+					"Received reaction removal of " + emoji + " on subscribe-mode MID " + repr(rct.message_id)
+				)
+				_log.debug(log_msg)
+				for mod in self._reaction_subscriptions[rct.message_id]:
+					handler = self._bot_modules[mod]
+					api = PluginAPI(self, mod, ctx, self._message_history_cache)
+					await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+
+				# NO MORE HANDLING; immediately return
+				log_msg = util.add_context(
+					ctx,
+					"Message is in subscribe mode, so not passing event to other reaction listeners"
+				)
+				_log.debug(log_msg)
+				return
+
+			# only log it if we care
+			# TODO: race condition between awaits and the time we actually check for reaction handlers
+			# shouldn't be an issue unless we wish to load/unload modules at runtime
+			if len(self._reaction_remove_handlers['any']) > 0 or (rct.is_custom and rct.custom_name in self._reaction_remove_handlers['custom']) or (not rct.is_custom and rct.emoji in self._reaction_remove_handlers['unicode']):
+				log_msg = util.add_context(ctx, "received reaction removal of " + emoji + " on MID " + repr(rct.message_id))
+				_log.debug(log_msg)
+
+			if rct.is_custom:
+				if rct.custom_guild == ctx.get_guild().id:
+					if rct.custom_name in self._reaction_remove_handlers['custom']:
+						for handler in self._reaction_remove_handlers['custom'][rct.custom_name]:
+							api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
+							# dont assign directly so handled stays true
+							await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+			else:
+				if rct.emoji in self._reaction_remove_handlers['unicode']:
+					for handler in self._reaction_remove_handlers['unicode'][rct.emoji]:
+						api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
+						await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
+
+			for handler in self._reaction_remove_handlers['any']:
+				api = PluginAPI(self, handler.name, ctx, self._message_history_cache)
+				await self._execute_action(api, handler.on_reaction(api, meta, rct), handler)
 
 		# noinspection PyUnusedLocal
 		@self.client.event
@@ -343,24 +422,33 @@ class MasaBot(object):
 						restart_command_file.write("quit")
 					await self.client.close()
 			else:
-				if isinstance(args[0], discord.Reaction):
-					message = args[0].message
+				if isinstance(args[0], discord.RawReactionActionEvent):
+					message = None
 				else:
 					message = args[0]
 				pager = DiscordPager("_(error continued)_")
 				e = traceback.format_exc()
 				logging.exception("Exception in main loop")
-				msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
-				pager.add_line(msg_start)
-				pager.add_line()
-				pager.start_code_block()
-				for line in e.splitlines():
-					pager.add_line(line)
-				pager.end_code_block()
-				pages = pager.get_pages()
-				for p in pages:
-					await message.channel.send(p)
-				_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
+
+				# is it an access issue?
+				if isinstance(e, discord.errors.Forbidden):
+					msg = "**Permissions Error?** What is that? I don't know, but Discord told me that when I tried to do something! Do I need special permissions on my role to do that?"
+					if message is not None:
+						await message.channel.send(msg)
+					_log.debug(_fmt_send(message.channel, msg))
+				else:
+					msg_start = "I...I'm really sorry, but... um... I just had an exception :c"
+					pager.add_line(msg_start)
+					pager.add_line()
+					pager.start_code_block()
+					for line in e.splitlines():
+						pager.add_line(line)
+					pager.end_code_block()
+					pages = pager.get_pages()
+					if message is not None:
+						for p in pages:
+							await message.channel.send(p)
+					_log.debug(_fmt_send(message.channel, msg_start + " (exc_details)"))
 
 		_log.info("Loading module config and state...")
 		self._configure_loaded_modules(conf['modules'])
@@ -377,7 +465,18 @@ class MasaBot(object):
 			self._set_state_in_loaded_modules(state_dict)
 		except Exception:
 			_log.exception("could not set module state from state file; defaults will be used")
+
 		_log.info("Modules are now ready")
+
+	async def _mimic_reaction(self, ctx: BotContext, rct: util.Reaction):
+		# don't mimic own reactions
+		if self.client.user.id in rct.reactors:
+			return
+		if random.random() < self.core_settings.get(ctx.source.guild.id, 'mimic-reaction-chance'):
+			# give a slight delay
+			delay = 1 + (random.random() * 3)  # random amount from 1 to 4 seconds
+			await asyncio.sleep(delay)
+			await rct.source_message.add_reaction(rct.emoji_value)
 
 	async def randomize_presence(self, chance=1.0):
 		if random.random() < chance:
@@ -422,6 +521,7 @@ class MasaBot(object):
 			msg += "* `" + pre + "showops` - Shows all of my operators and superops.\n"
 			msg += "* `" + pre + "replchars` - Shows/sets characters that are replaced before parsing.\n"
 			msg += "* `" + pre + "settings` - Shows and sets core module settings.\n"
+			msg += "* `" + pre + "msgsubs` - Shows and sets the current emoji message subscription IDs.\n"
 			msg += "\nHere are the modules that I'm running:\n"
 			for m_name in self._bot_modules:
 				m = self._bot_modules[m_name]
@@ -486,6 +586,12 @@ class MasaBot(object):
 				msg += " the space character can only be replaced in conjuction with other characters, and never by"
 				msg += " itself. **Even if you're a superop user or an operator.** I'm really sorry to restrict it like"
 				msg += " that, but I have to in order to make sure I can keep running properly!"
+			elif help_module == "msgsubs":
+				msg = "The `msgsubs` command is shows all message emoji subscriptions that exist! It's an experimental"
+				msg += " feature that may need operator intervention, so I have this command.\n\n`msgsubs` by itself"
+				msg += " will show a list of all message subscriptions in the current server.\n\n`msgsubs remove <id>`"
+				msg += " will delete the subscription. This could break modules, so be careful!\n\nAll of these"
+				msg += " combinations could make me break really fast, so only superops can execute them."
 			else:
 				if help_module not in self._invocations and help_module not in self._bot_modules:
 					msg = "Oh no! I'm sorry, " + api.mention_user() + ", but I don't have any module or command"
@@ -510,6 +616,45 @@ class MasaBot(object):
 	# noinspection PyMethodMayBeStatic
 	async def show_version(self, api: 'PluginAPI'):
 		await api.reply("I am Masabot v" + str(version.get_version()) + "!")
+
+	async def _run_msgsubs_command(self, api: 'PluginAPI', args):
+		if len(args) == 0:
+			api.require_superop('msgsubs', None)
+			if len(self._reaction_subscriptions) == 0:
+				await api.reply("There are currently no emoji reaction subscriptions!")
+				return
+			pages = DiscordPager()
+			msg = "Sure! Here's the messages where reaction event subscription is turned on for, and the modules"
+			msg += " that requested it!"
+			pages.add_line(msg)
+			pages.start_code_block()
+			for s in self._reaction_subscriptions:
+				msg = "* MID " + str(s) + " by " + ', '.join(list(self._reaction_subscriptions[s].keys()))
+				msg += '\n'
+				pages.add_line(msg)
+			pages.end_code_block()
+			for p in pages.get_pages():
+				await api.reply(p)
+		else:
+			mode = args[0].lower()
+			if mode == 'remove':
+				api.require_superop('msgsubs remove <id>', None)
+				if len(args) < 2:
+					err_msg = "I can do that, but I need you to tell me the ID of the message"
+					err_msg += " to remove reaction subscriptions from!"
+					raise BotSyntaxError(err_msg)
+				try:
+					mid = int(args[1])
+				except TypeError:
+					raise BotSyntaxError("The message ID needs to be an integer.")
+				if mid not in self._reaction_subscriptions:
+					raise BotSyntaxError("That message ID does not have any subscriptions on it.")
+				del self._reaction_subscriptions[mid]
+				_log.debug(util.add_context(api.context, "Wiped all msgsubs on MID {:d} by superop request", mid))
+				self._save_all()
+				await api.reply("Done! All subscriptions have been wiped.")
+			else:
+				raise BotSyntaxError("That isn't a subcommand of msgsubs!")
 
 	async def _run_settings_command(
 			self,
@@ -1071,7 +1216,8 @@ class MasaBot(object):
 				'specific': _copy_handler_dict(self._mention_handlers)
 			}
 			new_timer_handlers = list(self._timers)
-			new_reaction_handlers = _copy_handler_dict(self._reaction_handlers)
+			new_reaction_add_handlers = _copy_handler_dict(self._reaction_add_handlers)
+			new_reaction_remove_handlers = _copy_handler_dict(self._reaction_remove_handlers)
 			mod = importlib.import_module("masabot.commands." + module_str)
 			bot_module = mod.BOT_MODULE_CLASS('resources')
 			if bot_module.name.lower() == "core":
@@ -1088,7 +1234,10 @@ class MasaBot(object):
 				elif t.trigger_type == 'TIMER':
 					self._add_new_timer_handler(bot_module, t, new_timer_handlers)
 				elif t.trigger_type == 'REACTION':
-					self._add_new_reaction_handler(bot_module, t, new_reaction_handlers)
+					if t.include_react_add:
+						self._add_new_reaction_handler(bot_module, t, new_reaction_add_handlers)
+					if t.include_react_remove:
+						self._add_new_reaction_handler(bot_module, t, new_reaction_remove_handlers)
 
 			self._bot_modules[bot_module.name] = bot_module
 			self._invocations = new_invoke_handlers
@@ -1096,7 +1245,8 @@ class MasaBot(object):
 			self._mention_handlers = new_mention_handlers['specific']
 			self._self_mention_handlers = new_mention_handlers['self']
 			self._any_mention_handlers = new_mention_handlers['any']
-			self._reaction_handlers = new_reaction_handlers
+			self._reaction_add_handlers = new_reaction_add_handlers
+			self._reaction_remove_handlers = new_reaction_remove_handlers
 			names.append(bot_module.name)
 			_log.debug("Added module '" + bot_module.name + "'")
 		_log.debug("Done loading modules")
@@ -1282,6 +1432,8 @@ class MasaBot(object):
 			await self._execute_action(core_api, self._run_replchars_command(core_api, action, search, repl))
 		elif cmd == 'settings':
 			await self._execute_action(core_api, self._run_settings_command(core_api, args))
+		elif cmd == 'msgsubs':
+			await self._execute_action(core_api, self._run_msgsubs_command(core_api, args))
 		elif cmd in self._invocations:
 			for handler in self._invocations[cmd]:
 				api = PluginAPI(self, handler.name, context, self._message_history_cache)
@@ -1378,7 +1530,7 @@ class MasaBot(object):
 			await api.reply(msg + str(e))
 
 		# TODO: notify somewhere that having state as opposed to settings implies a save on every handle.
-		if mod is not None and mod.has_state:
+		if mod is not None and mod.save_state_on_trigger:
 			self._save_all()
 
 	def _message_to_tokens(self, message):
@@ -1418,6 +1570,9 @@ class MasaBot(object):
 
 		if 'invocation_replacements' in builtin_state:
 			self._invocation_replacements = dict(builtin_state['invocation_replacements'])
+
+		if 'reaction_subscriptions' in builtin_state:
+			self._reaction_subscriptions = dict(builtin_state['reaction_subscriptions'])
 
 		settings_data = builtin_state['settings']
 
@@ -1463,11 +1618,31 @@ class MasaBot(object):
 
 			self.module_settings[module_name] = store
 
+	def register_message_reaction_subscriber(self, mod: str, mid: int):
+		if mid not in self._reaction_subscriptions:
+			self._reaction_subscriptions[mid] = dict()
+		if mod not in self._reaction_subscriptions[mid]:
+			self._reaction_subscriptions[mid][mod] = True
+			self._save_all()
+
+	def unregister_message_reaction_subscriber(self, mod: str, mid: int):
+		if mid not in self._reaction_subscriptions:
+			return
+		if mod not in self._reaction_subscriptions[mid]:
+			return
+		del self._reaction_subscriptions[mid][mod]
+
+		if len(self._reaction_subscriptions[mid]) == 0:
+			del self._reaction_subscriptions[mid]
+
+		self._save_all()
+
 	def _save_all(self):
 		state_dict = {
 			'__BOT__': {
 				'operators': {op: self._operators[op] for op in self._operators if self._operators[op]['role'] != 'superop'},
 				'invocation_replacements': dict(self._invocation_replacements),
+				'reaction_subscriptions': dict(self._reaction_subscriptions),
 				'settings': {
 					'core': {
 						'global': self.core_settings.get_global_state(),
@@ -1484,17 +1659,16 @@ class MasaBot(object):
 
 		for m_name in self._bot_modules:
 			mod = self._bot_modules[m_name]
-			if mod.has_state:
-				state_dict[mod.name] = {
-					'global': mod.get_global_state(),
-					'servers': {}
-				}
-				servers_dict = state_dict[mod.name]['servers']
-				""":type: Dict[int, Dict]"""
-				for g in self.connected_guilds:
-					mod_state = mod.get_state(g.id)
-					if mod_state is not None:
-						servers_dict[g.id] = mod_state
+			state_dict[mod.name] = {
+				'global': mod.get_global_state(),
+				'servers': {}
+			}
+			servers_dict = state_dict[mod.name]['servers']
+			""":type: Dict[int, Dict]"""
+			for g in self.connected_guilds:
+				mod_state = mod.get_state(g.id)
+				if mod_state is not None:
+					servers_dict[g.id] = mod_state
 
 		with open(self._state_file, "wb") as fp:
 			pickle.dump(state_dict, fp)

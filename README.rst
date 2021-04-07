@@ -2,6 +2,17 @@ MasaBot
 =======
 An automated discord bot for handling typical tasks.
 
+Dockerized Masabot
+------------------
+Masabot has been dockerized! To run it as dockerized, ensure that you have DOcker installed
+on your system, then do the following in the project dir to build an image and launch it:
+
+`docker build -t masabot:local .`
+
+Then, to execute it, just do:
+
+`./run-dockerized.sh local` on linux, or `.\run-dockerized.ps1 local` on windows.
+
 Dev Setup
 ---------
 Masabot requires python 3. If you don't have it, install it.

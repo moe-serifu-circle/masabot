@@ -44,7 +44,7 @@ class WatchListModule(BotBehaviorModule):
 				InvocationTrigger("anilist-auth"),
 			],
 			resource_root=resource_root,
-			has_state=True
+			save_state_on_trigger=True
 		)
 
 		self._anilist_users = {}

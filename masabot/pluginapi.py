@@ -22,7 +22,13 @@ class PluginAPI:
 
 	It is intended to be created outside of the plugin's control and then passed to plugins.
 	"""
-	def __init__(self, target_bot: Any, for_plugin: Optional[str] = None, context: Optional[BotContext] = None, history: Optional[MessageHistoryCache] = None):
+	def __init__(
+			self,
+			target_bot: Any,
+			for_plugin: Optional[str] = None,
+			context: Optional[BotContext] = None,
+			history: Optional[MessageHistoryCache] = None
+	):
 		"""
 		Create a new plugin API object.
 
@@ -71,6 +77,24 @@ class PluginAPI:
 	def get_bot_id(self) -> int:
 		"""Get the ID of the user that represents the currently connected bot."""
 		return self._bot.client.user.id
+
+	def subscribe_reactions(self, mid: int):
+		"""
+		Set a message (by message ID) as sending further reactions only to it. If already called, the claimant will be
+		added to the list of subscribers and will still receive notifications. It is safe to call this method even if
+		has already been called.
+
+		Subscriptions will persist across restarts.
+		"""
+		self._bot.register_message_reaction_subscriber(self._plugin_name, mid)
+
+	def unsubscribe_reactions(self, mid: int):
+		"""
+		Unregisters this module as being a reaction subscriber to the given message. If it is the only subscriber, the
+		message will be changed back to broadcast and all modules will receive reaction events from it once more
+		regardless of whether they are subscribed if they are triggered by ReactionTrigger.
+		"""
+		self._bot.unregister_message_reaction_subscriber(self._plugin_name, mid)
 
 	async def react(self, emoji_text: str):
 		msg = self.context.message
@@ -139,8 +163,9 @@ class PluginAPI:
 			dest = self.context.author
 		else:
 			dest = self.context.source
-		await dest.send(message)
+		msg = await dest.send(message)
 		_log.debug(util.add_context(self.context, "sent {!r}", message))
+		return msg
 
 	async def reply_with_file(self, fp: Any, filename: str = None, message: str = None):
 		"""
@@ -155,8 +180,9 @@ class PluginAPI:
 		else:
 			dest = self.context.source
 
-		await dest.send(content=message, file=discord.File(fp, filename=filename))
+		msg = await dest.send(content=message, file=discord.File(fp, filename=filename))
 		_log.debug(util.add_context(self.context, " sent <FILE>"))
+		return msg
 
 	def require_superop(self, command, module, message="Operation requires superop status"):
 		"""
@@ -198,6 +224,131 @@ class PluginAPI:
 		if not self._bot.is_op(self.context.author.id, server_id):
 			cmd_end = " (in server " + str(server_id) + ")"
 			raise BotPermissionError(self.context, command + cmd_end, 'operator', self._plugin_name, message=message)
+
+	async def select_message(self, prompt: str, timeout: int = 60) -> Any:
+		"""
+		Prompt the user to select a message in the server. They will be shown a
+		prompt, and the ID of the next message they reply with ✅ on will be
+		returned.
+
+		This function requires a server context.
+
+		:param prompt: The prompt to show the user.
+		:param timeout: The number of seconds to wait before timing out the prompt.
+		:return: The message selected by the user, or None if the prompt times out.
+		"""
+		sid = await self.require_server()
+		full_message = prompt + "\n\n(React with ✅ on the message you want to select)"
+		await self.reply(full_message)
+		log_msg = "prompt for " + self.context.author_name() + " started for message selection"
+		_log.debug(util.add_context(self.context, log_msg))
+
+		def check_react(rc: discord.RawReactionActionEvent):
+			if rc.guild_id != sid:
+				return False
+			if rc.user_id != self.context.author.id:
+				return False
+			if not rc.emoji.is_unicode_emoji:
+				return False
+			if not rc.emoji.name == '✅':
+				return False
+			return True
+
+		try:
+			r = await self._bot.client.wait_for('raw_reaction_add', timeout=timeout, check=check_react)
+			rct = util.Reaction.from_raw(r)
+			await rct.fetch(self._bot.client)
+			message = rct.source_message
+		except asyncio.TimeoutError:
+			message = None
+		if message is None:
+			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
+		else:
+			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received MID:")
+			log_msg += repr(message.id)
+			_log.debug(log_msg)
+		return message
+
+	async def prompt_for_emote(self, prompt: str, timeout: int = 60) -> util.Reaction:
+		"""
+		Prompt the user to reply to give an emoji reaction and returns it.
+
+		This function requires a server context.
+
+		:param prompt: The prompt to show the user.
+		:param timeout: The number of seconds to wait before timing out the prompt.
+		:return: The message selected by the user, or None if the prompt times out.
+		"""
+		full_message = prompt + "\n\n(React to this message with your answer)"
+		msg = await self.reply(full_message)
+		log_msg = "prompt for " + self.context.author_name() + " started for emoji-by-reaction selection"
+		_log.debug(util.add_context(self.context, log_msg))
+
+		def check_react(rc):
+			if rc.message_id != msg.id:
+				return False
+			if rc.user_id != self.context.author.id:
+				return False
+			return True
+
+		try:
+			r = await self._bot.client.wait_for('raw_reaction_add', timeout=timeout, check=check_react)
+			react = util.Reaction.from_raw(r)
+			await react.fetch(self._bot.client)
+		except asyncio.TimeoutError:
+			react = None
+		if react is None:
+			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
+		else:
+			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received emoji:")
+			log_msg += repr(react.emoji)
+			_log.debug(log_msg)
+
+		return react
+
+	async def prompt_for_emote_option(self, prompt: str, options: List, timeout: int = 60) -> util.Reaction:
+		"""
+		Prompt the user to react with one of the given emoji, then returns it.
+
+		This function requires a server context.
+
+		:param prompt: The prompt to show the user.
+		:param options: The emoji to choose from. Each must be either a string for
+		a unicode emoji or an integer for a custom emoji ID.
+		:param timeout: The number of seconds to wait before timing out the prompt.
+		:return: The message selected by the user, or None if the prompt times out.
+		"""
+		full_message = prompt + "\n\n(React to this message with your answer)"
+		msg = await self.reply(full_message)
+		log_msg = "prompt for " + self.context.author_name() + " started for emoji-by-reaction selection"
+		_log.debug(util.add_context(self.context, log_msg))
+		for opt in options:
+			if isinstance(opt, str):
+				await msg.add_reaction(opt)
+			else:
+				emoji = self._bot.client.get_emoji(opt)
+				await msg.add_reaction(emoji)
+
+		def check_react(rc):
+			if rc.message_id != msg.id:
+				return False
+			if rc.user_id != self.context.author.id:
+				return False
+			return util.reaction_index(rc) in options
+
+		try:
+			r = await self._bot.client.wait_for('raw_reaction_add', timeout=timeout, check=check_react)
+			react = util.Reaction.from_raw(r)
+			await react.fetch(self._bot.client)
+		except asyncio.TimeoutError:
+			react = None
+		if react is None:
+			_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " timed out"))
+		else:
+			log_msg = util.add_context(self.context, "prompt for " + self.context.author_name() + " received emoji:")
+			log_msg += repr(react.emoji)
+			_log.debug(log_msg)
+		return react
 
 	async def prompt(self, message: str, timeout: int = 60, type_conv: Callable[[str], Any] = str) -> Any:
 		"""
@@ -247,7 +398,8 @@ class PluginAPI:
 		return self.context.source.typing()
 
 	def get_channel(self, server_channel_id: Optional[Tuple[int, int]] = None) -> Optional[discord.TextChannel]:
-		"""Return the current channel. None is returned if there is no current channel; consider doing bot_api.require_server()
+		"""Return the current channel. None is returned if there is no current channel;
+		consider doing bot_api.require_server()
 		for cases where a server ID is needed, followed by a query to get_channel.
 
 		If the ID is passed in, always gets that server/channel ID.
@@ -290,10 +442,10 @@ class PluginAPI:
 	async def prompt_for_option(
 			self,
 			message: str,
-			option_1: str = "yes",
-			option_2: str = "no",
+			option_1: Any = "yes",
+			option_2: Any = "no",
 			*additional_options
-	) -> Optional[str]:
+	) -> Optional[Any]:
 		"""
 		Prompt the user to select an option. Not case-sensitive; all options are converted to lower-case. Times out
 		after 60 seconds, and returns None then.
@@ -304,22 +456,23 @@ class PluginAPI:
 		:param additional_options: Any additional options.
 		:return: The option selected by the user, or None if the prompt times out.
 		"""
-		if option_1.lower() == option_2.lower():
+		if str(option_1).lower() == str(option_2).lower():
 			raise ValueError("option 1 and 2 are equal")
 
 		all_options = {
-			self._bot.prefix + self._bot.prefix + option_1.lower(): option_1.lower(),
-			self._bot.prefix + self._bot.prefix + option_2.lower(): option_2.lower()
+			self._bot.prefix + self._bot.prefix + str(option_1).lower(): option_1,
+			self._bot.prefix + self._bot.prefix + str(option_2).lower(): option_2
 		}
 
 		full_message = message + "\n\nSelect one of the following options: \n"
-		full_message += "* `" + self._bot.prefix + self._bot.prefix + option_1.lower() + "`\n"
-		full_message += "* `" + self._bot.prefix + self._bot.prefix + option_2.lower() + "`\n"
+		full_message += "* `" + self._bot.prefix + self._bot.prefix + str(option_1).lower() + "`\n"
+		full_message += "* `" + self._bot.prefix + self._bot.prefix + str(option_2).lower() + "`\n"
 		for op in additional_options:
-			if op.lower() in all_options:
+			if str(op).lower() in all_options:
 				raise ValueError("Multiple equal options for '" + op.lower() + "'")
-			full_message += "* `" + self._bot.prefix + self._bot.prefix + op + "`\n"
-			all_options[self._bot.prefix + self._bot.prefix + op.lower()] = op.lower()
+			response = self._bot.prefix + self._bot.prefix + str(op).lower()
+			full_message += "* `" + response + "`\n"
+			all_options[response] = op
 
 		await self.reply(full_message)
 		_log.debug(util.add_context(self.context, "prompt for " + self.context.author_name() + " started"))
@@ -352,6 +505,19 @@ class PluginAPI:
 			return self.context.author
 		return self._bot.client.get_user(snowflake_id)
 
+	def save(self):
+		"""
+		Persist all state. Use sparingly. Most cases can be handled with
+		the use of !settings, which auto-saves on mutation, or has_state=True
+		in module ctor.
+
+		Direct use of save should be used only for high throughput events such
+		as receiving all emoji.
+		"""
+		log_msg = util.add_context(self.context, "save was directly called by module")
+		_log.debug(log_msg)
+		self._bot._save_all()
+
 	async def get_setting(self, key: str) -> Union[int, str, bool, float]:
 		if self._plugin_name is None:
 			if self.context.is_pm:
@@ -371,6 +537,9 @@ class PluginAPI:
 			elif context_restriction == 'server':
 				server_id = await self.require_server()
 				return mod_settings.get(server_id, key)
+
+	async def get_emoji(self, eid) -> discord.Emoji:
+		return await self._bot.client.get_emoji(eid)
 
 	def get_messages(self, from_current: bool = False, limit: int = 0) -> List[discord.Message]:
 		"""Return messages, newest first"""

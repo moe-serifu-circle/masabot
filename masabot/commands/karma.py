@@ -41,7 +41,7 @@ class KarmaModule(BotBehaviorModule):
 				InvocationTrigger('karma-top')
 			],
 			resource_root=resource_root,
-			has_state=True,
+			save_state_on_trigger=True,
 			server_only_settings=[
 				settings.Key(settings.key_type_int_range(min=0), 'buzzkill-limit', default=5),
 				settings.Key(settings.key_type_percent, 'tsundere-chance', default=0.1),

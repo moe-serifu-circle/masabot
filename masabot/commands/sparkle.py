@@ -29,7 +29,7 @@ class SparkleModule(BotBehaviorModule):
 				ReactionTrigger(emoji=['✨'])
 			],
 			resource_root=resource_root,
-			has_state=False,
+			save_state_on_trigger=False,
 			server_only_settings=[
 				settings.Key(settings.key_type_toggle, 'enabled', default=False),
 				settings.Key(settings.key_type_percent, 'start-chance', default=0.3),
@@ -72,7 +72,7 @@ class SparkleModule(BotBehaviorModule):
 		if bot.context.message is None:
 			return
 		if bot.context.message.id in self._inprogs:
-			if reaction.is_from_this_client:
+			if bot.get_bot_id() in reaction.reactors:
 				del self._inprogs[bot.context.message.id]
 			return
 		spread_chance = await bot.get_setting('spread-chance')
