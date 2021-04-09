@@ -695,6 +695,8 @@ class MasaBot(object):
 			store = self.core_settings
 		else:
 			module_name_str = "`" + module_name + "`"
+			if module_name not in self.module_settings:
+				raise BotSyntaxError(module_name_str + " is not `core` or a module that I have loaded!")
 			store = self.module_settings[module_name]
 
 		pager = DiscordPager("_(settings continued)_")
