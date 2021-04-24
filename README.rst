@@ -4,7 +4,7 @@ An automated discord bot for handling typical tasks.
 
 Dockerized Masabot
 ------------------
-Masabot has been dockerized! To run it as dockerized, ensure that you have DOcker installed
+Masabot has been dockerized! To run it as dockerized, ensure that you have Docker installed
 on your system, then do the following in the project dir to build an image and launch it:
 
 `docker build -t masabot:local .`

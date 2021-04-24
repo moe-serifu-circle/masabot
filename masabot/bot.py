@@ -53,6 +53,12 @@ random_status_list = [
 			"ACNH",
 			"yuru camp",
 			"Friday Night Funkin'",
+			"the stalk market",
+			"Halo",
+			"the stock market📈",
+			"with Springtop",
+			"with clowny data",
+			"with Percy the🐴"
 		]
 
 

@@ -13,6 +13,9 @@ positive_words = [
 	"thank",
 	"love you",
 	"loves you",
+	"smart",
+	"good",
+	"cute"
 ]
 
 negative_words = [
@@ -22,6 +25,9 @@ negative_words = [
 	"bad bot",
 	"thanks for nothing",
 	"broken",
+	"isnt working",
+	"is not working",
+	"isn't working"
 ]
 
 
