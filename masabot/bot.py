@@ -169,6 +169,9 @@ class MasaBot(object):
 		self.core_settings.register_key(
 			settings.Key(settings.key_type_int, 'history-limit', default=1000)
 		)
+		self.core_settings.register_key(
+			settings.Key(settings.key_type_toggle, 'announce-startup', default=False)
+		)
 		self._return_code = 0
 		self._timers = []
 		""":type : list[Timer]"""
@@ -249,13 +252,21 @@ class MasaBot(object):
 				_log.info("* " + str(g))
 
 			_log.info("Bot is now online")
-			clean_shutdown, reason = self._check_supervisor_unclean_shutdown()
-			if clean_shutdown and not self._sent_announcement:
-				await PluginAPI(self).announce("Hello! I'm now online ^_^")
-				self._sent_announcement = True
-			else:
-				_log.info("Back from unclean shutdown caused by: " + repr(reason))
-			await self._check_supervisor_files()
+
+			# announce only in the channels where they've turned on that function
+			for g in self.connected_guilds:
+				if self.core_settings.get(g.id, 'announce-startup'):
+					for ch in g.channels:
+						if ch.type == discord.ChannelType.text and ('#' + ch.name) in self.announce_channels:
+							msg = "Hello! I'm now online ^_^"
+							try:
+								await ch.send(msg)
+							except discord.Forbidden:
+								pass
+							_log.debug(util.add_context(ch, "sent: {!r} as startup message", msg))
+			self._sent_announcement = True
+
+			await self._check_last_command()
 			self._setup_complete = True
 
 		@self.client.event
@@ -418,8 +429,8 @@ class MasaBot(object):
 				# assume that we did not come from on_message
 				_log.exception("Exception in startup")
 				if not self._setup_complete:
-					with open('ipc/restart-command', 'w') as restart_command_file:
-						restart_command_file.write("quit")
+					with open('ipc/lastcmd.p', 'wb') as restart_command_file:
+						pickle.dump({'command': 'quit'}, restart_command_file)
 					await self.client.close()
 			else:
 				if isinstance(args[0], discord.RawReactionActionEvent):
@@ -514,7 +525,7 @@ class MasaBot(object):
 			msg += "Here are my special commands:\n"
 			msg += "* `" + pre + "help` - Shows this help.\n"
 			msg += "* `" + pre + "version` - Shows the current version.\n"
-			msg += "* `" + pre + "redeploy` - Pulls in the latest changes.\n"
+			msg += "* `" + pre + "restart` - Restarts masabot with an optional message.\n"
 			msg += "* `" + pre + "quit` - Immediately stops me from running.\n"
 			msg += "* `" + pre + "op` - Gives a user operator permissions.\n"
 			msg += "* `" + pre + "deop` - Takes away operator permissions from a user.\n"
@@ -568,11 +579,13 @@ class MasaBot(object):
 			elif help_module == "showops":
 				msg = "Ah, that's the `showops` command! When you type this in, I'll tell you who my operators and"
 				msg += " superops are, and also a little bit of info on each of them."
-			elif help_module == "redeploy":
-				msg = "The `redeploy` command is a really special command that will cause me to shut down, pull in the"
-				msg += " latest updates from source control, and start back up again! This will only work if I was"
-				msg += " started via the supervisor script `run-masabot.sh`; otherwise the command will just make me"
-				msg += " shutdown, so please be careful! Oh, and remember that only my superops can do this!"
+			elif help_module == "restart":
+				msg = "The `restart` command is a really special command that will cause me to shut down and start back"
+				msg += " up again! If it's done with a message, I'll say that message on startup in my announcement"
+				msg += " channels, and if you give \"announcedown\" after that message, I'll announce that I'm going"
+				msg += " down! The message only works if I am dockerized in my special masabot image; otherwise the"
+				msg += " command will just make me shutdown, so please be careful! Oh, and remember that only my"
+				msg += " superops can do this!"
 			elif help_module == "replchars":
 				msg = "The `replchars` command shows all of the replacements that I do on text before trying to parse"
 				msg += " it into a command that I understand! Oh! And also, my superops can use this"
@@ -604,10 +617,10 @@ class MasaBot(object):
 					msg = "Oh yeah, the `" + m.name + "` module! `" + m.description + "`\n\n" + m.help_text
 		await api.reply(msg)
 
-	async def quit(self, api: 'PluginAPI', restart_command="quit"):
+	async def quit(self, api: 'PluginAPI', restart_command="quit", data=None):
 		api.require_superop("quit", None)
-		with open('ipc/restart-command', 'w') as fp:
-			fp.write(restart_command)
+		with open('ipc/lastcmd.p', 'wb') as fp:
+			pickle.dump({'command': restart_command, 'data': data}, fp)
 		await api.reply("Right away, " + api.mention_user() + "! See you later!")
 		_log.info("Shutting down...")
 		self._main_timer_task.cancel()
@@ -1081,101 +1094,52 @@ class MasaBot(object):
 				self._save_all()
 				await api.reply("Okay. " + str(mention) + " is no longer an op.")
 
-	async def _redeploy(self, api: 'PluginAPI', reason=None):
-		api.require_superop("redeploy", None)
-		if reason is not None:
-			with open('ipc/reason', 'w') as fp:
-				fp.write(reason)
-		_log.info("Going down for a redeploy")
-		msg = "Oh! It looks like " + api.context.author_name() + " has triggered a redeploy. I'll be going down now, but"
-		msg += " don't worry! I'll be right back!"
-		await api.announce(msg)
-		await self.quit(api, "redeploy")
+	async def _restart(self, api: 'PluginAPI', args):
+		api.require_superop("restart <reason> <announce-down>", None)
+
+		reason = None
+		announce = False
+		if len(args) > 0:
+			reason = args[0]
+		if len(args) > 1:
+			if args[1].lower() == 'announcedown':
+				announce = True
+			else:
+				msg = "Um, I'm sorry, but I don't understand what you mean with the option `" + str(args[1]) + "`..."
+				msg += " I only know about \"announcedown\", is that what you meant?"
+				raise BotSyntaxError(msg, api.context)
+		_log.info("Going down for a restart")
+		if announce:
+			msg = "Oh! It looks like " + api.context.author_name() + " has triggered a restart. I'll be going down now, but"
+			msg += " don't worry! I'll be right back!"
+			await api.announce(msg)
+		await self.quit(api, "restart", data={'reason': reason})
 		self._return_code = 1
 
-	# noinspection PyMethodMayBeStatic
-	def _check_supervisor_unclean_shutdown(self):
-		"""
-		Retrieve whether the last shutdown was clean, and then clean the source data containing that information.
-
-		Check if the last shutdown was a clean one. If it was not, give the reason as well. If the current execution is
-		the first time the bot is started, or if the last shutdown of the bot was caused by an intention to quit from
-		within the bot (e.g. by calling bot.quit()), the first element of the returned tuple will be True, and the
-		second will always be None. If the shutdown happened by another means, the first element will be False, and the
-		second will be the reason for unclean shutdown if one was provided by the supervisor invocation system.
-
-		Note that calling this function will cause the source files where the information was read from to be removed,
-		so all invocations after the first one will not contain valid information.
-
-		:rtype: (bool, str)
-		:return: A tuple containing whether the shutdown was clean and the reason for unclean shutdown
-		"""
-		if not os.path.exists('ipc/unclean-shutdown'):
-			return True, None
-		with open('ipc/unclean-shutdown') as fp:
-			info = json.load(fp)
-		os.remove('ipc/unclean-shutdown')
-		reason = info.get('reason', None)
-		return False, reason
-
-	async def _check_supervisor_files(self):
-		# NOTE: this function does not check for ipc/unclean-shutdown; that functionality is elsewhere
-		if not os.path.exists('ipc/status'):
+	async def _check_last_command(self):
+		if not os.path.exists('ipc/lastcmd.p'):
 			return
-		_log.debug("Returning from redeploy...")
-		with open('ipc/status', 'r') as fp:
-			status = json.load(fp)
-		if os.path.exists('ipc/reason'):
-			with open('ipc/reason', 'r') as fp:
-				reason = fp.read()
-			os.remove('ipc/reason')
-		else:
-			reason = None
-		os.remove('ipc/status')
-		action = status['action']
-		msg = None
-		if action == 'redeploy' or action == 'deploy':
-			if action == 'redeploy' and status['success']:
-				msg = "My redeploy completed! Yay, everything went well!\n\n"
+		_log.debug("Scanning last command info in ipc/lastcmd.p...")
+		with open('ipc/lastcmd.p', 'rb') as fp:
+			try:
+				info = pickle.load(fp)
+			except:
+				_log.warning("Could not load ipc/lastcmd.p")
+				_log.exception("Exception info:")
+		os.remove('ipc/lastcmd.p')
 
-				if len(status['packages']) < 1:
-					msg += "There were no changes to my dependencies."
-				else:
-					msg += "Hmm, hmm? Something feels funny! Oh! My dependencies have been updated!"
-					new_packs = []
-					old_packs = []
-					for pkg in status['packages']:
-						change = status['packages'][pkg]
-						if change['action'] == 'install':
-							new_packs.append(pkg)
-						elif change['action'] == 'uninstall':
-							old_packs.append(pkg)
-					if len(new_packs) > 0:
-						msg += " I added these ones: " + ', '.join('`' + x + '`' for x in new_packs) + '.'
-					if len(old_packs) > 0:
-						msg += " I removed these ones: " + ', '.join('`' + x + '`' for x in old_packs) + '.'
-					msg += " Now I feel all fresh and new ^_^"
+		cmd = info['command']
 
-				if reason is not None:
-					msg += "\n\n--------\n\nOh! Oh! I gotta tell you! The whole reason I went down is because " + reason
-				else:
-					msg = None
-			elif not status['success']:
-				msg = "Oh no, it looks like something went wrong during my " + action + " :c\n\n"
-				if not status['check_package_success']:
-					msg += "Something went wrong when I was looking for new packages to install!\n\n"
-				msg += "```\n" + status['message'] + "\n"
-				if len(status['packages']) > 0:
-					msg += '\n'
-				for pkg in status['packages']:
-					change = status['packages'][pkg]
-					ch_status = "FAILURE" if not change['success'] else "success"
-					ch_msg = "\n"
-					if not change['success']:
-						ch_msg = " -\n" + change['message'] + "\n"
-					msg += "* " + pkg + ": " + change['action'] + " " + ch_status + ch_msg
-				msg += "```"
-			if msg is not None:
+		if cmd == 'quit':
+			# just a normal quit, return
+			_log.debug("Last command was `quit`, nothing further to do. Continuing normal startup...")
+			return
+		elif cmd == 'restart':
+			_log.debug("Returning from restart...")
+			reason = info['data'].get('reason', None)
+			if reason is not None:
+				msg = "A restart completed! Yay, everything went well!\n\n"
+				msg += "\n\n--------\n\nOh! Oh! I gotta tell you! The whole reason I had to be restarted is because " + reason
 				await PluginAPI(self).announce(msg)
 
 	def _configure_loaded_modules(self, module_configs):
@@ -1415,12 +1379,8 @@ class MasaBot(object):
 			await self._execute_action(core_api, self.show_ops(core_api))
 		elif cmd == 'version':
 			await self._execute_action(core_api, self.show_version(core_api))
-		elif cmd == 'redeploy':
-			if len(args) > 0:
-				reason = args[0]
-			else:
-				reason = None
-			await self._execute_action(core_api, self._redeploy(core_api, reason))
+		elif cmd == 'restart':
+			await self._execute_action(core_api, self._restart(core_api, args))
 		elif cmd == 'replchars':
 			action = None
 			search = None
@@ -1686,9 +1646,9 @@ def start(configpath, logdir, statepath):
 	try:
 		retval = bot.run()
 	except KeyboardInterrupt:
-		# this is a normal shutdown, so notify any supervisor by writing to the restart-command file
-		with open('ipc/restart-command', 'w') as fp:
-			fp.write("quit")
+		# this is a normal shutdown, so notify bot by writing to last command
+		with open('ipc/lastcmd.p', 'wb') as fp:
+			pickle.dump({'command': 'quit'}, fp)
 		raise
 	if retval != 0:
 		sys.exit(retval)

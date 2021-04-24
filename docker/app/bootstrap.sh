@@ -24,6 +24,7 @@ if [ "$(cat /config/config.json | jq -r '.superops | length')" -lt 1 ]
 then
   echo "[BOOTSTRAP] ERROR: Configuration file has no superops defined. At least one must be defined to function." >&2
   echo "[BOOTSTRAP] ERROR: Start with -v host-dir:/config where host-dir is a path on host containing config.json with at least one element in 'superops'." >&2
+  exit 3
 fi
 
 # Warn if nothing mounted to /app/resources
