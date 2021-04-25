@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Sequence, Iterable
 
 from . import BotBehaviorModule, InvocationTrigger
 from .. import util, settings, pen
@@ -137,22 +137,7 @@ class HeadpatModule(BotBehaviorModule):
 			msg = "You need to give me the corner coordinates of where the headpat receiver's picture"
 			msg += " should go!"
 			raise BotSyntaxError(msg)
-		try:
-			x1 = int(args[0])
-		except ValueError:
-			raise BotSyntaxError("X1 needs to be an integer!")
-		try:
-			y1 = int(args[1])
-		except ValueError:
-			raise BotSyntaxError("Y1 needs to be an integer!")
-		try:
-			x2 = int(args[2])
-		except ValueError:
-			raise BotSyntaxError("X2 needs to be an integer!")
-		try:
-			y2 = int(args[3])
-		except ValueError:
-			raise BotSyntaxError("Y2 needs to be an integer!")
+		percents_present = args[0].endswith('%') or args[1].endswith('%') or args[2].endswith('%') or args[3].endswith('%')
 
 		new_template = False
 		if len(args) < 5:
@@ -183,6 +168,10 @@ class HeadpatModule(BotBehaviorModule):
 			template_data = metadata.attachments[0].download()
 			template_data = self._normalize_template(template_width, template_data, None)
 
+			with Image.open(io.BytesIO(template_data)) as im:
+				size = im.width, im.height
+			x1, y1, x2, y2 = extract_corners(args[0:4], size)
+
 			res_fp = self.open_resource('templates/' + self._template_filename(template_id), for_writing=True)
 			res_fp.write(template_data)
 			res_fp.flush()
@@ -194,7 +183,9 @@ class HeadpatModule(BotBehaviorModule):
 				'y1': y1,
 				'y2': y2,
 				'dx': x2 - x1,
-				'dy': y2 - y1
+				'dy': y2 - y1,
+				'width': size[0],
+				'height': size[1]
 			}
 
 			if new_template:
@@ -213,23 +204,9 @@ class HeadpatModule(BotBehaviorModule):
 		tid = self._validate_template_id(args[0])
 		if tid not in self.templates:
 			raise BotSyntaxError("`" + str(tid) + "` is not a headpat template I have! Use `headpat-info` to see them.")
-		try:
-			x1 = int(args[1])
-		except ValueError:
-			raise BotSyntaxError("X1 needs to be an integer!")
-		try:
-			y1 = int(args[2])
-		except ValueError:
-			raise BotSyntaxError("Y1 needs to be an integer!")
-		try:
-			x2 = int(args[3])
-		except ValueError:
-			raise BotSyntaxError("X2 needs to be an integer!")
-		try:
-			y2 = int(args[4])
-		except ValueError:
-			raise BotSyntaxError("Y2 needs to be an integer!")
+		tinfo = self.templates[tid]
 
+		x1, y1, x2, y2 = extract_corners(args[1:5], size=(tinfo['width'], tinfo['height']))
 		async with bot.typing():
 			self.templates[tid] = {
 				'x1': x1,
@@ -237,7 +214,9 @@ class HeadpatModule(BotBehaviorModule):
 				'y1': y1,
 				'y2': y2,
 				'dx': x2 - x1,
-				'dy': y2 - y1
+				'dy': y2 - y1,
+				'width': tinfo['width'],
+				'height': tinfo['height']
 			}
 
 			_log.debug(util.add_context(bot.context, "Edited headpat template " + str(tid)))
@@ -292,8 +271,9 @@ class HeadpatModule(BotBehaviorModule):
 			else:
 				template_info = self.templates[t_id]
 				msg = "Oh, sure! Here's template " + str(t_id).zfill(self._template_digits) + ":\n"
-				msg += "__Corner 1__: (" + str(template_info['x1']) + ", " + str(template_info['y1']) + ")\n"
-				msg += "__Corner 2__: (" + str(template_info['x2']) + ", " + str(template_info['y2']) + ")\n"
+				msg += "__Size:__ " + str(template_info['width']) + "x" + str(template_info['height']) + "\n"
+				msg += "__Corner 1:__ (" + str(template_info['x1']) + ", " + str(template_info['y1']) + ")\n"
+				msg += "__Corner 2:__ (" + str(template_info['x2']) + ", " + str(template_info['y2']) + ")\n"
 				msg += "_(Delta): (" + str(template_info['dx']) + ", " + str(template_info['dy']) + ")_"
 				await self.reply_with_templated(bot, t_id, msg)
 
@@ -331,7 +311,6 @@ class HeadpatModule(BotBehaviorModule):
 
 			_log.debug("Creating headpat for template ID " + str(template_id))
 
-			padded_id = str(template_id).zfill(self._template_digits)
 			im = Image.open(self.open_resource('templates/' + self._template_filename(template_id)))
 			":type : Image.Image"
 
@@ -420,6 +399,7 @@ class HeadpatModule(BotBehaviorModule):
 				out_buf.seek(0)
 				all_data = out_buf.read()
 
+		# TODO: im p sure this is done in one case only so why is it embedded deep here? should probs be near caller
 		if tid is not None:
 			tinfo = self.templates[tid]
 			tinfo['x1'] = round(tinfo['x1'] * ratio)
@@ -428,9 +408,38 @@ class HeadpatModule(BotBehaviorModule):
 			tinfo['y2'] = round(tinfo['y2'] * ratio)
 			tinfo['dx'] = tinfo['x2'] - tinfo['x1']
 			tinfo['dy'] = tinfo['y2'] - tinfo['y1']
+			tinfo['height'] = new_height
+			tinfo['width'] = width
 			self.templates[tid] = tinfo
 
 		return all_data
+
+
+def extract_corners(args: Sequence[str], size: (int, int)) -> (int, int, int, int):
+	"""
+	Get coordinates that are valid of corners.
+	:param args: must be a sequence of at least length 4. Only first four arguments are used.
+	:param size: width, height of the image to bound the arguments and convert percents with.
+	:return: The x1, y1, x2, y2 coordinates, guaranteed to fit within the given size.
+	:except: BotSyntaxError if there is a problem with the arguments.
+	"""
+	try:
+		x1 = util.parse_ranged_int_or_percent(args[0], 0, size[0] - 1)
+	except ValueError:
+		raise BotSyntaxError("X1 needs to be an integer or percent!")
+	try:
+		y1 = util.parse_ranged_int_or_percent(args[1], 0, size[1] - 1)
+	except ValueError:
+		raise BotSyntaxError("Y1 needs to be an integer or percent!")
+	try:
+		x2 = util.parse_ranged_int_or_percent(args[2], 0, size[0] - 1)
+	except ValueError:
+		raise BotSyntaxError("X2 needs to be an integer or percent!")
+	try:
+		y2 = util.parse_ranged_int_or_percent(args[3], 0, size[1] - 1)
+	except ValueError:
+		raise BotSyntaxError("Y2 needs to be an integer or percent!")
+	return x1, y1, x2, y2
 
 
 BOT_MODULE_CLASS = HeadpatModule

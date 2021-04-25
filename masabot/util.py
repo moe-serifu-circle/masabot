@@ -1,3 +1,5 @@
+import math
+
 from . import http
 import urllib.parse
 import enum
@@ -585,6 +587,41 @@ def find_mentions(
 					if len(matches) >= limit:
 						break
 	return matches
+
+
+def parse_ranged_int_or_percent(arg: str, range_min: int, range_max: int) -> int:
+	if range_min > range_max:
+		raise ValueError("range_min (" + str(range_min) + ") cannot be larger than range_max (" + str(range_max) + ")")
+
+	percent = False
+	original_arg = arg
+	if arg.endswith('%'):
+		percent = True
+		arg = arg[:-1]
+
+	if percent:
+		try:
+			per_arg = float(arg)
+		except ValueError:
+			raise ValueError(str(original_arg) + " is not a number percent!")
+		if int(per_arg) == 100:
+			# will break math, need to special case
+			return range_max
+
+		if not 0 <= per_arg <= 100:
+			raise ValueError(str(original_arg) + " is not a valid percent between 0 and 100")
+		scale = per_arg / 100.0
+		range_amt = range_max - range_min
+		add = int(math.floor(scale * (range_amt + 1)))
+		return range_min + add
+	else:
+		try:
+			int_arg = int(arg)
+		except ValueError:
+			raise ValueError(str(original_arg) + " is not an integer")
+		if not range_min <= int_arg <= range_max:
+			raise ValueError(str(arg) + " is not in range [" + str(range_min) + ", " + str(range_max) + "]")
+		return int_arg
 
 
 def parse_mention(mention_text: str, require_type: Optional[MentionType] = None) -> Mention:
