@@ -29,7 +29,11 @@ headpat_messages = [
 	"_nade-nade, nade-nade~_",
 	"Gooooooood cute!",
 	"There, there!",
-	"Please take this on your head, I hope it makes you happy! *pats you gently*"
+	"Please take this on your head, I hope it makes you happy! *pats you gently*",
+	"*pats you a lot* >.< If things have been rough, I hope this makes you feel better! *pats you more*",
+	"*pats you on the head*",
+	"Here, you absolutely deserve this!",
+	"Yes, please let me pat you! *pats you* On the head! *pats you more*"
 ]
 
 
