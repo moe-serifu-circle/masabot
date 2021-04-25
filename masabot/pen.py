@@ -55,7 +55,7 @@ class Pen(object):
 
     def set_image(self, im):
         self._image = im
-        self._ctx = ImageDraw.Draw(im)
+        self._ctx = ImageDraw.Draw(im, mode="RGBA")
         self._right_bound = im.width - 1
         self._bottom_bound = im.height - 1
 

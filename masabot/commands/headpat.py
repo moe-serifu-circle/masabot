@@ -43,15 +43,15 @@ class HeadpatModule(BotBehaviorModule):
 		width_prompt += " might take me a little bit. Are you sure you want me to do that?"
 
 		super().__init__(
-			name="animeme",
-			desc="Generates anime memes",
+			name="headpat",
+			desc="Give and receive headpats!",
 			help_text=help_text,
 			triggers=[
 				InvocationTrigger('headpat'),
 				InvocationTrigger('headpat-add'),
 				InvocationTrigger('headpat-remove'),
 				InvocationTrigger('headpat-info'),
-				InvocationTrigger('animeme-edit')
+				InvocationTrigger('headpat-edit')
 			],
 			resource_root=resource_root,
 			save_state_on_trigger=True,
@@ -116,7 +116,7 @@ class HeadpatModule(BotBehaviorModule):
 		if not metadata.has_attachments() or not metadata.attachments[0].is_image():
 			raise BotSyntaxError("I need to know the image you want me to add, but you didn't attach one!")
 		if len(args) < 4:
-			msg = "You need to give me the x1 y1 x2 y2 corner coordinates of where the headpat receiver's picture"
+			msg = "You need to give me the corner coordinates of where the headpat receiver's picture"
 			msg += " should go!"
 			raise BotSyntaxError(msg)
 		try:
@@ -163,7 +163,7 @@ class HeadpatModule(BotBehaviorModule):
 		async with bot.typing():
 			template_width = await bot.get_setting('template-width')
 			template_data = metadata.attachments[0].download()
-			template_data = self._normalize_template(template_width, template_data)
+			template_data = self._normalize_template(template_width, template_data, None)
 
 			res_fp = self.open_resource('templates/' + self._template_filename(template_id), for_writing=True)
 			res_fp.write(template_data)
@@ -189,11 +189,11 @@ class HeadpatModule(BotBehaviorModule):
 	async def edit_headpat(self, bot: PluginAPI, args):
 		await bot.require_op("headpat-edit")
 		if len(args) < 5:
-			msg = "You need to give me the ID of the headpat template to edit, and the x1 y1 x2 y2 corner coordinates of"
+			msg = "You need to give me the ID of the headpat template to edit and the corner coordinates of"
 			msg += " where the headpat receiver's picture should go!"
 			raise BotSyntaxError(msg)
 		tid = self._validate_template_id(args[0])
-		if tid in self.templates:
+		if tid not in self.templates:
 			raise BotSyntaxError("`" + str(tid) + "` is not a headpat template I have! Use `headpat-info` to see them.")
 		try:
 			x1 = int(args[1])
@@ -253,33 +253,37 @@ class HeadpatModule(BotBehaviorModule):
 		return
 
 	async def get_headpat_info(self, bot: PluginAPI, t_id=None):
-		if t_id is None:
-			pager = util.DiscordPager("_(template list, continued)_")
-			msg = "Sure! I've currently got " + str(len(self.templates)) + " images for use with headpats. "
-			pager.add_line("You can use `headpat-info` followed by the id of a template to see a picture of it!")
-			pager.start_code_block()
-			for t_id in self.templates.keys():
-				pager.add_line(str(t_id).zfill(self._template_digits))
-			pager.end_code_block()
-
-			pages = pager.get_pages()
-			for p in pages:
-				await bot.reply(p)
+		async with bot.typing():
+			if t_id is None:
+				pager = util.DiscordPager("_(template list, continued)_")
+				msg = "Sure! I've currently got " + str(len(self.templates)) + " images for use with headpats. "
 				await bot.reply(msg)
-		else:
-			msg = "Oh, sure! Here's template " + str(t_id).zfill(self._template_digits) + ":"
-			await self.reply_with_templated(bot, t_id, msg)
+				pager.add_line("You can use `headpat-info` followed by the id of a template to see a picture of it!")
+				pager.start_code_block()
+				for t_id in self.templates.keys():
+					pager.add_line(str(t_id).zfill(self._template_digits))
+				pager.end_code_block()
+
+				pages = pager.get_pages()
+				for p in pages:
+					await bot.reply(p)
+			else:
+				template_info = self.templates[t_id]
+				msg = "Oh, sure! Here's template " + str(t_id).zfill(self._template_digits) + ":\n"
+				msg += "__Corner 1__: (" + str(template_info['x1']) + ", " + str(template_info['y1']) + ")\n"
+				msg += "__Corner 2__: (" + str(template_info['x2']) + ", " + str(template_info['y2']) + ")\n"
+				msg += "_(Delta): (" + str(template_info['dx']) + ", " + str(template_info['dy']) + ")_"
+				await self.reply_with_templated(bot, t_id, msg)
 
 	async def reply_with_templated(self, bot: PluginAPI, tid, msg):
 		if tid not in self.templates:
 			raise BotModuleError("I don't have a template with that ID!")
 		file = self._template_filename(tid)
 		template_info = self.templates[tid]
-		with self.open_resource('templates/' + file) as fp:
-			im = Image.open(fp)
+		im = Image.open(self.open_resource('templates/' + file))
 		p = pen.Pen(0, 0, 'fonts/anton/anton-regular.ttf')
 		p.set_image(im)
-		p.set_color(fg="blue", bg="white")
+		p.set_color(fg=(0, 0, 0, 128), bg="white")
 		p.set_position(x=template_info['x1'], y=template_info['y1'])
 		p.draw_solid_rect(dx=template_info['dx'], dy=template_info['dy'])
 
@@ -367,7 +371,7 @@ class HeadpatModule(BotBehaviorModule):
 		for template_id in self.templates.keys():
 			with self.open_resource('templates/' + self._template_filename(template_id)) as fp:
 				data = fp.read()
-			data = self._normalize_template(width, data)
+			data = self._normalize_template(width, data, template_id)
 			with self.open_resource('templates/' + self._template_filename(template_id), for_writing=True) as fp:
 				fp.write(data)
 				fp.flush()
@@ -375,7 +379,7 @@ class HeadpatModule(BotBehaviorModule):
 			await asyncio.sleep(0.1)
 
 	# noinspection PyMethodMayBeStatic
-	def _normalize_template(self, width: int, template_data):
+	def _normalize_template(self, width: int, template_data, tid: Any):
 		with io.BytesIO(template_data) as buf:
 			im = Image.open(buf).convert("RGB")
 			""":type : Image.Image"""
@@ -392,6 +396,17 @@ class HeadpatModule(BotBehaviorModule):
 				im.save(out_buf, format='PNG')
 				out_buf.seek(0)
 				all_data = out_buf.read()
+
+		if tid is not None:
+			tinfo = self.templates[tid]
+			tinfo['x1'] = round(tinfo['x1'] * ratio)
+			tinfo['x2'] = round(tinfo['x2'] * ratio)
+			tinfo['y1'] = round(tinfo['y1'] * ratio)
+			tinfo['y2'] = round(tinfo['y2'] * ratio)
+			tinfo['dx'] = tinfo['x2'] - tinfo['x1']
+			tinfo['dy'] = tinfo['y2'] - tinfo['y1']
+			self.templates[tid] = tinfo
+
 		return all_data
 
 
