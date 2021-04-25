@@ -220,7 +220,8 @@ class HeadpatModule(BotBehaviorModule):
 			}
 
 			_log.debug(util.add_context(bot.context, "Edited headpat template " + str(tid)))
-		msg = "Okay! I'll start using the new coordinates to generate headpats with ID `" + str(tid) + "`, like this:"
+		msg = "Okay! I'll start using the new coordinates (" + str(x1) + ", " + str(y1) + "), (" + str(x2) + ","
+		msg += " " + str(y2) + ") to generate headpats with ID `" + str(tid) + "`, like this:"
 		await self.reply_with_templated(bot, tid, msg)
 
 	async def remove_headpat(self, bot: PluginAPI, args):
@@ -424,21 +425,25 @@ def extract_corners(args: Sequence[str], size: (int, int)) -> (int, int, int, in
 	:except: BotSyntaxError if there is a problem with the arguments.
 	"""
 	try:
-		x1 = util.parse_ranged_int_or_percent(args[0], 0, size[0] - 1)
-	except ValueError:
-		raise BotSyntaxError("X1 needs to be an integer or percent!")
+		x1 = util.parse_ranged_int_or_percent(args[0], 0, size[0])
+	except ValueError as e:
+		raise BotSyntaxError("X1 doesn't look right, " + str(e))
 	try:
-		y1 = util.parse_ranged_int_or_percent(args[1], 0, size[1] - 1)
-	except ValueError:
-		raise BotSyntaxError("Y1 needs to be an integer or percent!")
+		y1 = util.parse_ranged_int_or_percent(args[1], 0, size[1])
+	except ValueError as e:
+		raise BotSyntaxError("Y1 doesn't look right, " + str(e))
 	try:
-		x2 = util.parse_ranged_int_or_percent(args[2], 0, size[0] - 1)
-	except ValueError:
-		raise BotSyntaxError("X2 needs to be an integer or percent!")
+		x2 = util.parse_ranged_int_or_percent(args[2], 0, size[0])
+	except ValueError as e:
+		raise BotSyntaxError("X2 doesn't look right, " + str(e))
 	try:
-		y2 = util.parse_ranged_int_or_percent(args[3], 0, size[1] - 1)
-	except ValueError:
-		raise BotSyntaxError("Y2 needs to be an integer or percent!")
+		y2 = util.parse_ranged_int_or_percent(args[3], 0, size[1])
+	except ValueError as e:
+		raise BotSyntaxError("Y2 doesn't look right, " + str(e))
+	if x1 == x2:
+		raise BotSyntaxError("X1 and X2 can't be the same, there'd be nowhere to put the picture!")
+	if y1 == y2:
+		raise BotSyntaxError("Y1 and Y2 can't be the same, there'd be nowhere to put the picture!")
 	return x1, y1, x2, y2
 
 
