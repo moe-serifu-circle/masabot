@@ -130,7 +130,7 @@ class HeadpatModule(BotBehaviorModule):
 		await bot.reply(msg)
 
 	async def add_headpat(self, bot: PluginAPI, metadata, args):
-		await bot.require_op("headpat-add")
+		bot.require_superop("headpat-add", self)
 		if not metadata.has_attachments() or not metadata.attachments[0].is_image():
 			raise BotSyntaxError("I need to know the image you want me to add, but you didn't attach one!")
 		if len(args) < 4:
@@ -205,7 +205,7 @@ class HeadpatModule(BotBehaviorModule):
 		await self.reply_with_templated(bot, template_id, msg)
 
 	async def edit_headpat(self, bot: PluginAPI, args):
-		await bot.require_op("headpat-edit")
+		bot.require_superop("headpat-edit", self)
 		if len(args) < 5:
 			msg = "You need to give me the ID of the headpat template to edit and the corner coordinates of"
 			msg += " where the headpat receiver's picture should go!"
@@ -245,7 +245,7 @@ class HeadpatModule(BotBehaviorModule):
 		await self.reply_with_templated(bot, tid, msg)
 
 	async def remove_headpat(self, bot: PluginAPI, args):
-		await bot.require_op("headpat-remove")
+		bot.require_superop("headpat-remove", self)
 
 		if len(args) < 1:
 			raise BotSyntaxError("I need to know the ID of the template you want me to remove.")
