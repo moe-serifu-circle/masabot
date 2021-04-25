@@ -267,6 +267,10 @@ class HeadpatModule(BotBehaviorModule):
 		return
 
 	async def get_headpat_info(self, bot: PluginAPI, t_id=None):
+		if t_id is not None and t_id not in self.templates:
+			msg = "Sorry, that's not a template I have! Use `headpat-info` with no arguments to see them!"
+			await bot.reply(msg)
+			return
 		async with bot.typing():
 			if t_id is None:
 				pager = util.DiscordPager("_(template list, continued)_")
@@ -282,10 +286,6 @@ class HeadpatModule(BotBehaviorModule):
 				for p in pages:
 					await bot.reply(p)
 			else:
-				if t_id not in self.templates:
-					msg = "Sorry, that's not a template I have! Use `headpat-info` with no arguments to see them!"
-					await bot.reply(msg)
-					return
 				template_info = self.templates[t_id]
 				msg = "Oh, sure! Here's template " + str(t_id).zfill(self._template_digits) + ":\n"
 				msg += "__Corner 1__: (" + str(template_info['x1']) + ", " + str(template_info['y1']) + ")\n"
