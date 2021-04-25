@@ -19,6 +19,20 @@ _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
 
+headpat_messages = [
+	"iiko, iiko~",
+	"Everything will be okay~ *pats your head*",
+	"Here, have a headpat!",
+	"You deserve one of these!",
+	"Ehehehe, let me pat your head!",
+	"Here, you should have a headpat!",
+	"_nade-nade, nade-nade~_",
+	"Gooooooood cute!",
+	"There, there!",
+	"Please take this on your head, I hope it makes you happy! *pats you gently*"
+]
+
+
 class HeadpatModule(BotBehaviorModule):
 
 	def __init__(self, resource_root: str):
@@ -268,6 +282,10 @@ class HeadpatModule(BotBehaviorModule):
 				for p in pages:
 					await bot.reply(p)
 			else:
+				if t_id not in self.templates:
+					msg = "Sorry, that's not a template I have! Use `headpat-info` with no arguments to see them!"
+					await bot.reply(msg)
+					return
 				template_info = self.templates[t_id]
 				msg = "Oh, sure! Here's template " + str(t_id).zfill(self._template_digits) + ":\n"
 				msg += "__Corner 1__: (" + str(template_info['x1']) + ", " + str(template_info['y1']) + ")\n"
@@ -320,14 +338,15 @@ class HeadpatModule(BotBehaviorModule):
 			p.set_color(fg="blue", bg="black")
 
 			avatar_bytes = await user.avatar_url_as(format='png').read()
-			pfp_im = Image.open(avatar_bytes)
-			p.draw_image_rect(pfp_im, template_info['dx'], template_info['dy'])
+			pfp_im = Image.open(io.BytesIO(avatar_bytes))
+			p.draw_image_rect(template_info['dx'], template_info['dy'], pfp_im)
 
 			buf = io.BytesIO()
 			im.save(buf, format='PNG')
 			buf.seek(0)
 
-		await bot.reply_with_file(buf, str(template_id) + "-" + user.name + "-generated.png", "_(" + padded_id + ")_")
+		msg = random.choice(headpat_messages)
+		await bot.reply_with_file(buf, str(template_id) + "-" + user.name + "-generated.png", msg)
 
 	def _create_unused_template_id(self):
 		max_templates = 10 ** self._template_digits

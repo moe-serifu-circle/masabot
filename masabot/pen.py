@@ -133,15 +133,10 @@ class Pen(object):
         if self._image is None:
             raise ValueError("no image set")
 
-        new_width = abs(dx - self._pos_x)
-        ratio = new_width / float(im.width)
-        new_height = round(im.height * ratio)
-        if ratio > 1:
-            resample_algo = Image.HAMMING
-        else:
-            resample_algo = Image.LANCZOS
-        im = im.resize((new_width, new_height), resample_algo)
-        self._image.paste(im=im, box=(self._pos_x, self._pos_x + dx, self._pos_y, self._pos_y + dy))
+        new_width = abs(dx)
+        new_height = abs(dy)
+        im = im.resize((new_width, new_height), Image.LANCZOS)
+        self._image.paste(im=im, box=(self._pos_x, self._pos_y, self._pos_x + im.width, self._pos_y + im.height))
 
     def _draw_text(self, x, y, text, size):
         cur_x = x
