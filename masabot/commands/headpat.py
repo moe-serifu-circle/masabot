@@ -33,7 +33,9 @@ headpat_messages = [
 	"*pats you a lot* >.< If things have been rough, I hope this makes you feel better! *pats you more*",
 	"*pats you on the head*",
 	"Here, you absolutely deserve this!",
-	"Yes, please let me pat you! *pats you* On the head! *pats you more*"
+	"Yes, please let me pat you! *pats you* On the head! *pats you more*",
+	"Have another lovely pat on the head!",
+	"d'awwww you look really cute when I pat you!"
 ]
 
 
@@ -90,7 +92,34 @@ class HeadpatModule(BotBehaviorModule):
 
 	def set_global_state(self, state):
 		if 'templates' in state:
-			self.templates = state['templates']
+			self.templates = dict()
+			for k in state['templates']:
+				v = state['templates'][k]
+				self.templates[k] = {
+					'x1': v['x1'],
+					'x2': v['x2'],
+					'y1': v['y1'],
+					'y2': v['y2'],
+					'dx': v['dx'],
+					'dy': v['dy']
+				}
+				# TODO MIGRATION CODE, merge with above after 1.9.4 release
+				if 'width' in v:
+					self.templates[k]['width'] = v['width']
+					self.templates[k]['height'] = v['height']
+					pass
+				else:
+					file = self._template_filename(k)
+					try:
+						with self.open_resource('templates/' + file) as fp:
+							with Image.open(fp) as im:
+								self.templates[k]['width'] = im.width
+								self.templates[k]['height'] = im.height
+					except Exception:
+						_log.exception("could not open file to calculate height, original template might be damaged")
+				# TODO END MIGRATION CODE, remove after 1.9.4 release
+
+
 		if 'last-added' in state:
 			self._last_new_template = state['last-added']
 
@@ -287,8 +316,13 @@ class HeadpatModule(BotBehaviorModule):
 		p = pen.Pen(0, 0, 'fonts/anton/anton-regular.ttf')
 		p.set_image(im)
 		p.set_color(fg=(0, 0, 0, 128), bg=(255, 255, 255, 128))
-		p.set_position(x=template_info['x1'], y=template_info['y1'])
-		p.draw_solid_rect(dx=template_info['dx'], dy=template_info['dy'])
+
+		# need to do weird math bc we do not assume that the user args are lower args so subtraction gets weird,
+		# and convention is that we put the image exactly where user sees rect drawn.
+		x1, y1, x2, y2 = template_info['x1'], template_info['y1'], template_info['x2'], template_info['y2']
+		ul = (min(x1, x2), min(y1, y2))
+		p.set_position(x=ul[0], y=ul[1])
+		p.draw_solid_rect(dx=abs(template_info['dx']) - 1, dy=abs(template_info['dy']) - 1)
 
 		buf = io.BytesIO()
 		im.save(buf, format='PNG')

@@ -58,7 +58,15 @@ random_status_list = [
 			"the stock market📈",
 			"with Springtop",
 			"with clowny data",
-			"with Percy the🐴"
+			"with Percy the🐴",
+			"eat the rich",
+			"doge. wow.",
+			"secretary of jape",
+			"with Mizzlebip",
+			"reading",
+			"schedule-making",
+			"culling asdf3w",
+			"<ALL IS WELL>"
 		]
 
 
