@@ -305,7 +305,7 @@ class HeadpatModule(BotBehaviorModule):
 		im = Image.open(self.open_resource('templates/' + file))
 		p = pen.Pen(0, 0, 'fonts/anton/anton-regular.ttf')
 		p.set_image(im)
-		p.set_color(fg=(0, 0, 0, 128), bg="white")
+		p.set_color(fg=(0, 0, 0, 128), bg=(255, 255, 255, 128))
 		p.set_position(x=template_info['x1'], y=template_info['y1'])
 		p.draw_solid_rect(dx=template_info['dx'], dy=template_info['dy'])
 
