@@ -324,6 +324,33 @@ class HeadpatModule(BotBehaviorModule):
 		p.set_position(x=ul[0], y=ul[1])
 		p.draw_solid_rect(dx=abs(template_info['dx']) - 1, dy=abs(template_info['dy']) - 1)
 
+		# now draw the hash marks for percent, if big enough for it to make sense
+		if template_info['height'] > 20 and template_info['width'] > 20:
+			def draw_percent_hash(x1p, y1p, x2p, y2p):
+				"""Draw a hash than an off-color - 1"""
+				dx = x2p-x1p
+				dy = y2p-y1p
+				p.set_color(fg=(0, 0, 0, 128))
+				p.set_position(x=x1p, y=y1p)
+				p.draw_line(dx=dx, dy=dy)
+				p.set_color(fg=(255, 255, 255, 128))
+				if x2p == x1p:
+					p.move(dx=1)
+				else:
+					p.move(dy=1)
+				p.draw_line(dx=dx, dy=dy)
+
+			w = template_info['width']
+			h = template_info['height']
+			for percent in range(10, 90, 10):
+				frac = float(percent) / 100.0
+				horz_x = int(w * frac)
+				vert_y = int(h * frac)
+				draw_percent_hash(horz_x, 0, horz_x, 10)
+				draw_percent_hash(horz_x, h, horz_x, h-10)
+				draw_percent_hash(0, vert_y, 10, vert_y)
+				draw_percent_hash(w, vert_y, w-10, vert_y)
+
 		buf = io.BytesIO()
 		im.save(buf, format='PNG')
 		buf.seek(0)

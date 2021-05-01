@@ -98,7 +98,7 @@ class Pen(object):
 	def set_line_size(self, width: float):
 		self._line_width = width
 
-	def draw_line(self, dx, dy):
+	def draw_line(self, dx=0, dy=0):
 		if self._image is None:
 			raise ValueError("no image set")
 		self._ctx.line(
