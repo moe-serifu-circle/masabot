@@ -1,4 +1,6 @@
 # noinspection PyPackageRequirements
+from typing import Optional
+
 from PIL import Image, ImageFont, ImageDraw
 
 
@@ -25,10 +27,8 @@ class Pen(object):
 		"""
 		Create a new one.
 		"""
-		self._image = None
-		""":type : Optional[Image.Image]"""
-		self._ctx = None
-		""":type : Optional[ImageDraw.ImageDraw]"""
+		self._image: Optional[Image.Image] = None
+		self._ctx: Optional[ImageDraw.ImageDraw] = None
 		self._fg_color = "black"
 		self._bg_color = "white"
 		self._pos_x = 0
@@ -36,6 +36,7 @@ class Pen(object):
 		self._right_bound = 0
 		self._left_bound = 0
 		self._top_bound = 0
+		self._line_width = 1
 		self._bottom_bound = 0
 		self._default_font = default_font
 		self._fonts = RangeMap(default_font)
@@ -87,8 +88,26 @@ class Pen(object):
 			self._pos_x = x
 		if y is not None:
 			self._pos_y = y
-	def set_line_size(self, ):
+
+	def move(self, dx=None, dy=None):
+		if dx is not None:
+			self._pos_x += dx
+		if dy is not None:
+			self._pos_y += dy
+
+	def set_line_size(self, width: float):
+		self._line_width = width
+
 	def draw_line(self, dx, dy):
+		if self._image is None:
+			raise ValueError("no image set")
+		self._ctx.line(
+			xy=[self._pos_x, self._pos_y, self._pos_x+dx, self._pos_y+dy],
+			width=self._line_width,
+			fill=self._fg_color
+		)
+		self._pos_x += dx
+		self._pos_y += dy
 
 	def draw_top_aligned_text(self, text):
 		max_width = (self._right_bound - self._left_bound + 1) - (4 * self.border_width)
