@@ -123,7 +123,11 @@ class Pen(object):
     def draw_solid_rect(self, dx, dy):
         if self._image is None:
             raise ValueError("no image set")
-        self._ctx.rectangle(xy=[self._pos_x, self._pos_y, self._pos_x+dx, self._pos_y+dy], fill=self._fg_color, outline=self._bg_color)
+        self._ctx.rectangle(
+            xy=[self._pos_x, self._pos_y, self._pos_x+dx, self._pos_y+dy],
+            fill=self._fg_color,
+            outline=self._bg_color
+        )
         self._pos_x += dx
         self._pos_y += dy
 

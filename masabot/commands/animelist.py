@@ -375,6 +375,7 @@ class WatchListModule(BotBehaviorModule):
 		query = urllib.parse.parse_qs(parsed_url.query)
 		if 'code' not in query:
 			raise BotModuleError("That URL doesn't contain a valid authorization code in it!", bot.context)
+		# noinspection PyTypeChecker
 		code = query['code']
 
 		token_payload = {

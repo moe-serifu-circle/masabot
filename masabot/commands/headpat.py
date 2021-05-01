@@ -1,4 +1,4 @@
-from typing import Any, Sequence, Iterable
+from typing import Any, Sequence
 
 from . import BotBehaviorModule, InvocationTrigger
 from .. import util, settings, pen
@@ -110,6 +110,7 @@ class HeadpatModule(BotBehaviorModule):
 					pass
 				else:
 					file = self._template_filename(k)
+					# noinspection PyBroadException
 					try:
 						with self.open_resource('templates/' + file) as fp:
 							with Image.open(fp) as im:
@@ -118,7 +119,6 @@ class HeadpatModule(BotBehaviorModule):
 					except Exception:
 						_log.exception("could not open file to calculate height, original template might be damaged")
 				# TODO END MIGRATION CODE, remove after 1.9.4 release
-
 
 		if 'last-added' in state:
 			self._last_new_template = state['last-added']
