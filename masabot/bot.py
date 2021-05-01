@@ -1675,7 +1675,6 @@ def start(configpath, logdir, statepath):
 		# this is a normal shutdown, so notify bot by writing to last command
 		with open('ipc/lastcmd.p', 'wb') as fp:
 			pickle.dump({'command': 'quit'}, fp)
-		raise
 	if retval != 0:
 		sys.exit(retval)
 

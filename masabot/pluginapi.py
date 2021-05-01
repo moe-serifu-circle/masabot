@@ -516,6 +516,14 @@ class PluginAPI:
 		"""
 		log_msg = util.add_context(self.context, "save was directly called by module")
 		_log.debug(log_msg)
+
+		# TODO: Better way of marking this off/better persistence settings overhaul. Save should be accessible by things
+		# that want to manually save but things should also be able to specify that activity should be auto-saved in the
+		# default case.
+		#
+		# could come with method to only save module state.
+		# Need to update this to non-protected access and remove PyProtectedMember directive when done.
+		# noinspection PyProtectedMember
 		self._bot._save_all()
 
 	async def get_setting(self, key: str) -> Union[int, str, bool, float]:

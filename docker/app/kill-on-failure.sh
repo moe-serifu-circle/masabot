@@ -11,7 +11,7 @@ status=$?
 
 if [ "$status" -ne 0 ]
 then
-  echo "[KILL-ON-FAILURE] ERROR: command failed: $@" >&2
+  echo "[KILL-ON-FAILURE] ERROR: command failed: $*" >&2
   echo "[KILL-ON-FAILURE] ERROR: deliberately killing container as pre-check failed" >&2
   kill -s SIGTERM 1
 fi
