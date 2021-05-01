@@ -174,6 +174,8 @@ class MentionMatch:
 
 class CustomEmoji(object):
 	"""domain specific emoji info to abstract away discord.py"""
+
+	# noinspection PyShadowingBuiltins
 	def __init__(self, id: int, name: str, guild: Optional[int] = None):
 		self.id: int = id
 		self.guild: int = guild
@@ -246,7 +248,7 @@ class Reaction(object):
 			if isinstance(emoji, str):
 				self._unicode_emoji = emoji
 			else:
-				self._custom_emoji = CustomEmoji(id=emoji, name='') #  TODO: make name be optional in CustomEmoji
+				self._custom_emoji = CustomEmoji(id=emoji, name='')  # TODO: make name be optional in CustomEmoji
 
 	def __str__(self):
 		if self.is_custom:

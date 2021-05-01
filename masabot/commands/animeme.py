@@ -271,6 +271,7 @@ class AnimemeModule(BotBehaviorModule):
 			im = Image.open(self.open_resource('templates/' + self._template_filename(template_id)))
 			":type : Image.Image"
 
+			# noinspection PyShadowingNames
 			pen = await self.create_pen(bot)
 			pen.draw_meme_text(im, meme_line_1, meme_line_2)
 

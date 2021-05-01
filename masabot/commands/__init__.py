@@ -79,7 +79,9 @@ class ReactionTrigger(object):
 	custom_emoji entries apply only to the ones in this server.
 	"""
 
-	def __init__(self, emoji: List[str] = None, custom_emoji: List[str] = None, reacts: bool = True, unreacts: bool = False):
+	def __init__(
+			self, emoji: List[str] = None, custom_emoji: List[str] = None, reacts: bool = True, unreacts: bool = False
+	):
 		self.trigger_type = 'REACTION'
 
 		if emoji is None:
@@ -115,9 +117,9 @@ class BotBehaviorModule(object):
 		this particular module is displayed.
 		:param triggers: All possible triggers that cause this module to be executed.
 		:param resource_root: The root directory that resources are to be placed in.
-		:param save_state_on_trigger: Whether this module wishes to have state auto-saved on every handle. If this is true, then the
-		module should define get_state() and set_state() methods for saving state to a dict and setting state from a
-		dict (also global versions of those, get_global_state() and set_global_state()).
+		:param save_state_on_trigger: Whether this module wishes to have state auto-saved on every handle. If this is
+		true, then the module should define get_state() and set_state() methods for saving state to a dict and setting
+		state from a dict (also global versions of those, get_global_state() and set_global_state()).
 		:param settings: Settings keys that this module uses. There will be a value for each key for every server that
 		the bot runs in, as well as a separate 'global' value that is used in non-server contexts.
 		:param global_settings: Settings keys that this module uses that have only a single value across all servers that this

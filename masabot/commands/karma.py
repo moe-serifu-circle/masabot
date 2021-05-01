@@ -147,7 +147,6 @@ class KarmaModule(BotBehaviorModule):
 		# ("userid", {"serverid1" : karma1, "serverid2" : karma2}, ...]
 		candidates = [x for x in self._karma.items() if server in x[1]]  # filter out those that aren't in this server
 
-		import pprint
 		temp_karma_sorted = sorted(candidates, key=lambda usv: usv[1][server], reverse=True)  # List has format as above
 
 		tkslen = len(temp_karma_sorted)		# Number of users in karma list

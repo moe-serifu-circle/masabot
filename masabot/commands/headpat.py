@@ -1,4 +1,5 @@
-from typing import Any, Sequence, Iterable
+import math
+from typing import Any, Sequence
 
 from . import BotBehaviorModule, InvocationTrigger
 from .. import util, settings, pen
@@ -110,6 +111,7 @@ class HeadpatModule(BotBehaviorModule):
 					pass
 				else:
 					file = self._template_filename(k)
+					# noinspection PyBroadException
 					try:
 						with self.open_resource('templates/' + file) as fp:
 							with Image.open(fp) as im:
@@ -118,7 +120,6 @@ class HeadpatModule(BotBehaviorModule):
 					except Exception:
 						_log.exception("could not open file to calculate height, original template might be damaged")
 				# TODO END MIGRATION CODE, remove after 1.9.4 release
-
 
 		if 'last-added' in state:
 			self._last_new_template = state['last-added']
@@ -323,6 +324,44 @@ class HeadpatModule(BotBehaviorModule):
 		ul = (min(x1, x2), min(y1, y2))
 		p.set_position(x=ul[0], y=ul[1])
 		p.draw_solid_rect(dx=abs(template_info['dx']) - 1, dy=abs(template_info['dy']) - 1)
+
+		# now draw the hash marks for percent, if big enough for it to make sense
+		if template_info['height'] > 40 and template_info['width'] > 40:
+			def draw_percent_hash(x1p, y1p, x2p, y2p, size=1):
+				"""Draw a hash than an off-color - 1"""
+				dx = x2p-x1p
+				dy = y2p-y1p
+				size_adj = int(0.5 * size)
+				p.set_line_size(width=size)
+				p.set_color(fg=(0, 0, 0))
+				if x2p == x1p:
+					p.set_position(x=x1p-size_adj, y=y1p)
+				else:
+					p.set_position(x=x1p, y=y1p-size_adj)
+				p.draw_line(dx=dx, dy=dy)
+				p.set_color(fg=(255, 255, 255))
+				if x2p == x1p:
+					p.move(dx=size, dy=-dy)
+				else:
+					p.move(dx=-dx, dy=size)
+				p.draw_line(dx=dx, dy=dy)
+
+			w = template_info['width']
+			h = template_info['height']
+			for percent in range(10, 100, 10):
+				frac = float(percent) / 100.0
+				horz_x = int(w * frac)
+				vert_y = int(h * frac)
+				if percent == 50:
+					line_w = 2
+					line_len = 20
+				else:
+					line_w = 1
+					line_len = 10
+				draw_percent_hash(horz_x, 0, horz_x, line_len, size=line_w)
+				draw_percent_hash(horz_x, h, horz_x, h-line_len, size=line_w)
+				draw_percent_hash(0, vert_y, line_len, vert_y, size=line_w)
+				draw_percent_hash(w, vert_y, w-line_len, vert_y, size=line_w)
 
 		buf = io.BytesIO()
 		im.save(buf, format='PNG')

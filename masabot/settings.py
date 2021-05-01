@@ -198,10 +198,12 @@ key_type_float = _FloatKeyType()
 key_type_toggle = _ToggleKeyType()
 
 
+# noinspection PyShadowingBuiltins
 def key_type_int_range(min: Optional[int] = None, max: Optional[int] = None):
 	return _IntRangeKeyType(min, max)
 
 
+# noinspection PyShadowingBuiltins
 def key_type_float_range(min: Optional[float] = None, max: Optional[float] = None):
 	return _FloatRangeKeyType(min, max)
 
@@ -249,7 +251,6 @@ class Key:
 			prompt_before=self.prompt_before,
 			call_module_on_alter=self.call_module_on_alter
 		)
-
 
 
 class SettingsStore:

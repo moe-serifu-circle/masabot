@@ -96,9 +96,24 @@ class PluginAPI:
 		"""
 		self._bot.unregister_message_reaction_subscriber(self._plugin_name, mid)
 
-	async def react(self, emoji_text: str):
+	async def get_emoji_from_value(self, emoji_value: Union[str, int]) -> Optional[Union[str, discord.Emoji]]:
+		"""Get emoji to pass to other api functions of discord. If emoji value is an int it will be an ID and the
+		PartialEmoji representing it is returned. If emoji value is a str it is passed through unchanged."""
+		if isinstance(emoji_value, int):
+			em = self._bot.client.get_emoji(emoji_value)
+			return em
+		return emoji_value
+
+	async def get_message_by_id(self, mid: int) -> discord.Message:
+		return await self.context.source.fetch_message(mid)
+
+	async def react(self, emoji_text: Union[discord.PartialEmoji, str]):
 		msg = self.context.message
 		await msg.add_reaction(emoji_text)
+
+	async def unreact(self, emoji_text: Union[discord.PartialEmoji, str]):
+		msg = self.context.message
+		await msg.remove_reaction(emoji_text, member=discord.Object(self.get_bot_id()))
 
 	def reset_server(self):
 		"""
@@ -225,7 +240,7 @@ class PluginAPI:
 			cmd_end = " (in server " + str(server_id) + ")"
 			raise BotPermissionError(self.context, command + cmd_end, 'operator', self._plugin_name, message=message)
 
-	async def select_message(self, prompt: str, timeout: int = 60) -> Any:
+	async def select_message(self, prompt: str, timeout: int = 60) -> Optional[discord.Message]:
 		"""
 		Prompt the user to select a message in the server. They will be shown a
 		prompt, and the ID of the next message they reply with ✅ on will be
@@ -516,6 +531,14 @@ class PluginAPI:
 		"""
 		log_msg = util.add_context(self.context, "save was directly called by module")
 		_log.debug(log_msg)
+
+		# TODO: Better way of marking this off/better persistence settings overhaul. Save should be accessible by things
+		# that want to manually save but things should also be able to specify that activity should be auto-saved in the
+		# default case.
+		#
+		# could come with method to only save module state.
+		# Need to update this to non-protected access and remove PyProtectedMember directive when done.
+		# noinspection PyProtectedMember
 		self._bot._save_all()
 
 	async def get_setting(self, key: str) -> Union[int, str, bool, float]:

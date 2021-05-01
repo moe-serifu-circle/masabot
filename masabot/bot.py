@@ -3,7 +3,6 @@ import logging
 import pickle
 # noinspection PyPackageRequirements
 import discord
-import json
 import traceback
 import os
 import asyncio
@@ -351,7 +350,11 @@ class MasaBot(object):
 			# only log it if we care
 			# TODO: race condition between awaits and the time we actually check for reaction handlers
 			# shouldn't be an issue unless we wish to load/unload modules at runtime
-			if len(self._reaction_add_handlers['any']) > 0 or (rct.is_custom and rct.custom_name in self._reaction_add_handlers['custom']) or (not rct.is_custom and rct.emoji in self._reaction_add_handlers['unicode']):
+			if (
+					len(self._reaction_add_handlers['any']) > 0 or
+					(rct.is_custom and rct.custom_name in self._reaction_add_handlers['custom']) or
+					(not rct.is_custom and rct.emoji in self._reaction_add_handlers['unicode'])
+			):
 				log_msg = util.add_context(ctx, "received reaction " + emoji + " on MID " + repr(rct.message_id))
 				_log.debug(log_msg)
 
@@ -415,7 +418,11 @@ class MasaBot(object):
 			# only log it if we care
 			# TODO: race condition between awaits and the time we actually check for reaction handlers
 			# shouldn't be an issue unless we wish to load/unload modules at runtime
-			if len(self._reaction_remove_handlers['any']) > 0 or (rct.is_custom and rct.custom_name in self._reaction_remove_handlers['custom']) or (not rct.is_custom and rct.emoji in self._reaction_remove_handlers['unicode']):
+			if (
+					len(self._reaction_remove_handlers['any']) > 0 or
+					(rct.is_custom and rct.custom_name in self._reaction_remove_handlers['custom']) or
+					(not rct.is_custom and rct.emoji in self._reaction_remove_handlers['unicode'])
+			):
 				log_msg = util.add_context(ctx, "received reaction removal of " + emoji + " on MID " + repr(rct.message_id))
 				_log.debug(log_msg)
 
@@ -457,7 +464,8 @@ class MasaBot(object):
 
 				# is it an access issue?
 				if isinstance(e, discord.errors.Forbidden):
-					msg = "**Permissions Error?** What is that? I don't know, but Discord told me that when I tried to do something! Do I need special permissions on my role to do that?"
+					msg = "**Permissions Error?** What is that? I don't know, but Discord told me that when I tried to"
+					msg += " do something! Do I need special permissions on my role to do that?"
 					if message is not None:
 						await message.channel.send(msg)
 					_log.debug(_fmt_send(message.channel, msg))
@@ -1135,9 +1143,10 @@ class MasaBot(object):
 			return
 		_log.debug("Scanning last command info in ipc/lastcmd.p...")
 		with open('ipc/lastcmd.p', 'rb') as fp:
+			# noinspection PyBroadException
 			try:
 				info = pickle.load(fp)
-			except:
+			except Exception:
 				_log.warning("Could not load ipc/lastcmd.p")
 				_log.exception("Exception info:")
 		os.remove('ipc/lastcmd.p')
@@ -1269,7 +1278,7 @@ class MasaBot(object):
 		current_handlers[trig.invocation].append(bot_module)
 
 	# noinspection PyMethodMayBeStatic
-	def _add_new_mention_handler(self, bot_module, trig, current_handlers):
+	def _add_new_mention_handler(self, bot_module, trig, current_handlers: Dict[str, Any]):
 		"""
 		Checks a mention handler and adds it to the active set of handlers.
 
@@ -1419,8 +1428,11 @@ class MasaBot(object):
 
 	async def _handle_mention(self, message: discord.Message):
 		handled_already = []
+		# noinspection PyTypeChecker
 		mentions = [util.Mention(util.MentionType.USER, mid, False) for mid in message.raw_mentions]
+		# noinspection PyTypeChecker
 		mentions += [util.Mention(util.MentionType.CHANNEL, mid, False) for mid in message.raw_channel_mentions]
+		# noinspection PyTypeChecker
 		mentions += [util.Mention(util.MentionType.ROLE, mid, False) for mid in message.raw_role_mentions]
 		context = BotContext(message)
 		meta = MessageMetadata.from_message(message)
@@ -1663,7 +1675,6 @@ def start(configpath, logdir, statepath):
 		# this is a normal shutdown, so notify bot by writing to last command
 		with open('ipc/lastcmd.p', 'wb') as fp:
 			pickle.dump({'command': 'quit'}, fp)
-		raise
 	if retval != 0:
 		sys.exit(retval)
 

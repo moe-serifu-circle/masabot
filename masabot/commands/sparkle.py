@@ -1,7 +1,5 @@
 import asyncio
 
-import discord
-
 from . import BotBehaviorModule, RegexTrigger, ReactionTrigger
 from .. import util, settings
 from ..bot import PluginAPI
@@ -17,15 +15,26 @@ _log.setLevel(logging.DEBUG)
 class SparkleModule(BotBehaviorModule):
 
 	def __init__(self, resource_root: str):
-		help_text = "I got a new bottle of glitter that I like to carry around with me! Sometimes I'll put glitter on" \
-					"things! ^_^ If this breaks, just type: '!settings sparkle enabled false' to turn it off!\n\n"
+		help_text = "I got a new bottle of glitter that I like to carry around with me! Sometimes I'll put glitter on"
+		help_text += " things! ^_^ If this breaks, just type: '!settings sparkle enabled false' to turn it off!\n\n"
+
+		sparkle_regex = '('
+		sparkle_regex += '[Ss][Pp][Aa][Rr][Kk][Ll][Ee]'
+		sparkle_regex += '|[Ss][Pp][Aa][Rr][Kk][Ll][Yy]'
+		sparkle_regex += '|[Dd][Aa][Zz][Zz][Ll][Ee]'
+		sparkle_regex += '|[Ss][Hh][Ii][Nn][Yy]'
+		sparkle_regex += '|[Ss][Hh][Ii][Nn][Ee]'
+		sparkle_regex += '|[Kk][Ii][Rr][Aa]-?[Kk][Ii][Rr][Aa]'
+		sparkle_regex += '|[Gg][Ll][Ii][Tt][Tt][Ee][Rr]'
+		sparkle_regex += '|✨'
+		sparkle_regex += ')?'
 
 		super().__init__(
 			name="sparkle",
 			desc="I got a bottle of ✨glitter✨ and I collect it! Sometimes I put it on things!",
 			help_text=help_text,
 			triggers=[
-				RegexTrigger('([Ss][Pp][Aa][Rr][Kk][Ll][Ee]|[Ss][Pp][Aa][Rr][Kk][Ll][Yy]|[Dd][Aa][Zz][Zz][Ll][Ee]|[Ss][Hh][Ii][Nn][Yy]|[Ss][Hh][Ii][Nn][Ee]|[Kk][Ii][Rr][Aa]-?[Kk][Ii][Rr][Aa]|[Gg][Ll][Ii][Tt][Tt][Ee][Rr]|✨)?'),
+				RegexTrigger(sparkle_regex),
 				ReactionTrigger(emoji=['✨'])
 			],
 			resource_root=resource_root,
