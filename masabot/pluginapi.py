@@ -240,7 +240,7 @@ class PluginAPI:
 			cmd_end = " (in server " + str(server_id) + ")"
 			raise BotPermissionError(self.context, command + cmd_end, 'operator', self._plugin_name, message=message)
 
-	async def select_message(self, prompt: str, timeout: int = 60) -> Optional[discord.message]:
+	async def select_message(self, prompt: str, timeout: int = 60) -> Optional[discord.Message]:
 		"""
 		Prompt the user to select a message in the server. They will be shown a
 		prompt, and the ID of the next message they reply with ✅ on will be

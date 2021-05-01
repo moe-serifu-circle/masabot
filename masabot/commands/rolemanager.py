@@ -200,13 +200,14 @@ class RoleManagerModule(BotBehaviorModule):
 	async def list_reactionroles(self, bot: PluginAPI):
 		sid = await bot.require_server()
 		await bot.require_op("rr-info")
-		if len(self._groups[sid]) == 0:
+		if len([x for x in self._groups[sid] if x is not None]) == 0:
 			await bot.reply("I don't have any reaction roles in this server yet! Use `rr-add` to create one.")
+			return
 		msg = "Sure! Here are all reaction role groups I currently have defined:\n\n```"
 		for group in self._groups[sid]:
 			if group is None:
 				continue
-			msg += " * " + str(group)
+			msg += " * " + str(group) + "\n"
 		msg += "```"
 		await bot.reply(msg)
 
@@ -269,7 +270,7 @@ class RoleManagerModule(BotBehaviorModule):
 			name = await bot.prompt("Which role group do you want to copy?")
 			if name is None:
 				raise BotModuleError("I need you to tell me the role group you want to copy!")
-			name = name.lower()
+			name = name.lower().strip()
 			if name not in self._groups[sid]:
 				raise BotModuleError("That's not a group that exists, do `rr-copy` to try again!")
 
@@ -287,11 +288,11 @@ class RoleManagerModule(BotBehaviorModule):
 			raise BotModuleError(err_msg)
 
 		if new_name is None:
-			name = await bot.prompt("And what should the name of the copy be?")
-			if name is None:
+			new_name = await bot.prompt("And what should the name of the copy be?")
+			if new_name is None:
 				raise BotModuleError("I need you to tell me a name for the role group copy!")
-			name = name.lower()
-			if name in self._groups[sid]:
+			new_name = new_name.lower().strip()
+			if new_name in self._groups[sid]:
 				raise BotModuleError("That group already exists, do `rr-copy` to try again!")
 
 		conf_msg = "Certainly, I can copy `" + name + "` there with name `" + new_name + "`. But just so you know, any"
@@ -311,7 +312,7 @@ class RoleManagerModule(BotBehaviorModule):
 			for emoji_code in self._groups[sid][name]['emotes']:
 				emoji = await bot.get_emoji_from_value(emoji_code)
 				await msg.add_reaction(emoji)
-			_log.info(util.add_context(bot.context, "Copied role group {!r} from MID {:d} to MID {:d}", name, old_mid, msg.id))
+			_log.debug(util.add_context(bot.context, "Copied role group {!r} from MID {:d} to MID {:d}", name, old_mid, msg.id))
 			await bot.reply("Done! I've copied it over to the new message!")
 		else:
 			await bot.reply("All right, I won't copy `" + name + "`.")
@@ -324,7 +325,7 @@ class RoleManagerModule(BotBehaviorModule):
 			name = await bot.prompt("Which role group do you want to move?")
 			if name is None:
 				raise BotModuleError("I need you to tell me the role group you want to move!")
-			name = name.lower()
+			name = name.lower().strip()
 			if name not in self._groups[sid]:
 				raise BotModuleError("That's not a group that exists, do `rr-move` to try again!")
 
@@ -355,7 +356,7 @@ class RoleManagerModule(BotBehaviorModule):
 				emoji = await bot.get_emoji_from_value(emoji_code)
 				await msg.add_reaction(emoji)
 			bot.subscribe_reactions(msg.id)
-			_log.info(util.add_context(bot.context, "Moved role group {!r} from MID {:d} to MID {:d}", name, old_mid, msg.id))
+			_log.debug(util.add_context(bot.context, "Moved role group {!r} from MID {:d} to MID {:d}", name, old_mid, msg.id))
 			await bot.reply("Done! I've moved it over to the new message!")
 		else:
 			await bot.reply("All right, I'll leave `" + name + "` where it is.")
@@ -377,7 +378,7 @@ class RoleManagerModule(BotBehaviorModule):
 			name = await bot.prompt("Okay! What should I call it?")
 			if name is None:
 				raise BotModuleError("I need you to give me a name for the role group!")
-			name = name.lower()
+			name = name.lower().strip()
 			if name in self._groups[sid]:
 				raise BotModuleError("That group already exists, try again!")
 
@@ -408,7 +409,7 @@ class RoleManagerModule(BotBehaviorModule):
 			name = await bot.prompt("Okay! That will be a new role group, so what should I call it?")
 			if name is None:
 				raise BotModuleError("I need you to give me a name for the new role group!")
-			name = name.lower()
+			name = name.lower().strip()
 			if name in self._groups[sid]:
 				raise BotModuleError("That group already exists, try again!")
 
