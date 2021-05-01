@@ -364,7 +364,7 @@ class RoleManagerModule(BotBehaviorModule):
 	async def name_reactionrole(self, bot: PluginAPI, name: Optional[str] = None):
 		await bot.require_op("rr-name")
 
-		msg = await bot.select_message("Okay, sure! Which message in this server should I add a reaction role to?")
+		msg = await bot.select_message("Okay, sure! Which message in this server should I rename?")
 		if msg is None:
 			err_msg = "I'm sorry but I need to know the message whose group you want to name!"
 			err_msg += " Use `rr-name` to try again."
