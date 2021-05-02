@@ -65,7 +65,12 @@ random_status_list = [
 			"reading",
 			"schedule-making",
 			"culling asdf3w",
-			"<ALL IS WELL>"
+			"<ALL IS WELL>",
+			"Twitter",
+			"Metal Gear",
+			"Metal GEAR",
+			"METAL GEAR!!!!",
+			"omg it's metal gear O.O"
 		]
 
 

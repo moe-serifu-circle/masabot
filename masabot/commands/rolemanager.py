@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Any, Union
+from typing import Dict, Optional, Any
 
 from . import BotBehaviorModule, ReactionTrigger, InvocationTrigger
 from .. import util
@@ -38,9 +38,7 @@ class RoleManagerModule(BotBehaviorModule):
 		help_text += " I'll remove it. If you want to remove *all* the roles, you can use the `!rr-clear` command"
 		help_text += " instead.\n\n"
 		help_text += "__Naming, Moving, And Copying__:\n"
-		help_text += "To name a role group to move it to another message on the server or copy it, use the `rr-name`"
-		help_text += " command followed by the new name. I'll ask for which reaction role message you want me to name,"
-		help_text += " and after selecting one it will have the new name.\n\n"
+		help_text += "To rename a role group, use the `rr-rename` command with the old name followed by the new name.\n\n"
 		help_text += "To move a role group to another message, use `!rr-move` followed by the name of the group. Or if"
 		help_text += "you want, you can use `!rr-copy` followed by the name of the role group and the name of the new"
 		help_text += " group to copy it, which will leave it on the old message as well!\n\n"
@@ -48,9 +46,7 @@ class RoleManagerModule(BotBehaviorModule):
 		help_text += " clear. And `!rr-info` will show all the current ones that are named!"
 		
 		# groups is server -> group -> group_attr -> group_value.
-		# None for group instead goes server -> group=None -> message_id -> group_attr -> group_value
-		# TODO Remove none mapping after 1.9.5 migration.
-		self._groups: Dict[int, Dict[Optional[str], Dict[Union[str, int], Union[Any, Dict[str, Any]]]]] = dict()
+		self._groups: Dict[int, Dict[str, Dict[str, Any]]] = dict()
 		# known messages maps server -> message_id -> name of group within server, None if there isnt one
 		self._known_messages: Dict[int, Dict[int, Optional[str]]] = dict()
 
@@ -87,7 +83,7 @@ class RoleManagerModule(BotBehaviorModule):
 				InvocationTrigger('rr-add'),
 				InvocationTrigger('rr-remove'),
 				InvocationTrigger('rr-clear'),
-				InvocationTrigger('rr-name'),
+				InvocationTrigger('rr-rename'),
 				InvocationTrigger('rr-copy'),
 				InvocationTrigger('rr-move'),
 				InvocationTrigger('rr-info'),
@@ -109,28 +105,18 @@ class RoleManagerModule(BotBehaviorModule):
 				'groups': dict(),
 				'messages': dict(),
 			}
+		# TODO 1.10.0 MIGRATION CODE, remove any time after 1.11.0
+		if None in self._groups[server]:
+			del self._groups[server][None]
+		# TODO END 1.10.0 MIGRATION CODE
 		return {
 			'groups': self._groups[server],
 			'messages': self._known_messages[server],
 		}
 
 	def set_state(self, server: int, state: Dict):
-		# TODO: 1.9.5 migration code, remove any time after 1.9.5 release, but ensure ALL loose messages are updated
-		# before upgrading beyond.
-		if 'messages' in state:
-			self._groups[server] = {None: dict()}
-			self._known_messages[server] = dict()
-			for mid in state['messages']:
-				self._known_messages[server][mid] = None
-				self._groups[server][None][mid] = {
-					'name': None,
-					'message': mid,
-					'emotes': state['messages'][mid],
-				}
-		# END OF MIGRATION CODE
-		if 'groups' in state:
-			self._groups[server] = state['groups']
-			self._known_messages[server] = state['messages']
+		self._groups[server] = state['groups']
+		self._known_messages[server] = state['messages']
 
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		group = None
@@ -142,10 +128,10 @@ class RoleManagerModule(BotBehaviorModule):
 			await self.remove_reactionrole(bot)
 		elif command == 'rr-clear':
 			await self.clear_reactionroles(bot)
-		elif command == 'rr-name':
+		elif command == 'rr-rename':
 			if len(args) > 0:
 				group = args[0]
-			await self.name_reactionrole(bot, group)
+			await self.rename_reactionrole(bot, group)
 		elif command == 'rr-copy':
 			if len(args) > 0:
 				group = args[0]
@@ -161,20 +147,11 @@ class RoleManagerModule(BotBehaviorModule):
 			await self.list_reactionroles(bot)
 
 	def get_group(self, server: int, mid: int):
-		gr_name = self._known_messages[server][mid]
-
-		# TODO 1.9.5 migration code, remove after and convert to just trusting name is never None
-		if gr_name is None:
-			return self._groups[server][None][mid]
-		else:
-			return self._groups[server][gr_name]
+		return self._groups[server][self._known_messages[server][mid]]
 
 	def set_group(self, server: int, name: Optional[str], group: Dict[str, Any]):
-		# TODO 1.9.5 migration code, remove after and convert to just trusting name is never None
-		if name is None:
-			self._groups[server][None][group['message']] = group
-		else:
-			self._groups[server][name] = group
+		group.name = name
+		self._groups[server][name] = group
 
 	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction):
 		if reaction.user_id == bot.get_bot_id():
@@ -241,14 +218,7 @@ class RoleManagerModule(BotBehaviorModule):
 
 		del gr['emotes'][r.emoji]
 		if len(gr['emotes']) == 0:
-
-			# TODO POST 1.9.5 migration remove this check and assume name is set
-			if gr['name'] is None:
-				del self._groups[sid][None][msg.id]
-				if len(self._groups[sid][None]) == 0:
-					del self._groups[sid][None]
-			else:
-				del self._groups[sid][gr['name']]
+			del self._groups[sid][gr['name']]
 			del self._known_messages[sid][msg.id]
 			bot.unsubscribe_reactions(msg.id)
 			if len(self._known_messages[sid]) == 0:
@@ -361,36 +331,40 @@ class RoleManagerModule(BotBehaviorModule):
 		else:
 			await bot.reply("All right, I'll leave `" + name + "` where it is.")
 
-	async def name_reactionrole(self, bot: PluginAPI, name: Optional[str] = None):
-		await bot.require_op("rr-name")
+	async def rename_reactionrole(self, bot: PluginAPI, name: Optional[str] = None, new_name: Optional[str] = None):
+		await bot.require_op("rr-rename")
 
-		msg = await bot.select_message("Okay, sure! Which message in this server should I rename?")
-		if msg is None:
-			err_msg = "I'm sorry but I need to know the message whose group you want to name!"
-			err_msg += " Use `rr-name` to try again."
-			raise BotModuleError(err_msg)
+		opts = list(self._groups[bot.get_guild().id].keys())
+		if len(opts) < 1:
+			raise BotModuleError("I don't have any reaction role groups in this server yet! Add one with `rr-add`.")
 
-		sid = msg.channel.guild.id
-		if msg.id not in self._groups[sid][None]:
-			raise BotModuleError("That isn't a message with an existing unnamed group on it!")
-
+		sid = await bot.require_server()
 		if name is None:
-			name = await bot.prompt("Okay! What should I call it?")
+			name = await bot.prompt("Which role group do you want to rename?")
 			if name is None:
 				raise BotModuleError("I need you to give me a name for the role group!")
 			name = name.lower().strip()
-			if name in self._groups[sid]:
-				raise BotModuleError("That group already exists, try again!")
+			if name not in self._groups[sid]:
+				raise BotModuleError("That group doesn't exist, do `rr-rename` try again!")
 
-		self._groups[sid][name] = self._groups[sid][None][msg.id]
-		self._known_messages[sid][msg.id] = name
-		del self._groups[sid][None][msg.id]
-		if len(self._groups[sid][None]) == 0:
-			del self._groups[sid][None]
+		if new_name is None:
+			new_name = await bot.prompt("And what should the new name be?")
+			if new_name is None:
+				raise BotModuleError("I need you to tell me a name for the role group copy!")
+			new_name = new_name.lower().strip()
+			if new_name in self._groups[sid]:
+				raise BotModuleError("That group already exists, do `rr-rename` to try again!")
 
-		_log.debug(util.add_context(bot.context, "Renamed anonymous role group on MID {:d} to `{:s}`", msg.id, name))
+		gr = self._groups[sid][name]
+		del self._groups[sid][name]
+		gr.name = new_name
+		self._groups[sid][new_name] = gr
+		self._known_messages[gr['message']] = new_name
+		_log.debug(
+			util.add_context(bot.context, "Renamed role group on MID {:d} from {!r} to `{!r}`", gr['message'], name, new_name)
+		)
 
-		msg = "Okay! I've given the name `" + name + "` to that role group!"
+		msg = "Okay! I've renamed the role group `" + name + "` to `" + new_name + "`!"
 		await bot.reply(msg)
 
 	async def add_reactionrole(self, bot: PluginAPI, name: Optional[str] = None):
