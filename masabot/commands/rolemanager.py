@@ -107,6 +107,7 @@ class RoleManagerModule(BotBehaviorModule):
 			}
 		# TODO 1.10.0 MIGRATION CODE, remove any time after 1.11.0
 		if None in self._groups[server]:
+			# noinspection PyTypeChecker
 			del self._groups[server][None]
 		# TODO END 1.10.0 MIGRATION CODE
 		return {
