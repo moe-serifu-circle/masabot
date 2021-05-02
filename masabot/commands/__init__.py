@@ -20,7 +20,8 @@ __all__ = [
 	'ratewaifu',
 	'sparkle',
 	'rolemanager',
-	'headpat'
+	'headpat',
+	'customroles',
 ]
 
 
