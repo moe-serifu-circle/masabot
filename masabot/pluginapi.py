@@ -374,7 +374,7 @@ class PluginAPI:
 		member: discord.Member = self.get_guild(server).get_member_named(text)
 		if member is None:
 			raise BotSyntaxError("`{:s}` is not a user in this server!".format(text))
-
+		return member
 
 	async def prompt(self, message: str, timeout: int = 60, type_conv: Callable[[str], Any] = str) -> Any:
 		"""

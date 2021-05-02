@@ -97,22 +97,18 @@ class CustomRoleModule(BotBehaviorModule):
 			if len(args) < 1:
 				msg = "I need to know what user you want to assign the role to, please give that after the command!"
 				raise BotSyntaxError(msg)
-			target_men = util.parse_mention(args[0], require_type=util.MentionType.USER)
-			target = bot.get_guild(sid).get_member(target_men.id)
+			target = bot.parse_member_mention(args[0], sid)
 			color = await self.get_color_arg(bot, *args[1:])
 			if len(args) > 2:
 				# using role-set will always prefer to use an existing role with the given name
 				role_name = ' '.join(args[2:])
 			else:
 				msg = "Okay, and what is the name of the role I should create and/or assign to"
-				msg += " {:s}? (enter blank to remove the custom role assignment)".format(target.display_name)
+				msg += " {:s}?".format(target.display_name)
 				role_name = await bot.prompt(msg)
 				if role_name is None:
 					raise BotModuleError("I'm sorry, but if you're doing `role-set`, I really need you to answer this prompt!")
 				role_name = role_name.strip()
-				if role_name == '':
-					await self._remove_role(bot, sid, target)
-					return
 
 			existing_role = self.get_existing_role(bot, sid, role_name)
 			if existing_role:
@@ -128,7 +124,8 @@ class CustomRoleModule(BotBehaviorModule):
 							cur_role_name = cur_role.name
 						msg += " This will overwrite the existing custom role assignment of"
 						msg += " `@{:s}`, but it will not".format(cur_role_name)
-						msg += " automatically delete the role itself."
+						msg += " automatically delete the role itself"
+				msg += "."
 			else:
 				msg = "Okay! `@{:s}` will be created with the given color".format(role_name)
 				msg += " and assigned to {:s} as their custom role.".format(target.display_name)
@@ -181,7 +178,7 @@ class CustomRoleModule(BotBehaviorModule):
 			await self._assign_role(bot, sid, target, color, role_name, use_role=existing_role)
 		elif command == 'role-info':
 			if len(args) > 0:
-				mem = bot.parse_member_mention(args[0].strip())
+				mem = bot.parse_member_mention(args[0].strip(), sid)
 			else:
 				mem = bot.get_guild(sid).get_member(bot.get_user().id)
 			if mem.id not in self.custom_roles[sid]:
@@ -193,6 +190,7 @@ class CustomRoleModule(BotBehaviorModule):
 					subj2 = "They"
 				msg = subj1 + " have a custom role yet. " + subj2 + " can create one by using the `role` command."
 				await bot.reply(msg.format(mem.display_name))
+				return
 
 			if mem.id == bot.get_user().id:
 				whose = "Your"
@@ -206,7 +204,11 @@ class CustomRoleModule(BotBehaviorModule):
 				color_name = str(role.color)
 			await bot.reply("{:s} custom role is `@{:s}` with color {:s}!".format(whose, role_name, color_name))
 		elif command == 'role-remove':
-			mem = bot.get_guild(sid).get_member(bot.get_user().id)
+			if len(args) > 0:
+				await bot.require_op("role-remove TARGET")
+				mem = bot.parse_member_mention(args[0].strip(), sid)
+			else:
+				mem = bot.get_guild(sid).get_member(bot.get_user().id)
 			await self._remove_role(bot, sid, mem)
 		else:
 			raise BotModuleError("got unknown command")
@@ -329,13 +331,13 @@ class CustomRoleModule(BotBehaviorModule):
 			if role.name != role_name:
 				msg = "Okay, I've updated {:s} custom role `@{:s}` to new name `@{:s}`".format(whose, role.name, role_name)
 				if role.color != color:
-					msg += " and updated the color from {:s} to {:s}".format(role.color, color)
+					msg += " and updated the color from {!s} to {!s}".format(role.color, color)
 				msg += "."
 			elif role.color != color:
-				msg = "Okay, I've updated {:s} custom role `@{:s}`'s color from {:s}".format(whose, role.name, role.color)
-				msg += " to {:s}.".format(color)
+				msg = "Okay, I've updated {:s} custom role `@{:s}`'s color from {!s}".format(whose, role.name, role.color)
+				msg += " to {!s}.".format(color)
 			else:
-				msg = "Okay, I've set {:s} custom role to `@{:s}` with color {:s} ^_^".format(whose, role.name, role.color)
+				msg = "Okay, I've set {:s} custom role to `@{:s}` with color {!s} ^_^".format(whose, role.name, role.color)
 			await bot.reply(msg)
 
 	# noinspection PyMethodMayBeStatic
@@ -357,7 +359,6 @@ class CustomRoleModule(BotBehaviorModule):
 				raise BotModuleError(too_high_fmt.format(name))
 			return role
 		except BotSyntaxError:
-			_log.exception("Not a mention...")
 			pass
 
 		# first check to see if one with the name exists
