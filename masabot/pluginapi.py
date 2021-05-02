@@ -8,7 +8,7 @@ import shlex
 
 from . import util
 from .messagecache import MessageHistoryCache
-from .util import BotModuleError, BotPermissionError
+from .util import BotModuleError, BotPermissionError, BotSyntaxError
 from .context import BotContext
 
 _log = logging.getLogger(__name__)
@@ -364,6 +364,17 @@ class PluginAPI:
 			log_msg += repr(react.emoji)
 			_log.debug(log_msg)
 		return react
+
+	def parse_member_mention(self, text: str, server: Optional[int] = None) -> Optional[discord.Member]:
+		try:
+			mention = util.parse_mention(text, util.MentionType.USER)
+			return self.get_guild(server).get_member(mention.id)
+		except BotSyntaxError:
+			pass
+		member: discord.Member = self.get_guild(server).get_member_named(text)
+		if member is None:
+			raise BotSyntaxError("`{:s}` is not a user in this server!".format(text))
+		return member
 
 	async def prompt(self, message: str, timeout: int = 60, type_conv: Callable[[str], Any] = str) -> Any:
 		"""
