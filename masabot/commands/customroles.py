@@ -177,6 +177,9 @@ class CustomRoleModule(BotBehaviorModule):
 					msg += " command."
 					raise BotModuleError(msg)
 
+		if sid not in self.custom_roles:
+			self.custom_roles[sid] = dict()
+
 		self.custom_roles[sid][target.id] = role.id
 		await bot.reply("Okay, I've added it! ^_^")
 
