@@ -1,5 +1,5 @@
 import re
-from typing import Dict
+from typing import Dict, Optional
 
 import discord
 
@@ -63,6 +63,25 @@ class CustomRoleModule(BotBehaviorModule):
 	def set_state(self, server: int, state: Dict):
 		self.custom_roles[server] = state['roles']
 
+	# noinspection PyMethodMayBeStatic
+	async def get_color_arg(self, bot: PluginAPI, *args: str) -> discord.Colour:
+		"""
+		Parse color argument from the first arg in args, or if not present, asks the user for one.
+		:param bot:
+		:param args:
+		:return:
+		"""
+		if len(args) > 0:
+			color_str = args[0]
+		else:
+			msg = "What color should the role be? Oh, and could you tell me with a six-digit hex code, like #ff0022?"
+			repl = await bot.prompt(msg)
+			if repl is None:
+				raise BotModuleError("I really need to know what color the role should be!")
+			color_str = repl
+
+		return parse_color(color_str)
+
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
 		if bot.context.is_pm:
 			raise BotModuleError("That doesn't make any sense to do in a DM!")
@@ -70,63 +89,117 @@ class CustomRoleModule(BotBehaviorModule):
 		enabled = await bot.get_setting('enabled')
 		if not enabled:
 			return
-		prioritize_existing = False
+
+		sid = await bot.require_server()
+		if sid not in self.custom_roles:
+			self.custom_roles[sid] = dict()
 		if command == 'role-set':
 			await bot.require_op("role-set")
 			if len(args) < 1:
 				msg = "I need to know what user you want to assign the role to, please give that after the command!"
 				raise BotSyntaxError(msg)
-			target = util.parse_mention(args[0], require_type=util.MentionType.USER)
-			args = args[1:]
-			reason = "user " + bot.get_user().display_name + " requested custom role assignment with !role-set command"
-			prioritize_existing = True
+			target_men = util.parse_mention(args[0], require_type=util.MentionType.USER)
+			target = await bot.get_guild(sid).get_member(target_men.id)
+			color = await self.get_color_arg(bot, *args[1:])
+			if len(args) > 2:
+				# using role-set will always prefer to use an existing role with the given name
+				role_name = ' '.join(args[2:])
+			else:
+				msg = "Okay, and what is the name of the role I should create and/or assign to"
+				msg += " {:s}?".format(target.display_name)
+				role_name = await bot.prompt(msg)
+				if role_name is None:
+					raise BotModuleError("I'm sorry, but if you're doing `role-set`, I really need to know the name of the role!")
+			existing_role = self.get_existing_role(bot, sid, role_name)
+			if existing_role:
+				msg = "Okay! `{:s}` will be updated to the given color".format(role_name)
+				if existing_role.id not in [r.id for r in target.roles]:
+					msg += " and assigned to {:s} as their custom role.".format(target.display_name)
+					if target.id in self.custom_roles[sid]:
+						cur_role = bot.get_guild(sid).get_role(self.custom_roles[sid][target.id])
+						msg += " This will overwrite the existing custom role assignment of"
+						msg += " `{:s}`, but it will not".format(cur_role.name)
+						msg += " automatically delete the role itself."
+			else:
+				msg = "Okay! `{:s}` will be created with the given color".format(role_name)
+				msg += " and assigned to {:s} as their custom role.".format(target.display_name)
+				if target.id in self.custom_roles[sid]:
+					cur_role = bot.get_guild(sid).get_role(self.custom_roles[sid][target.id])
+					msg += " This will overwrite the existing custom role assignment of"
+					msg += " `{:s}`, but it will not".format(cur_role.name)
+					msg += " automatically delete the role itself."
+			msg += " Should I set `{:s}` as the custom role for {:s}?".format(role_name, target.display_name)
+			conf = await bot.confirm(msg)
+			if not conf:
+				await bot.reply("Got it! I'll leave it alone for now!")
+				return
+			await self._assign_role(bot, sid, target, color, role_name, use_role=existing_role)
 		elif command == 'role':
 			user = bot.get_user()
-			target = user
-			reason = "user " + user.display_name + " requested custom role assignment with !role command"
+			target: discord.Member = bot.get_guild(sid).get_member(user.id)
+			existing_role = None
+			color = await self.get_color_arg(bot, *args)
+			if len(args) > 1:
+				role_name = ' '.join(args[1:])
+				if target.id in self.custom_roles[sid]:
+					existing_role = bot.get_guild(sid).get_role(self.custom_roles[sid][target.id])
+			else:
+				# if target has never been assigned or it HAS but for some reason the server returns nothing for the
+				# assigned ID and so needs a new one
+				if (
+						target.id not in self.custom_roles[sid] or
+						bot.get_guild(sid).get_role(self.custom_roles[sid][target.id]) is None
+				):
+					msg = "Okay, looks like you don't have a custom role assigned yet, so I'll make one for you. If you"
+					msg += " want, I can make it super special and call it something custom just for you! Or if not, I'll"
+					msg += " just use `" + target.display_name + "`.\n\nDo want to enter a custom name for me to use?"
+					conf = await bot.confirm(msg)
+					if conf:
+						role_name = await bot.prompt("What should the name be?")
+						if role_name is None:
+							raise BotModuleError("I need to know what you want the custom name to be")
+					else:
+						await bot.reply("All right, I'll use `" + target.display_name + "`")
+						role_name = target.display_name
+				else:
+					rid = self.custom_roles[sid][target.id]
+					existing_role = bot.get_guild(sid).get_role(rid)
+					role_name = existing_role.name
+			await self._assign_role(bot, sid, target, color, role_name, use_role=existing_role)
 		else:
 			raise BotModuleError("got unknown command")
 
-		await self._assign_role(bot, args, reason, target, prioritize_existing=prioritize_existing)
-
 	# noinspection PyMethodMayBeStatic
-	async def _assign_role(self, bot: PluginAPI, args, reason: str, target, prioritize_existing=False):
-		sid = await bot.require_server()
-		color = "ffffff"
-		if len(args) > 0:
-			color = args[0].lstrip('#')
-			if not re.match('^[A-Fa-f0-9]{6}$', color):
-				raise BotSyntaxError("`" + str(color) + "` is not a valid 6 hex-digit color code")
-		r = int(color[0:2], 16)
-		g = int(color[2:4], 16)
-		b = int(color[4:6], 16)
-		role_name = None
-		if len(args) > 1:
-			role_name = ' '.join(args[1:])
+	async def _assign_role(
+			self,
+			bot: PluginAPI,
+			sid: int,
+			target: discord.Member,
+			color: discord.Colour,
+			role_name: str,
+			use_role: Optional[discord.Role]
+	):
+		if bot.get_user().id != target.id:
+			reason = "user " + bot.get_user().display_name + " requested custom role assignment for"
+			reason += " " + target.display_name + " with role-set command"
+		else:
+			reason = "user " + bot.get_user().display_name + " requested custom role use/modification with role command"
+
 		with bot.typing():
-			# check whether the role exists
-			role = None
-			if prioritize_existing:
-				role = self.get_existing_role(bot, sid, role_name)
-			if role is None and sid in self.custom_roles and target.id in self.custom_roles[sid]:
-				# if already assigned/set, do that here
-				role = bot.get_guild(sid).get_role(self.custom_roles[sid][target.id])
+			if use_role is not None:
 				bot_mem: discord.Member = bot.get_guild(sid).get_member(bot.get_bot_id())
 				highest_bot_role = bot_mem.roles[-1]
-				if role.position >= highest_bot_role.position:
-					msg = "The role `" + role.name + "` is assigned now but it is above my own! I can't modify it!"
+				if use_role.position >= highest_bot_role.position:
+					msg = "The role to update/create, `" + use_role.name + "`, is above my own! I can't modify it!"
 					msg += " Please ask staff of this server to move the role under my role in order to use"
 					msg += " the command."
 					raise BotModuleError(msg)
-			if role is None:
-				role = self.get_existing_role(bot, sid, role_name)
-			if role is None:
+				role = use_role
+			else:
 				# need to create role, and assign it to variable
-				if role_name is None:
-					role_name = bot.get_user().display_name
 				guild = bot.get_guild(sid)
 				try:
-					role = await guild.create_role(name=role_name, color=discord.Colour(int(color, 16)), reason=reason)
+					role = await guild.create_role(name=role_name, color=color, reason=reason)
 				except discord.Forbidden:
 					msg = "I don't have permissions to create your `" + role_name + "` role! Please ask the staff of"
 					msg += " this server to give me access to role creation in order to use this command."
@@ -151,9 +224,9 @@ class CustomRoleModule(BotBehaviorModule):
 			if role is not None and role_name is None:
 				role_name = role.name
 
-			if role.color.r != r or role.color.g != g or role.color.b != b or role.name != role_name:
+			if role.color != color or role.name != role_name:
 				try:
-					await role.edit(colour=discord.Colour(int(color, 16)), name=role_name, reason=reason)
+					await role.edit(colour=color, name=role_name, reason=reason)
 				except discord.Forbidden:
 					msg = "I don't have permissions to access the `" + role_name + "` role! Please ask the staff of this"
 					msg += " server to give me access in order to use this command."
@@ -174,13 +247,13 @@ class CustomRoleModule(BotBehaviorModule):
 					msg += " command."
 					raise BotModuleError(msg)
 
-		if sid not in self.custom_roles:
-			self.custom_roles[sid] = dict()
+			self.custom_roles[sid][target.id] = role.id
+			await bot.reply("Okay, I've added it! ^_^")
 
-		self.custom_roles[sid][target.id] = role.id
-		await bot.reply("Okay, I've added it! ^_^")
-
-	def get_existing_role(self, bot: PluginAPI, sid: int, name: str):
+	# noinspection PyMethodMayBeStatic
+	def get_existing_role(self, bot: PluginAPI, sid: int, name: str) -> Optional[discord.Role]:
+		"""Get an existing editable role with the given name. Returns None if none with that name exists and raises
+		BotModuleError if a role with the name does exist but is not modifiable by masabot due to role ordering."""
 		bot_mem: discord.Member = bot.get_guild(sid).get_member(bot.get_bot_id())
 		highest_bot_role = bot_mem.roles[-1]
 		# first check to see if one with the name exists
@@ -191,8 +264,15 @@ class CustomRoleModule(BotBehaviorModule):
 					msg += " Please ask staff of this server to move the role under my role in order to use"
 					msg += " the command."
 					raise BotModuleError(msg)
-				role = rl
-				break
+				return rl
+		return None
+
+
+def parse_color(color_str: str) -> discord.Colour:
+	color = color_str.lstrip('#')
+	if not re.match('^[A-Fa-f0-9]{6}$', color):
+		raise BotSyntaxError("`" + str(color) + "` is not a valid 6 hex-digit color code!")
+	return discord.Colour(int(color[0:6], 16))
 
 
 BOT_MODULE_CLASS = CustomRoleModule
