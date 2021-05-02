@@ -642,7 +642,11 @@ class MasaBot(object):
 					if m is None:
 						m = self._invocations[help_module][0]
 					msg = "Oh yeah, the `" + m.name + "` module! `" + m.description + "`\n\n" + m.help_text
-		await api.reply(msg)
+		pager = util.DiscordPager()
+		for x in msg.split('\n'):
+			pager.add_line(x)
+		for p in pager.get_pages():
+			await api.reply(p)
 
 	async def quit(self, api: 'PluginAPI', restart_command="quit", data=None):
 		api.require_superop("quit", None)
