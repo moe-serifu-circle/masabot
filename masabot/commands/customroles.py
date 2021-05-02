@@ -100,10 +100,9 @@ class CustomRoleModule(BotBehaviorModule):
 		r = int(color[0:2], 16)
 		g = int(color[2:4], 16)
 		b = int(color[4:6], 16)
+		role_name = None
 		if len(args) > 1:
 			role_name = ' '.join(args[1:])
-		else:
-			role_name = bot.get_user().display_name
 		with bot.typing():
 			# check whether the role exists
 			role = None
@@ -115,7 +114,7 @@ class CustomRoleModule(BotBehaviorModule):
 				bot_mem: discord.Member = bot.get_guild(sid).get_member(bot.get_bot_id())
 				highest_bot_role = bot_mem.roles[-1]
 				if role.position >= highest_bot_role.position:
-					msg = "The role `" + role_name + "` is assigned now but it is above my own! I can't modify it!"
+					msg = "The role `" + role.name + "` is assigned now but it is above my own! I can't modify it!"
 					msg += " Please ask staff of this server to move the role under my role in order to use"
 					msg += " the command."
 					raise BotModuleError(msg)
@@ -123,6 +122,8 @@ class CustomRoleModule(BotBehaviorModule):
 				role = self.get_existing_role(bot, sid, role_name)
 			if role is None:
 				# need to create role, and assign it to variable
+				if role_name is None:
+					role_name = bot.get_user().display_name
 				guild = bot.get_guild(sid)
 				try:
 					role = await guild.create_role(name=role_name, color=discord.Colour(int(color, 16)), reason=reason)
@@ -146,6 +147,9 @@ class CustomRoleModule(BotBehaviorModule):
 					msg += " the staff of this server to give me access to role creation in order to use this command."
 					_log.exception(util.add_context(bot.context, "could not edit role positions", role_name))
 					raise BotModuleError(msg)
+
+			if role is not None and role_name is None:
+				role_name = role.name
 
 			if role.color.r != r or role.color.g != g or role.color.b != b or role.name != role_name:
 				try:
