@@ -207,11 +207,9 @@ class CustomRoleModule(BotBehaviorModule):
 					raise BotModuleError(msg)
 
 				# get highest bot role, we will put the new role under that
-				bot_mem: discord.Member = guild.get_member(bot.get_bot_id())
-				highest_bot_role = bot_mem.roles[-1]
+				role_priority = self.calculate_new_role_priority(bot, sid)
 				new_pos = {
-					highest_bot_role: highest_bot_role.position,
-					role: highest_bot_role.position - 1
+					role: role_priority
 				}
 				try:
 					await guild.edit_role_positions(positions=new_pos, reason=reason)
@@ -266,6 +264,21 @@ class CustomRoleModule(BotBehaviorModule):
 					raise BotModuleError(msg)
 				return rl
 		return None
+
+	def calculate_new_role_priority(self, bot: PluginAPI, sid: int) -> int:
+		all_roles = list(bot.get_guild(sid).roles)
+		bot_mem: discord.Member = bot.get_guild(sid).get_member(bot.get_bot_id())
+		highest_role = bot_mem.roles[-1]
+		start = highest_role.position - 1
+		for x in range(start, 1, -1):
+			# put new roles below administrators
+			if all_roles[x].permissions.administrator:
+				continue
+			# also just put it below any that we control in the line (wont apply to mod-moved ones by design)
+			if all_roles[x].id in self.custom_roles[sid].values():
+				continue
+			return x
+		return 1
 
 
 def parse_color(color_str: str) -> discord.Colour:
