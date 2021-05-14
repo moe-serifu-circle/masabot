@@ -14,6 +14,10 @@ _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
 
+# TODO: a lot of this module will fail if state loading fails, because it assumes that sid will exist in its
+# state dicts for any server it is called in, which might not be true. add way to make it true
+
+
 class RoleManagerModule(BotBehaviorModule):
 	def __init__(self, resource_root: str):
 		help_text = "The \"rolemanager\" module makes it so I can assign people roles by having them react to a message!"
@@ -116,6 +120,12 @@ class RoleManagerModule(BotBehaviorModule):
 		}
 
 	def set_state(self, server: int, state: Dict):
+		# TODO 1.10.x MIGRATION CODE, remove any time after 1.11.0
+		if 'groups' not in state:
+			state['groups'] = dict()
+		if 'messages' not in state:
+			state['messages'] = dict()
+		# TODO END 1.10.x MIGRATION CODE
 		self._groups[server] = state['groups']
 		self._known_messages[server] = state['messages']
 
@@ -151,7 +161,7 @@ class RoleManagerModule(BotBehaviorModule):
 		return self._groups[server][self._known_messages[server][mid]]
 
 	def set_group(self, server: int, name: Optional[str], group: Dict[str, Any]):
-		group.name = name
+		group['name'] = name
 		self._groups[server][name] = group
 
 	async def on_reaction(self, bot: PluginAPI, metadata: util.MessageMetadata, reaction: util.Reaction):

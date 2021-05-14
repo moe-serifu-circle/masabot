@@ -3,6 +3,9 @@ pipeline:
   integration-tests:
     image: python:3.6
     commands:
+      - "mkdir config"
+      - "mkdir logs"
+      - "mkdir state"
       - "printenv"
       - "python3 -m venv .venv"
       - "./run-masabot.sh &"
