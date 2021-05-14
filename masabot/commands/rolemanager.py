@@ -48,7 +48,8 @@ class RoleManagerModule(BotBehaviorModule):
 		help_text += "you want, you can use `!rr-copy` followed by the name of the role group and the name of the new"
 		help_text += " group to copy it, which will leave it on the old message as well!\n\n"
 		help_text += "If you ever need to delete a role group, use `!rr-clear` followed by the name of the group to"
-		help_text += " clear. And `!rr-info` will show all the current ones that are named!"
+		help_text += " clear. And `!rr-info` will show all the current ones that are named, or if you give a name, info"
+		help_text += " on that one!"
 		
 		# groups is server -> group -> group_attr -> group_value.
 		self._groups: Dict[int, Dict[str, Dict[str, Any]]] = dict()
