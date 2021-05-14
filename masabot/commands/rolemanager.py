@@ -1,3 +1,4 @@
+import re
 from typing import Dict, Optional, Any
 
 from . import BotBehaviorModule, ReactionTrigger, InvocationTrigger
@@ -155,7 +156,9 @@ class RoleManagerModule(BotBehaviorModule):
 				group = args[0]
 			await self.move_reactionrole(bot, group)
 		elif command == 'rr-info':
-			await self.list_reactionroles(bot)
+			if len(args) > 0:
+				group = args[0]
+			await self.list_reactionroles(bot, group)
 
 	def get_group(self, server: int, mid: int):
 		return self._groups[server][self._known_messages[server][mid]]
@@ -185,19 +188,65 @@ class RoleManagerModule(BotBehaviorModule):
 		else:
 			await add_user_role(bot, reaction, rid)
 
-	async def list_reactionroles(self, bot: PluginAPI):
+	async def list_reactionroles(self, bot: PluginAPI, group_name: Optional[str] = None):
 		sid = await bot.require_server()
 		await bot.require_op("rr-info")
-		if len([x for x in self._groups[sid] if x is not None]) == 0:
-			await bot.reply("I don't have any reaction roles in this server yet! Use `rr-add` to create one.")
-			return
-		msg = "Sure! Here are all reaction role groups I currently have defined:\n\n```"
-		for group in self._groups[sid]:
-			if group is None:
-				continue
-			msg += " * " + str(group) + "\n"
-		msg += "```"
-		await bot.reply(msg)
+
+		if group_name is None:
+			if len([x for x in self._groups[sid] if x is not None]) == 0:
+				await bot.reply("I don't have any reaction roles in this server yet! Use `rr-add` to create one.")
+				return
+			msg = "Sure! Here are all reaction role groups I currently have defined:\n\n```"
+			for group in self._groups[sid]:
+				if group is None:
+					continue
+				msg += " * " + str(group) + "\n"
+			msg += "```"
+			await bot.reply(msg)
+		else:
+			orig_name = group_name
+			group_name = normalize_group_name(group_name)
+			if group_name not in self._groups[sid]:
+				msg = "Oh, I'm sorry! I don't have any reaction role groups named `" + orig_name + "`. Try rr-info by"
+				msg += " itself to see what I do have!"
+				await bot.reply(msg)
+				return
+
+			gr = self._groups[sid][group_name]
+
+			msg = "Sure, here's what I have for that!\n\n"
+			msg += "__Info__\n"
+			msg += "**Name:** `" + gr['name'] + "`\n"
+			msg += "**For MID:** " + str(gr['message']) + "\n\n"
+			msg += "__Emotes:__"
+
+			if len(gr['emotes']) < 1:
+				msg += " (none)"
+			else:
+				msg += "\n"
+				for em in gr['emotes']:
+					if isinstance(em, str):
+						em_name = em
+					else:
+						em_data = bot.get_emoji(em)
+						if em_data is None:
+							em_name = "`(Deleted Emoji ID " + str(em) + ")`"
+						else:
+							em_name = ":" + em_data.name + ":"
+							if not em_data.is_usable():
+								em_name = "`" + em_name + " (Unusable)`"
+
+					rid = gr['emotes'][em]
+					role = bot.get_guild(sid).get_role(rid)
+					if role is None:
+						r_name = "`(Deleted Role ID " + str(rid) + ")`"
+					else:
+						r_name = "`@" + role.name + "`"
+
+					msg += em_name + " - " + r_name
+
+			await bot.reply(msg)
+
 
 	async def remove_reactionrole(self, bot: PluginAPI):
 		sid = await bot.require_server()
@@ -251,7 +300,7 @@ class RoleManagerModule(BotBehaviorModule):
 			name = await bot.prompt("Which role group do you want to copy?")
 			if name is None:
 				raise BotModuleError("I need you to tell me the role group you want to copy!")
-			name = name.lower().strip()
+			name = normalize_group_name(name)
 			if name not in self._groups[sid]:
 				raise BotModuleError("That's not a group that exists, do `rr-copy` to try again!")
 
@@ -272,7 +321,7 @@ class RoleManagerModule(BotBehaviorModule):
 			new_name = await bot.prompt("And what should the name of the copy be?")
 			if new_name is None:
 				raise BotModuleError("I need you to tell me a name for the role group copy!")
-			new_name = new_name.lower().strip()
+			new_name = normalize_group_name(new_name)
 			if new_name in self._groups[sid]:
 				raise BotModuleError("That group already exists, do `rr-copy` to try again!")
 
@@ -306,7 +355,7 @@ class RoleManagerModule(BotBehaviorModule):
 			name = await bot.prompt("Which role group do you want to move?")
 			if name is None:
 				raise BotModuleError("I need you to tell me the role group you want to move!")
-			name = name.lower().strip()
+			name = normalize_group_name(name)
 			if name not in self._groups[sid]:
 				raise BotModuleError("That's not a group that exists, do `rr-move` to try again!")
 
@@ -354,7 +403,7 @@ class RoleManagerModule(BotBehaviorModule):
 			name = await bot.prompt("Which role group do you want to rename?")
 			if name is None:
 				raise BotModuleError("I need you to give me a name for the role group!")
-			name = name.lower().strip()
+			name = normalize_group_name(name)
 			if name not in self._groups[sid]:
 				raise BotModuleError("That group doesn't exist, do `rr-rename` try again!")
 
@@ -362,7 +411,7 @@ class RoleManagerModule(BotBehaviorModule):
 			new_name = await bot.prompt("And what should the new name be?")
 			if new_name is None:
 				raise BotModuleError("I need you to tell me a name for the role group copy!")
-			new_name = new_name.lower().strip()
+			new_name = normalize_group_name(new_name)
 			if new_name in self._groups[sid]:
 				raise BotModuleError("That group already exists, do `rr-rename` to try again!")
 
@@ -394,7 +443,7 @@ class RoleManagerModule(BotBehaviorModule):
 			name = await bot.prompt("Okay! That will be a new role group, so what should I call it?")
 			if name is None:
 				raise BotModuleError("I need you to give me a name for the new role group!")
-			name = name.lower().strip()
+			name = normalize_group_name(name)
 			if name in self._groups[sid]:
 				raise BotModuleError("That group already exists, try again!")
 
@@ -439,7 +488,7 @@ class RoleManagerModule(BotBehaviorModule):
 
 		bot.save()
 
-		await bot.reply("I have successfully set up that reaction role!")
+		await bot.reply("I have successfully set up that reaction role on group `" + name + "`!")
 
 	async def clear_reactionroles(self, bot: PluginAPI):
 		await bot.require_op('rr-clear')
@@ -459,12 +508,12 @@ class RoleManagerModule(BotBehaviorModule):
 			other_opts = []
 			if len(opts) > 2:
 				other_opts = opts[2:]
-			q = "Which message ID should I clear all reaction roles from?"
+			q = "Which role group should I completely remove?"
 			sel = await bot.prompt_for_option(q, opt1, opt2, *other_opts)
 			if sel is None:
-				raise BotModuleError("Sorry, but I need to know what MID you want me to operate on!")
+				raise BotModuleError("Sorry, but I need to know what role group you want me to operate on!")
 
-		conf = await bot.confirm("Just to double check, you want me to delete ALL reaction roles on that message, right?")
+		conf = await bot.confirm("Just to double check, you want me to delete ALL reaction roles in that group, right?")
 		if conf:
 			sid = bot.get_guild().id
 			del self._known_messages[sid][self._groups[sid][sel]['message']]
@@ -510,6 +559,13 @@ async def remove_user_role(bot: PluginAPI, reaction: util.Reaction, role_id: int
 		reply_msg = "Okay! I've removed the role `@" + role.name + "` from you in " + g.name + "!"
 		reply_msg += " To have it added again, you can react once more!"
 		await mem.send(reply_msg)
+
+
+def normalize_group_name(input: str) -> str:
+	norm = input
+	norm = norm.strip()
+	norm = norm.lower()
+	return re.sub('[^0-1A-Za-z_-]', '-', norm)
 
 
 BOT_MODULE_CLASS = RoleManagerModule

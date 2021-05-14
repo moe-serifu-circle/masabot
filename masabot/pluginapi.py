@@ -572,8 +572,8 @@ class PluginAPI:
 				server_id = await self.require_server()
 				return mod_settings.get(server_id, key)
 
-	async def get_emoji(self, eid) -> discord.Emoji:
-		return await self._bot.client.get_emoji(eid)
+	def get_emoji(self, eid: int) -> Optional[discord.Emoji]:
+		return self._bot.client.get_emoji(eid)
 
 	def get_messages(self, from_current: bool = False, limit: int = 0) -> List[discord.Message]:
 		"""Return messages, newest first"""
