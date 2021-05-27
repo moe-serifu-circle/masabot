@@ -12,7 +12,7 @@ import random
 import re
 import shlex
 
-from . import configfile, commands, util, version, settings
+from . import configfile, commands, util, version, settings, timer
 from typing import Optional, Dict, Any, List, Sequence
 
 from .messagecache import MessageHistoryCache
@@ -100,56 +100,11 @@ def _fmt_send(channel, message):
 	return "[" + _fmt_channel(channel) + "]: sent " + repr(message)
 
 
-class Timer(object):
-	def __init__(self, bot: 'MasaBot', bot_module, period):
-		"""
-		Creates a new timer for the given module.
-
-		:param bot: the bot to fire the timer.
-		:type bot_module: commands.BotBehaviorModule
-		:param bot_module: The module that the timer is for.
-		:type period: int
-		:param period: The number of seconds between fires of the timer.
-		"""
-		self.has_run = False
-		self.next_run = 0
-		self.future = None
-		self.bot_module = bot_module
-		self.period = period
-		self._bot = bot
-
-	def tick(self, now_time, on_fire_error):
-		"""
-		Advances the timer by one tick and fires it asynchronously if it is ready to fire.
-
-		:type now_time: float
-		:param now_time: Monotonic current time.
-		:type on_fire_error: (str) -> {__await__}
-		:param on_fire_error: Accepts a message and properly reports it.
-		"""
-		if not self.has_run or self.next_run <= now_time:
-			# make any last tasks have finished before attempting to run again:
-			if self.future is None or self.future.done():
-				self.future = asyncio.ensure_future(self.fire(on_fire_error))
-				self.has_run = True
-			if not self.has_run:
-				self.next_run = now_time + self.period
-			else:
-				self.next_run = self.next_run + self.period
-
-	async def fire(self, on_error):
-
-		_log.debug("Firing timer on module " + repr(self.bot_module.name))
-		# noinspection PyBroadException
-		try:
-			api = PluginAPI(self._bot)
-			await self.bot_module.on_timer_fire(api)
-		except Exception:
-			_log.exception("Encountered error in timer-triggered function")
-			msg = "Exception in firing timer of '" + self.bot_module.name + "' module:\n\n```python\n"
-			msg += traceback.format_exc()
-			msg += "\n```"
-			await on_error
+class timerInfo:
+	def __init__(self, t: timer.Timer, repeat: bool = False, is_module_trigger: bool = True):
+		self.timer = t
+		self.repeat = repeat
+		self.is_mod_trigger = is_module_trigger
 
 
 class MasaBot(object):
@@ -191,8 +146,9 @@ class MasaBot(object):
 			settings.Key(settings.key_type_toggle, 'announce-startup', default=False)
 		)
 		self._return_code = 0
-		self._timers = []
-		""":type : list[Timer]"""
+		self._timers = {}
+		""":type : dict[str, dict[str, timerInfo]]"""
+		"""above is module name (None is core) -> timer name -> timerInfo"""
 		self._setup_complete = False
 		self._main_timer_task = None
 
@@ -654,6 +610,7 @@ class MasaBot(object):
 			pickle.dump({'command': restart_command, 'data': data}, fp)
 		await api.reply("Right away, " + api.mention_user() + "! See you later!")
 		_log.info("Shutting down...")
+		# TODO: might need to do shutdown of each individual task if it is mid-run
 		self._main_timer_task.cancel()
 		await self.client.logout()
 
@@ -1037,11 +994,51 @@ class MasaBot(object):
 		await self.client.wait_until_ready()
 		_log.debug("Main timer started")
 		tick_span = 60  # seconds
-
+		
+		async def report_error(msg):
+			long_message = "Problem running timer "
+			long_message += repr(timer_name)
+			long_message += " for "
+			if mod_name is None:
+				long_message += "core module"
+			else:
+				long_message += "module " + repr(mod_name)
+			long_message += ":\n\n"
+			await self.pm_superop_users(msg)
+			
 		while not self.client.is_closed:
 			now_time = time.monotonic()
-			for timer in self._timers:
-				timer.tick(now_time, lambda msg: self.pm_superop_users(msg))
+
+			to_clear = dict()
+			for mod_name in self._timers:
+				for timer_name in self._timers[mod_name]:
+					tinfo = self._timers[mod_name][timer_name]
+					fired = tinfo.timer.tick(now_time, report_error)
+
+					# clean up any once-off timers
+					if fired and not tinfo.repeat:
+						if mod_name not in to_clear:
+							to_clear[mod_name] = list()
+						to_clear[mod_name].append(timer_name)
+			
+			# clear all timers that are no longer repeating
+			for mod_name in to_clear:
+				for timer_name in to_clear[mod_name]:
+					if mod_name not in self._timers:
+						msg = "while clearing timer {!r}/{!r}: "
+						msg += "module {!r} does not exist in timer list"
+						_log.warn(msg, mod_name, timer_name, mod_name)
+					elif timer_name not in self._timers[mod_name]:
+						msg = "while clearing timer {!r}/{!r}: "
+						msg += "timer {!r} does not exist in timers for module {!r}"
+						_log.warn(msg, mod_name, timer_name, timer_name, mod_name)
+					else:
+						any_cleared = True
+						# possible race condition if co-modified but nobody else
+						# should be modifying this
+						del self._timers[mod_name][timer_name]
+						if len(self._timers[mod_name]) == 0:
+							del self._timers[mod_name]
 
 			await asyncio.sleep(tick_span)
 
@@ -1213,7 +1210,7 @@ class MasaBot(object):
 				'self': list(self._self_mention_handlers),
 				'specific': _copy_handler_dict(self._mention_handlers)
 			}
-			new_timer_handlers = list(self._timers)
+			new_timer_handlers = _copy_handler_dict(self._timers)
 			new_reaction_add_handlers = _copy_handler_dict(self._reaction_add_handlers)
 			new_reaction_remove_handlers = _copy_handler_dict(self._reaction_remove_handlers)
 			mod = importlib.import_module("masabot.commands." + module_str)
@@ -1258,12 +1255,23 @@ class MasaBot(object):
 		:param bot_module: The module to be used as an invocation handler.
 		:type trig: commands.TimerTrigger
 		:param trig: The trigger that specifies the amount of time between timer firings.
-		:type current_handlers: list[Timer]
+		:type current_handlers: dict[str, dict[str, timerInfo]]
 		:param current_handlers: The timer handlers that already exist. The new handler will be added to the end.
 		"""
 
-		timer = Timer(self, bot_module, int(trig.timer_duration.total_seconds()))
-		current_handlers.append(timer)
+		api = PluginAPI(self, bot_module.name, context, self._message_history_cache)
+		# we assume that add_new_timer_handler will always be called with results
+		# of current handlers, so we assume that name can be based off of current
+		# number of items
+		trig_num = 0
+		if bot_module.name in current_handlers:
+			trig_num = len(current_handlers[bot_module.name])
+		trig_name = + "MODTRIGGER" + str(trig_num).zfill(3)
+		timer = timer.Timer(self, self._execute_action(api, bot_module.on_timer_fire(api), bot_module), int(trig.timer_duration.total_seconds()), id=trig_name)
+		tinfo = timerInfo(timer, repeat=True, is_module_trigger=True)
+		if bot_module.name not in current_handlers:
+			current_handlers[bot_module.name] = dict()
+		current_handlers[bot_module.name][trig_name] = tinfo
 
 	# noinspection PyMethodMayBeStatic
 	def _add_new_invocation_handler(self, bot_module, trig, current_handlers):
@@ -1649,7 +1657,8 @@ class MasaBot(object):
 						'global': self.module_settings[mod_name].get_global_state(),
 						'servers': {server.id: self.module_settings[mod_name].get_state(server.id) for server in self.connected_guilds}
 					} for mod_name in self._bot_modules},
-				}
+				},
+				'timers':
 			},
 			'__VERSION__': version.get_version()
 		}
@@ -1671,6 +1680,71 @@ class MasaBot(object):
 			pickle.dump(state_dict, fp)
 
 		_log.debug("Saved state to disk")
+
+
+	def remove_timer(self, module: Optional[str], id: str):
+		"""Remove an existing timer. After this function returns, the timer
+		will no longer fire, and is removed from tracking."""
+		modidx = None
+		modname = "the core module"
+		if module is not None:
+			modidx = module
+			modname = "module " + repr(module)
+
+		if modidx not in self._timers:
+			errmsg = "There are not currently any timers defined for " + modname
+			raise KeyError(errmsg)
+		
+		if id not in self._timers[modidx]:
+			errmsg = "There is not currently a timer defined for " + modname
+			errmsg += " with ID " + repr(id)
+			raise KeyError(errmsg)
+		
+		del self._timers[modidx][id]
+		if len(self._timers[modidx]) == 0:
+			del self._timers[modidx]
+		_log.debug("Removed timer with ID " + repr(id) + "for " + modname)
+	
+
+	def add_timer(self, module: Optional[str], t: Timer, repeat: bool) -> str:
+		"""Create a new timer for a module for an action in the future. The
+		timer is added to the list of timers that the main tick routine fires,
+		and will fire at the correct time.
+		
+		Note that timers added are never saved as part of state; modules that
+		wish to track pending operations will need to keep them as part of state
+		and then rebuild any timers at state load time.
+
+		:return: The name of the timer, that can be used to later remove it if
+		needed. Note that while timers that do not repeat will be removed
+		automatically after firing, it can still be useful to have the ID in
+		case it needs to be cancelled before firing.
+		"""
+
+		modidx = None
+		modname = "the core module"
+		if module is not None:
+			modidx = module
+			modname = "module " + repr(module)
+		
+		# race condition - could overwrite name if more than one added
+		if t.id is None:
+			if modidx not in self._timers:
+				id_num = "000"
+			else:
+				for x in range(1000):
+					id_num = str(x).zfill(3)
+					if id_num not in self._timers[modidx]:
+						break
+					elif id_num == "999":
+						raise TypeError("could not generate valid name for timer; are there too many added?")
+			t.id = id_num
+		tinfo = timerInfo(t, repeat, False)
+		if modidx not in self._timers:
+			self._timers[modidx] = dict()
+		self._timers[modidx][t.id] = tinfo
+		_log.debug("Added timer with ID " + repr(t.id) + "for " + modname)
+		return t.id
 
 
 def start(configpath, logdir, statepath):

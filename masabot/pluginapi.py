@@ -1,4 +1,4 @@
-from typing import Any, Optional, Callable, Union, List, Tuple
+from typing import Any, Optional, Callable, Union, List, Tuple, Coroutine
 
 import asyncio
 # noinspection PyPackageRequirements
@@ -6,7 +6,7 @@ import discord
 import logging
 import shlex
 
-from . import util
+from . import util, timer
 from .messagecache import MessageHistoryCache
 from .util import BotModuleError, BotPermissionError, BotSyntaxError
 from .context import BotContext
@@ -600,6 +600,68 @@ class PluginAPI:
 			full_list = full_list[:limit]
 
 		return full_list
+
+	def remove_timer(self, id: str):
+		"""Unregister a timer and stop it from firing until it is re-added with
+		add_timer."""
+		self._bot.remove_timer(self._plugin_name, id)
+
+	def add_timer(self, action: Coroutine, days=0, seconds=0, minutes=0, hours=0, weeks=0, until: Optional[datetime.datetime] = None, repeat: bool = False, id: Optional[str] = None) -> str:
+		"""Register a timer to be fired at a later time. When fired, the action
+		specified is performed at the listed time.
+
+		To give a time for the event, either use the seconds/minutes/hours etc
+		args to give an interval, or set `until` to the exact time desired and
+		the interval will be calculated automatically.
+
+		If an `id` is given, the timer will use that ID. If not given, one will
+		be generated. The ID that was used for the timer is returned. If the
+		timer needs to be stopped before it fires, or if it repeats, the ID can
+		be passed to remove_timer to remove it.
+
+		By default, the added timer will fire once and then be automatically
+		cleared. To fire it more than once, set the `repeat` argument to True.
+
+		:param action: The action that should be performed when the timer fires.
+		:param days: The number of days that the timer interval is. This is
+		added with all other time args except for `until`; if `until` is present,
+		this field is ignored.
+		:param seconds: The number of seconds that the timer interval is. This is
+		added with all other time args except for `until`; if `until` is present,
+		this field is ignored.
+		:param minutes: The number of minutes that the timer interval is. This is
+		added with all other time args except for `until`; if `until` is present,
+		this field is ignored.
+		:param hours: The number of hours that the timer interval is. This is
+		added with all other time args except for `until`; if `until` is present,
+		this field is ignored.
+		:param weeks: The number of weeks that the timer interval is. This is
+		added with all other time args except for `until`; if `until` is present,
+		this field is ignored.
+		:param until: Give the time to fire the timer, and the delta will be
+		automatically corrected. If given, all other time args are ignored.
+		:param repeat: Whether the timer should continue to fire after the first
+		time. If true, it will fire after each time that the time delta elapses.
+		:param id: What to call the timer. If not given, one will be
+		automatically generated.
+
+		:return: The ID of the new timer.
+		"""
+		if until is not None:
+			if until.tzinfo is None or until.tzinfo.utcoffset(until) is None:
+				until = until.replace(tzinfo=datetime.timezone.utc)
+			now = time.now(datetime.timezone.utc)
+			dt = until - now
+			if dt.total_seconds() < 0:
+				dt = datetime.timedelta(seconds=0)
+		else:
+			dt = datetime.timedelta(days=days, seconds=seconds, minutes=minutes, hours=hours, weeks=weeks)
+		
+		t = timer.Timer(action, dt.total_seconds())
+		if id is not None:
+			t.id = id
+		
+		return self._bot.add_timer(self._plugin_name, t, repeat)
 
 	async def with_dm_context(self) -> 'PluginAPI':
 		return PluginAPI(self._bot, self._plugin_name, await self.context.to_dm_context(), self._history)

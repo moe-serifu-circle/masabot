@@ -66,9 +66,21 @@ class RegexTrigger(object):
 
 
 class TimerTrigger(object):
-	def __init__(self, days=0, seconds=0, minutes=0, hours=0, weeks=0):
+	"""NOTE: TIMERS ARE NEVER SAVED AS PART OF STATE AND ARE ALWAYS RECREATED"""
+	def __init__(self, days=0, seconds=0, minutes=0, hours=0, weeks=0, until: Optional[datetime.datetime] = None):
 		self.trigger_type = 'TIMER'
-		self.timer_duration = datetime.timedelta(days=days, seconds=seconds, minutes=minutes, hours=hours, weeks=weeks)
+
+		if until is not None:
+			if until.tzinfo is None or until.tzinfo.utcoffset(until) is None:
+				until = until.replace(tzinfo=datetime.timezone.utc)
+			now = time.now(datetime.timezone.utc)
+			dt = until - now
+			if dt.total_seconds() < 0:
+				dt = datetime.timedelta(seconds=0)
+		else:
+			dt = datetime.timedelta(days=days, seconds=seconds, minutes=minutes, hours=hours, weeks=weeks)
+		
+		self.timer_duration = dt
 
 
 class ReactionTrigger(object):
