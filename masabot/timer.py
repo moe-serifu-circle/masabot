@@ -1,5 +1,8 @@
 import logging
+import traceback
 from typing import Coroutine, Optional
+
+import asyncio
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
@@ -32,25 +35,29 @@ class Timer(object):
 
 		:return: whether the tick resulted in a fire.
 		"""
+
+		fired_on_this_tick = False
 		if not self.has_run or self.next_run <= now_time:
 			# make any last tasks have finished before attempting to run again:
 			if self.future is None or self.future.done():
 				self.future = asyncio.ensure_future(self.fire(on_fire_error))
 				self.has_run = True
+				fired_on_this_tick = True
 			if not self.has_run:
 				self.next_run = now_time + self.period
 			else:
 				self.next_run = self.next_run + self.period
 
+		return fired_on_this_tick
+
 	async def fire(self, on_error):
 		_log.debug("Firing timer " + repr(self.id))
 		# noinspection PyBroadException
 		try:
-			api = PluginAPI(self._bot)
 			await self._action
 		except Exception:
 			_log.exception("Encountered error in timer-triggered function")
-			msg = "Exception in firing timer of '" + self.bot_module.name + "' module:\n\n```python\n"
+			msg = "Exception in firing timer " + repr(self.id) + ":\n\n```python\n"
 			msg += traceback.format_exc()
 			msg += "\n```"
 			await on_error

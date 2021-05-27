@@ -54,10 +54,10 @@ random_status_list = [
 			"Friday Night Funkin'",
 			"the stalk market",
 			"Halo",
-			"the stock market📈",
+			"the stock market 📈",
 			"with Springtop",
 			"with clowny data",
-			"with Percy the🐴",
+			"with Percy the 🐴",
 			"eat the rich",
 			"doge. wow.",
 			"secretary of jape",
@@ -70,7 +70,18 @@ random_status_list = [
 			"Metal Gear",
 			"Metal GEAR",
 			"METAL GEAR!!!!",
-			"omg it's metal gear O.O"
+			"omg it's metal gear O.O",
+			"Psycholonials",
+			"Namco High",
+			"Hiveswap",
+			"Hades",
+			"Homestuck Collection",
+			"<SEARCHING>",
+			"with SHODAN",
+			"with HELIOS",
+			"with DAEDALUS",
+			"with ICARUS",
+			"System Shock 3: IRL Edition"
 		]
 
 
@@ -99,8 +110,7 @@ def _fmt_channel(ch):
 def _fmt_send(channel, message):
 	return "[" + _fmt_channel(channel) + "]: sent " + repr(message)
 
-
-class timerInfo:
+class _TimerInfo:
 	def __init__(self, t: timer.Timer, repeat: bool = False, is_module_trigger: bool = True):
 		self.timer = t
 		self.repeat = repeat
@@ -1027,13 +1037,12 @@ class MasaBot(object):
 					if mod_name not in self._timers:
 						msg = "while clearing timer {!r}/{!r}: "
 						msg += "module {!r} does not exist in timer list"
-						_log.warn(msg, mod_name, timer_name, mod_name)
+						_log.warning(msg, mod_name, timer_name, mod_name)
 					elif timer_name not in self._timers[mod_name]:
 						msg = "while clearing timer {!r}/{!r}: "
 						msg += "timer {!r} does not exist in timers for module {!r}"
-						_log.warn(msg, mod_name, timer_name, timer_name, mod_name)
+						_log.warning(msg, mod_name, timer_name, timer_name, mod_name)
 					else:
-						any_cleared = True
 						# possible race condition if co-modified but nobody else
 						# should be modifying this
 						del self._timers[mod_name][timer_name]
@@ -1259,16 +1268,16 @@ class MasaBot(object):
 		:param current_handlers: The timer handlers that already exist. The new handler will be added to the end.
 		"""
 
-		api = PluginAPI(self, bot_module.name, context, self._message_history_cache)
+		api = PluginAPI(self, bot_module.name, None, self._message_history_cache)
 		# we assume that add_new_timer_handler will always be called with results
 		# of current handlers, so we assume that name can be based off of current
 		# number of items
 		trig_num = 0
 		if bot_module.name in current_handlers:
 			trig_num = len(current_handlers[bot_module.name])
-		trig_name = + "MODTRIGGER" + str(trig_num).zfill(3)
-		timer = timer.Timer(self, self._execute_action(api, bot_module.on_timer_fire(api), bot_module), int(trig.timer_duration.total_seconds()), id=trig_name)
-		tinfo = timerInfo(timer, repeat=True, is_module_trigger=True)
+		trig_name = "MODTRIGGER" + str(trig_num).zfill(3)
+		t = timer.Timer(self._execute_action(api, bot_module.on_timer_fire(api), bot_module), int(trig.timer_duration.total_seconds()), id=trig_name)
+		tinfo = _TimerInfo(t, repeat=True, is_module_trigger=True)
 		if bot_module.name not in current_handlers:
 			current_handlers[bot_module.name] = dict()
 		current_handlers[bot_module.name][trig_name] = tinfo
@@ -1658,7 +1667,6 @@ class MasaBot(object):
 						'servers': {server.id: self.module_settings[mod_name].get_state(server.id) for server in self.connected_guilds}
 					} for mod_name in self._bot_modules},
 				},
-				'timers':
 			},
 			'__VERSION__': version.get_version()
 		}
@@ -1680,7 +1688,6 @@ class MasaBot(object):
 			pickle.dump(state_dict, fp)
 
 		_log.debug("Saved state to disk")
-
 
 	def remove_timer(self, module: Optional[str], id: str):
 		"""Remove an existing timer. After this function returns, the timer
@@ -1704,9 +1711,8 @@ class MasaBot(object):
 		if len(self._timers[modidx]) == 0:
 			del self._timers[modidx]
 		_log.debug("Removed timer with ID " + repr(id) + "for " + modname)
-	
 
-	def add_timer(self, module: Optional[str], t: Timer, repeat: bool) -> str:
+	def add_timer(self, module: Optional[str], t: timer.Timer, repeat: bool) -> str:
 		"""Create a new timer for a module for an action in the future. The
 		timer is added to the list of timers that the main tick routine fires,
 		and will fire at the correct time.
@@ -1732,6 +1738,7 @@ class MasaBot(object):
 			if modidx not in self._timers:
 				id_num = "000"
 			else:
+				id_num = ""
 				for x in range(1000):
 					id_num = str(x).zfill(3)
 					if id_num not in self._timers[modidx]:
@@ -1739,7 +1746,7 @@ class MasaBot(object):
 					elif id_num == "999":
 						raise TypeError("could not generate valid name for timer; are there too many added?")
 			t.id = id_num
-		tinfo = timerInfo(t, repeat, False)
+		tinfo = _TimerInfo(t, repeat, False)
 		if modidx not in self._timers:
 			self._timers[modidx] = dict()
 		self._timers[modidx][t.id] = tinfo

@@ -46,83 +46,24 @@ headpat_messages = [
 class HeadpatModule(BotBehaviorModule):
 
 	def __init__(self, resource_root: str):
-		help_text = "Summons emergency headpats when you really need them! Also, I think pretty much"
-		help_text += " any time you want them counts as an emergency!\n\n"
-		help_text += "Do `headpat` to receive a headpat, or do `headpat <member>` to have me give someone else a headpat!\n"
-		help_text += "\n__Superop Commands:__\n\n"
-		help_text += "* `headpat-add <X1> <Y1> <X2> <Y2> [id]` with an image and a message with x1 y1 x2 y2 of"
-		help_text += " coordinates of where the person"
-		help_text += " being given a headpat will have their picture put, note that this is relative to the size after"
-		help_text += " any resizing of the template is done! And you can give the ID if you want, otherwise I'll make one!\n"
-		help_text += "* `headpat-edit <id> <X1> <Y1> <X2> <Y2>` with the ID of the template to change!\n"
-		help_text += "* `headpat-remove <id>` to completely remove that headpat template.\n"
-		help_text += "* `headpat-info` to list info about all current templates, or give an ID to see that one!\n"
-		help_text += "__Settings__\n"
-		help_text += "Use the `settings headpat` command to set these:\n"
-		help_text += " * `template-width` - The width of the templates used to generate headpats. This is a global value"
-		help_text += " that is used by all servers I'm connected to."
-
-		width_prompt = "Ah, well, I can do that, but I'll have to resize all the templates"
-		width_prompt += " I'm already using, and some of them might lose quality! Also, it"
-		width_prompt += " might take me a little bit. Are you sure you want me to do that?"
-
 		super().__init__(
-			name="headpat",
-			desc="Give and receive headpats!",
-			help_text=help_text,
+			name="future",
+			desc="Do something in the future!",
+			help_text="future actions",
 			triggers=[
-				InvocationTrigger('headpat'),
-				InvocationTrigger('headpat-add'),
-				InvocationTrigger('headpat-remove'),
-				InvocationTrigger('headpat-info'),
-				InvocationTrigger('headpat-edit')
+				InvocationTrigger('future'),
 			],
 			resource_root=resource_root,
 			save_state_on_trigger=True,
-			global_settings=[
-				settings.Key(
-					settings.key_type_int_range(min=1),
-					'template-width',
-					default=640,
-					prompt_before=width_prompt,
-					call_module_on_alter=True
-				),
-			]
 		)
 
 		self.templates = dict()
 		self._last_new_template = -1
 		self._template_digits = 6
 
-	def set_global_state(self, state):
-		if 'templates' in state:
-			self.templates = dict()
-			for k in state['templates']:
-				v = state['templates'][k]
-				self.templates[k] = {
-					'x1': v['x1'],
-					'x2': v['x2'],
-					'y1': v['y1'],
-					'y2': v['y2'],
-					'dx': v['dx'],
-					'dy': v['dy'],
-					'width': v['width'],
-					'height': v['height'],
-				}
-
-		if 'last-added' in state:
-			self._last_new_template = state['last-added']
-
-	def get_global_state(self):
-		new_state = {
-			'templates': self.templates,
-			'last-added': self._last_new_template,
-		}
-		return new_state
-
 	async def on_invocation(self, bot: PluginAPI, metadata: util.MessageMetadata, command: str, *args: str):
-		if command == "headpat":
-			await self.generate_headpat(bot, args)
+		if len(args) < 1:
+			raise BotSyntaxError("When should I say it?")
 		elif command == "headpat-add":
 			await self.add_headpat(bot, metadata, args)
 		elif command == "headpat-remove":
