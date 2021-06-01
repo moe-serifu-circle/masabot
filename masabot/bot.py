@@ -1570,6 +1570,8 @@ class MasaBot(object):
 
 			tokens = shlex.split(content)
 
+		tokens[0] = tokens[0].lower()
+
 		return tokens
 
 	def _load_builtin_state(self, state_dict):
