@@ -173,7 +173,11 @@ class MasaBot(object):
 		if 'masters' in conf:
 			conf['superops'] = conf['masters']  # convert configs with outdated terminology. remove after all configs updated
 		for m in conf['superops']:
-			self._operators[m] = {'role': 'superop'}
+			if type(m) == int:
+				self._operators[m] = {'role': 'superop'}
+			else:
+				raise TypeError("Configured superop ID listed as a string, this is disallowed since masabot v1.0.0 and must be changed to int")
+				
 		self._api_key = conf['discord-api-key']
 		"""[Server_id, Dict[Channel_id, List[message]]]"""
 
