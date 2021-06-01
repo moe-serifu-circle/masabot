@@ -1560,7 +1560,7 @@ class MasaBot(object):
 		""":type : str"""
 
 		# special case; do NOT apply replacements if the replchars command is being invoked:
-		pre_analyze = shlex.split(content)
+		pre_analyze = content.split()
 		if pre_analyze[0] == 'replchars':
 			tokens = pre_analyze
 		else:
