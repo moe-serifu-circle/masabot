@@ -176,7 +176,7 @@ class MasaBot(object):
 			if type(m) == int:
 				self._operators[m] = {'role': 'superop'}
 			else:
-				raise TypeError("Configured superop ID listed as a string, this is disallowed since masabot v1.0.0 and must be changed to int")
+				raise TypeError("Configured superop ID listed as a non-int, this is disallowed since masabot v1.0.0 and must be changed to int")
 				
 		self._api_key = conf['discord-api-key']
 		"""[Server_id, Dict[Channel_id, List[message]]]"""
