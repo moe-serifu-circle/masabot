@@ -18,7 +18,7 @@ multidict==4.7.6
 Pillow==8.2.0
 pycparser==2.20
 PyNaCl==1.4.0
-requests==2.24.0
+requests==2.26.0
 rfc3986==1.4.0
 six==1.15.0
 sniffio==1.1.0

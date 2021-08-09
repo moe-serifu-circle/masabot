@@ -19,31 +19,7 @@ _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
 
-headpat_messages = [
-	"iiko, iiko~",
-	"Everything will be okay~ *pats your head*",
-	"Here, have a headpat!",
-	"You deserve one of these!",
-	"Ehehehe, let me pat your head!",
-	"Here, you should have a headpat!",
-	"_nade-nade, nade-nade~_",
-	"Gooooooood cute!",
-	"There, there!",
-	"Please take this on your head, I hope it makes you happy! *pats you gently*",
-	"*pats you a lot* >.< If things have been rough, I hope this makes you feel better! *pats you more*",
-	"*pats you on the head*",
-	"Here, you absolutely deserve this!",
-	"Yes, please let me pat you! *pats you* On the head! *pats you more*",
-	"Have another lovely pat on the head!",
-	"d'awwww you look really cute when I pat you!",
-	"Do you need a headpat? Here!",
-	"You are valid uwu",
-	"Hey, everything will be okay. *pat-pat*",
-	"You're cute!"
-]
-
-
-class HeadpatModule(BotBehaviorModule):
+class RemindmeModule(BotBehaviorModule):
 
 	def __init__(self, resource_root: str):
 		super().__init__(
@@ -449,4 +425,4 @@ def extract_corners(args: Sequence[str], size: (int, int)) -> (int, int, int, in
 	return x1, y1, x2, y2
 
 
-BOT_MODULE_CLASS = HeadpatModule
+BOT_MODULE_CLASS = RemindmeModule

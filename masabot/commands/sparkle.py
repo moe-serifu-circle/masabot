@@ -27,7 +27,7 @@ class SparkleModule(BotBehaviorModule):
 		sparkle_regex += '|[Kk][Ii][Rr][Aa]-?[Kk][Ii][Rr][Aa]'
 		sparkle_regex += '|[Gg][Ll][Ii][Tt][Tt][Ee][Rr]'
 		sparkle_regex += '|✨'
-		sparkle_regex += ')?'
+		sparkle_regex += ')'
 
 		super().__init__(
 			name="sparkle",
