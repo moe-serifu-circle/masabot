@@ -148,6 +148,11 @@ class PluginAPI:
 						""":type: discord.Guild"""
 						norm_guild_name = ' '.join(shlex.split(g.name))
 						if norm_guild_name.lower().find(resp.lower()) > -1:
+							m = g.get_member(self.get_user().id)
+							if m is None:
+								continue
+							import pprint
+							_log.debug(pprint.pformat(m))
 							found_guild = g
 							break
 					if found_guild:
