@@ -151,8 +151,6 @@ class PluginAPI:
 							m = g.get_member(self.get_user().id)
 							if m is None:
 								continue
-							import pprint
-							_log.debug(pprint.pformat(m))
 							found_guild = g
 							break
 					if found_guild:
