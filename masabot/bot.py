@@ -429,12 +429,20 @@ class MasaBot(object):
 						pickle.dump({'command': 'quit'}, restart_command_file)
 					await self.client.close()
 			else:
+				e = sys.exc_info()[1]
+
+				# is it a missing message?
+				if isinstance(e, discord.errors.NotFound):
+					# there is no need to log it if the message wasnt valid swallow the exception
+					# because with pkbot we will be logging a LOT of exceptions if we take this.
+					# TODO: for the love of christ, document this somewhere OR IT WILL BE FORGOTTEN A8OUT!!!!!!!!
+					return
+
 				if isinstance(args[0], discord.RawReactionActionEvent):
 					message = None
 				else:
 					message = args[0]
 				pager = DiscordPager("_(error continued)_")
-				e = traceback.format_exc()
 				logging.exception("Exception in main loop")
 
 				# is it an access issue?
@@ -449,7 +457,7 @@ class MasaBot(object):
 					pager.add_line(msg_start)
 					pager.add_line()
 					pager.start_code_block()
-					for line in e.splitlines():
+					for line in traceback.format_exc().splitlines():
 						pager.add_line(line)
 					pager.end_code_block()
 					pages = pager.get_pages()
