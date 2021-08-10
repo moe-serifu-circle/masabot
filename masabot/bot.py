@@ -81,7 +81,13 @@ random_status_list = [
 			"with HELIOS",
 			"with DAEDALUS",
 			"with ICARUS",
-			"System Shock 3: IRL Edition"
+			"System Shock 3: IRL Edition",
+			"the most dangerous game",
+			"with fire",
+			"friendly mindgames",
+			"minecraft",
+			"gamebro",
+			"Sburb with HussieBot"
 		]
 
 
